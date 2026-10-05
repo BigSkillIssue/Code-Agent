@@ -1,0 +1,56 @@
+[project]
+name = "forge"
+version = "0.1.0"
+description = "Forge: a provider-agnostic coding agent that refines, plans, executes and verifies every task."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+forge = "forge.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forge"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["examples/buggy", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF"]
+ignore = [
+    "RUF001", # ambiguous unicode in strings: docs and prompts use typographic dashes
+    "RUF002",
+    "RUF003",
+    "RUF012", # pydantic models declare mutable defaults on purpose
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["forge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not live'"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "live: calls a real provider API (needs API keys; skipped by default)",
+]
