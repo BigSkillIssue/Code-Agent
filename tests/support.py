@@ -21,6 +21,7 @@ from forge.ports import (
     Session,
 )
 from forge.providers.base import ToolCall
+from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
 
 
@@ -102,7 +103,7 @@ def make_ctx(
         bus=MemoryBus(),
         executor=executor or NoExecutor(),
         renderer=renderer or ScriptedRenderer(),
-        ledger=None,
+        ledger=ReadLedger(),
         permissions=Permissions(cfg),
         hooks=Hooks(cfg),
         headless=headless,

@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
 from forge.ports import EventBus, Executor, Renderer, Session, Store
+from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
 
 
@@ -22,7 +22,7 @@ class Ctx:
     bus: EventBus
     executor: Executor
     renderer: Renderer
-    ledger: Any  # ReadLedger once runtime/ledger.py exists (S07)
+    ledger: ReadLedger  # path -> sha256 of last read content
     permissions: Permissions
     hooks: Hooks
     agent_id: str = "main"
