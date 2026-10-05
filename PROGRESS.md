@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S10
+Next step: S11
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -13,7 +13,8 @@ Next step: S10
 | S06 | 2026-10-05 | 84d0caf | src/forge/tools.py, src/forge/runtime/__init__.py, src/forge/runtime/errors.py, src/forge/runtime/permissions.py, src/forge/hooks.py, src/forge/ctx.py, tests/test_tool_framework.py, tests/fixtures/schemas/dummy.json, tests/support.py, tests/conftest.py | @tool + make_tool_def, schema from signature/Annotated/docstring (refs inlined, titles dropped), call_tool pipeline with approval, hooks, spill to .forge/out/, audit log |
 | S07 | 2026-10-05 | b040890 | src/forge/tools.py, src/forge/runtime/files.py, src/forge/runtime/ledger.py, src/forge/runtime/ignore.py, src/forge/runtime/search.py, src/forge/runtime/edit.py, src/forge/runtime/readers.py, src/forge/runtime/tree.py, src/forge/runtime/proc.py, src/forge/ctx.py, tests/test_tools_files.py, tests/support.py | read_file (text, images, PDF, notebooks), write_file, edit_file, list_dir, glob, grep (rg + identical Python fallback); read ledger; atomic writes with an undo journal |
 | S08 | 2026-10-05 | c8cf016 | src/forge/runtime/shell.py, src/forge/local/local_executor.py, src/forge/tools.py, src/forge/ports.py, tests/test_shell.py | persistent bash/PowerShell with sentinel capture, pooled shells, background jobs with logs, timeout → background job, process-tree stop; tools bash, powershell, job_output, job_stop |
-| S09 | 2026-10-05 | (next) | src/forge/agent.py, src/forge/prompts.py, tests/test_agent.py, tests/support.py | run_agent: role prompt, fallback chain per turn, ModelDelta/ModelDone/ToolStarted/ToolFinished events, read-only calls in parallel, max_turns, cost stop, compaction hook point |
+| S09 | 2026-10-05 | 03bc24e | src/forge/agent.py, src/forge/prompts.py, tests/test_agent.py, tests/support.py | run_agent: role prompt, fallback chain per turn, ModelDelta/ModelDone/ToolStarted/ToolFinished events, read-only calls in parallel, max_turns, cost stop, compaction hook point |
+| S10 | 2026-10-05 | (next) | src/forge/cli.py, src/forge/wiring.py, src/forge/local/rich_renderer.py, examples/buggy/, tests/e2e/test_fix_bug.py, tests/fixtures/fake/hello.json, tests/fixtures/fake/fix_buggy.json | Phase 0 gate passed: `forge --fake fix_buggy.json --yes` fixes examples/buggy end to end; Rich renderer streams text, tool calls, approvals |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -60,6 +61,10 @@ Next step: S10
 - S09: on a ProviderError the loop publishes an ErrorEvent naming `provider/model` and tries the next model of the role's chain; when all fail it stops with `stopped=\"error\"`.
 - S09: the main agent's messages are appended to `ctx.session.messages` (the full transcript); saving the session is the caller's job (pipeline/CLI).
 - S09: cancellation is not swallowed: a cancelled agent task raises CancelledError to whoever awaits it.
+- S10: `src/forge/wiring.py` builds a Ctx from local ports (MemoryStore until S19, MemoryBus, LocalExecutor) and holds `use_fake_provider`; cli, tui and api share it.
+- S10: `--fake` takes an optional `.json` script (`--fake` alone uses tests/fixtures/fake/hello.json, or a built-in hello turn outside the repo); every role then maps to `fake/<role>`, so scripts can keep per-role queues.
+- S10: `-y/--yes` approves every tool call and takes default answers, so scripted and e2e runs need no stdin.
+- S10: questions and approvals wait one short tick so events published before them are printed first.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
