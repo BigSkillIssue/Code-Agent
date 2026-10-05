@@ -1,6 +1,7 @@
-"""Adapter for every OpenAI-compatible Chat Completions endpoint (OpenAI, Groq, Ollama, ...).
+"""Adapter for every OpenAI-compatible endpoint (OpenAI, Groq, Ollama, ...).
 
-It speaks the wire protocol over plain HTTP, so one code path serves every vendor.
+It speaks the wire protocol over plain HTTP, so one code path serves every vendor. Each
+provider picks a wire in config: Chat Completions (`chat`, default) or Responses (`responses`).
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from forge.providers.base import (
 )
 from forge.providers.catalog import capabilities_for
 from forge.providers.errors import OVERFLOW_HINTS, error_from_status
+from forge.providers.responses import ResponsesStream, StreamFailedError, responses_body
 from forge.providers.retry import RETRY_DELAYS, Sleep, stream_with_retries
 from forge.providers.sse import read_events
 from forge.providers.tokens import estimate_tokens
@@ -83,8 +85,9 @@ class OpenAICompatProvider:
                 yield item
 
     async def _stream_once(self, req: ChatRequest, minimal: bool) -> AsyncIterator[StreamItem]:
-        body = self._body(req, minimal)
-        url = f"{self.base_url}/chat/completions"
+        responses = self.config.wire == "responses"
+        body = responses_body(req, minimal) if responses else self._body(req, minimal)
+        url = f"{self.base_url}/{'responses' if responses else 'chat/completions'}"
         try:
             async with (
                 httpx.AsyncClient(timeout=TIMEOUT, transport=self._transport) as client,
@@ -93,10 +96,24 @@ class OpenAICompatProvider:
                 if response.status_code >= 400:
                     await response.aread()
                     raise error_from_status(response.status_code, response.text, response.headers)
-                async for item in self._parse(response, req.model):
+                parse = self._parse_responses if responses else self._parse
+                async for item in parse(response, req.model):
                     yield item
         except httpx.HTTPError as exc:
             raise ProviderError("network", f"{type(exc).__name__}: {exc}") from exc
+
+    async def _parse_responses(
+        self, response: httpx.Response, model: str
+    ) -> AsyncIterator[StreamItem]:
+        stream = ResponsesStream()
+        try:
+            async for item in stream.events(response):
+                yield item
+        except StreamFailedError as exc:
+            raise error_from_payload(exc.error) from exc
+        usage = stream.usage
+        usage.cost_usd = cost_usd(usage, self.capabilities(model))
+        yield StreamItem(done=stream.message(), usage=usage)
 
     async def _parse(self, response: httpx.Response, model: str) -> AsyncIterator[StreamItem]:
         text: list[str] = []

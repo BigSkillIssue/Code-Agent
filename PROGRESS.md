@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S24
+Next step: S25
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -27,7 +27,8 @@ Next step: S24
 | S20 | 2026-10-05 | 5dab705 | src/forge/pipeline.py, src/forge/evals.py, src/forge/local/auto_renderer.py, src/forge/runtime/gitops.py, src/forge/wiring.py, src/forge/cli.py, evals/tasks/*.toml (10), evals/repos/, tests/test_review.py, tests/fixtures/fake/*.json | final_review → Report; run_task runs the whole pipeline (trivial tasks skip clarify/plan); forge eval with 10 tasks on 3 sample repos, offline via compact fake solutions |
 | S21 | 2026-10-05 | 70e0862 | src/forge/providers/catalog.py, src/forge/providers/registry.py, tests/test_registry.py | 17 provider presets (zero-config for known vendors), model catalog with capabilities and prices, aliases (claude-sonnet → claude-sonnet-5-5), config overrides, fallback chain tested end to end |
 | S22 | 2026-10-05 | 882de38 | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
-| S23 | 2026-10-05 | (next) | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
+| S23 | 2026-10-05 | a1f6b6f | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
+| S24 | 2026-10-05 | (next) | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -113,6 +114,7 @@ Next step: S24
 - S22: S22: ChatRequest.json_schema is not sent to Claude; structured.py's prompt + parse path covers it.
 - S23: S23: Gemini assistant turns are replayed from the raw parts kept in Message.reasoning (keeps thought signatures); rebuilt from text/tool_calls when absent.
 - S23: S23: reasoning_effort maps to thinking_budget (1024/8192/24576) on Gemini 2.5 and thinking_level LOW/HIGH on later models; json_schema is sent only when no tools are given.
+- S24: S24: Responses wire lives in providers/responses.py (body, input items, event parsing), outside the card's file list, to keep openai_compat.py focused; requests are stateless (store=false) and encrypted reasoning items round-trip via Message.reasoning.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
