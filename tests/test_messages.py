@@ -57,6 +57,10 @@ EVENTS: list[events.Event] = [
     events.Compacted(session_id="s", ts=1.0, level=2, tokens_before=9000, tokens_after=1200),
     events.SessionDone(session_id="s", ts=1.0, ok=True, report="all done\nreport"),
     events.ErrorEvent(session_id="s", ts=1.0, message="boom"),
+    events.AgentMessage(session_id="s", ts=1.0, agent_id="a1", to="a2", summary="hi", text="hi"),
+    events.AgentFinished(
+        session_id="s", ts=1.0, agent_id="a2", role="tester", status="done", report="ok"
+    ),
 ]
 
 

@@ -132,7 +132,7 @@ async def test_children_cannot_ask_the_user_or_spawn(tmp_project: Path) -> None:
     child = registry(ctx).agents["a1"]
     codes = [m.tool_result.code for m in child.messages if m.tool_result]
     assert codes == ["unsupported", "unsupported"]
-    assert len(registry(ctx).agents) == 1
+    assert set(registry(ctx).agents) == {"main", "a1"}  # the nested spawn created nothing
 
 
 async def run(ctx: Ctx, **arguments: Any) -> ToolResult:
