@@ -1,6 +1,7 @@
 """Tests for the persistent shells, background jobs and the shell tools."""
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -246,3 +247,12 @@ async def test_robocopy_exit_one_is_ok(sh: Ctx) -> None:
     (sh.root / "a" / "f.txt").write_text("x")
     result = await run(sh, "powershell", command="robocopy a b f.txt")
     assert result.ok, result.text
+
+
+def test_shell_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORGE_POWERSHELL", "none")
+    assert find_shell("powershell") is None
+    monkeypatch.setenv("FORGE_BASH", "none")
+    assert find_shell("bash") is None
+    monkeypatch.setenv("FORGE_BASH", sys.executable)  # any existing executable path
+    assert find_shell("bash") == shutil.which(sys.executable)

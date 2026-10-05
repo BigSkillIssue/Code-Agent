@@ -38,7 +38,14 @@ class ShellExited(Exception):
 
 
 def find_shell(kind: ShellKind) -> str | None:
-    """The executable for a shell kind, or None when it is not installed."""
+    """The executable for a shell kind, or None when it is not installed.
+
+    $FORGE_BASH / $FORGE_POWERSHELL pick a specific executable, or `none` to act as if the
+    shell were missing (CI tests Windows PowerShell 5.1, PowerShell 7 and Git Bash this way).
+    """
+    override = os.environ.get("FORGE_BASH" if kind == "bash" else "FORGE_POWERSHELL")
+    if override:
+        return None if override.lower() == "none" else which(override)
     if kind == "powershell":
         return which("pwsh") or (which("powershell.exe") if os.name == "nt" else None)
     if os.name == "nt":

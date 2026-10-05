@@ -34,7 +34,8 @@ HookEventName = Literal[
 # Keys an untrusted project may not set: they can run code or send data elsewhere.
 TRUST_GATED_KEYS = ("providers", "mcp_servers", "hooks")
 ENV_PREFIX = "FORGE_"
-RESERVED_ENV = frozenset({"FORGE_HOME"})
+# Not config keys: where Forge keeps user files, and which shell executables to use.
+RESERVED_ENV = frozenset({"FORGE_HOME", "FORGE_BASH", "FORGE_POWERSHELL"})
 _SECRET_NAME = re.compile(r"key|token|secret|password|authorization|cookie", re.IGNORECASE)
 
 DEFAULT_ROLES: dict[str, list[str]] = {

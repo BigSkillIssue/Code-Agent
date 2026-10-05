@@ -12,17 +12,19 @@ concurrency:
 
 jobs:
   gate:
-    name: gate (${{ matrix.os }})
+    name: gate (${{ matrix.os }}, Python ${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12", "3.13"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - name: Install
         run: uv sync
       - name: Lint
@@ -31,3 +33,38 @@ jobs:
         run: uv run mypy src
       - name: Tests
         run: uv run pytest -q
+      - name: Offline evals
+        run: uv run forge --fake eval
+
+  windows-shells:
+    # The shell tools, the sandbox and the executor with each Windows shell on its own.
+    name: windows shell (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: PowerShell 7
+            powershell: pwsh
+            bash: none
+          - name: Windows PowerShell 5.1
+            powershell: powershell.exe
+            bash: none
+          - name: Git Bash
+            powershell: none
+            bash: C:\Program Files\Git\bin\bash.exe
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      FORGE_POWERSHELL: ${{ matrix.powershell }}
+      FORGE_BASH: ${{ matrix.bash }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync
+      - name: Shell, files, sandbox and executor tests
+        run: >-
+          uv run pytest -q tests/test_shell.py tests/test_tools_files.py tests/test_sandbox.py
+          tests/test_permissions.py tests/conformance/test_executor_conformance.py
