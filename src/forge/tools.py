@@ -39,7 +39,7 @@ from forge.ctx import Ctx
 from forge.events import PlanUpdated
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
-from forge.ports import Command, CommandResult, JobNotFoundError
+from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec, text_message
 from forge.providers.registry import resolve_role
 from forge.questions import ask
@@ -565,6 +565,7 @@ async def patch_file(ctx: Ctx, op: FileOp) -> tuple[list[FileChange], str]:
     target = resolve_path(ctx.cwd, op.path)
     display = display_path(ctx.root, target)
     check_writable(ctx.root, writable_roots(ctx.root, ctx.cfg), target)
+    await authorize_path(ctx, "apply_patch", target)
     if op.kind == "add":
         if target.exists():
             raise ToolError("invalid_args", f"{display} already exists", hint="use *** Update File")
@@ -583,11 +584,25 @@ async def patch_file(ctx: Ctx, op: FileOp) -> tuple[list[FileChange], str]:
         return [FileChange(target, data)], f"  M {display} (+{added} -{removed})"
     dest = resolve_path(ctx.cwd, op.move_to)
     check_writable(ctx.root, writable_roots(ctx.root, ctx.cfg), dest)
+    await authorize_path(ctx, "apply_patch", dest)
     moved = display_path(ctx.root, dest)
     if dest.exists():
         raise ToolError("invalid_args", f"cannot move to {moved}: it already exists")
     changes = [FileChange(dest, data), FileChange(target, None)]
     return changes, f"  R {display} -> {moved} (+{added} -{removed})"
+
+
+async def authorize_path(ctx: Ctx, tool_name: str, path: Path) -> None:
+    """Permission check for one path of a multi-file tool; raises when refused."""
+    decision = ctx.permissions.check_path(REGISTRY[tool_name], str(path), ctx.root)
+    if decision.action == "run":
+        return
+    display = display_path(ctx.root, path)
+    if decision.action == "deny":
+        raise ToolError("permission_denied", f"{display}: {decision.reason}")
+    call = ToolCall(id="", name=tool_name, arguments={"path": display})
+    if not (await ctx.renderer.approve(call, decision.reason)).allow:
+        raise ToolError("permission_denied", f"the user declined changing {display}")
 
 
 async def read_for_patch(ctx: Ctx, target: Path, display: str) -> TextFile:
@@ -799,12 +814,7 @@ async def run_shell(
         label = description or command.strip().splitlines()[0][:60]
         return job_started(result, label)
     if result.sandbox_denied:
-        raise ToolError(
-            "sandbox_denied",
-            "the sandbox blocked this command",
-            hint="the sandbox blocked network or path access; ask the user or use another approach",
-            body=result.stderr,
-        )
+        result = await outside_sandbox(ctx, cmd, result)
     if result.timed_out:
         if result.job_id is None:
             raise ToolError(
@@ -817,6 +827,27 @@ async def run_shell(
     if shell_succeeded(kind, command, result.exit_code):
         return body
     raise ToolError("exit_nonzero", f"exit code {result.exit_code}", body=body)
+
+
+async def outside_sandbox(ctx: Ctx, cmd: Command, blocked: CommandResult) -> CommandResult:
+    """Offer to rerun a command the sandbox blocked without it; sandbox_denied if not allowed."""
+    output = "\n".join(part for part in (blocked.stdout, blocked.stderr) if part.strip())
+    refused = ToolError(
+        "sandbox_denied",
+        "the sandbox blocked this command (network or a path outside the writable folders)",
+        hint="use another approach, or ask the user to allow it",
+        body=output,
+    )
+    if ctx.cfg.approval.policy == "never" or ctx.cfg.sandbox.mode == "full-access":
+        raise refused
+    call = ToolCall(id="", name=cmd.shell, arguments={"command": cmd.script or ""})
+    approval = await ctx.renderer.approve(
+        call, "the sandbox blocked it; run it without the sandbox?"
+    )
+    if not approval.allow:
+        raise refused
+    unrestricted = SandboxPolicy(mode="full-access", writable_roots=[], network=True)
+    return await ctx.executor.run(cmd, unrestricted)
 
 
 def shell_body(ctx: Ctx, result: CommandResult, duration_s: float) -> str:

@@ -11,13 +11,13 @@ import re
 import secrets
 import subprocess
 import sys
-import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from forge.runtime.proc import QUIET_ENV, which
+from forge.runtime.sandbox import Launch, scratch_dir
 
 ShellKind = Literal["bash", "powershell"]
 
@@ -151,10 +151,17 @@ class ShellOutcome:
 class ShellSession:
     """One long-lived shell process that runs commands one at a time."""
 
-    def __init__(self, kind: ShellKind, exe: str, env: Mapping[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        kind: ShellKind,
+        exe: str,
+        env: Mapping[str, str] | None = None,
+        launch: Launch | None = None,
+    ) -> None:
         self.kind = kind
         self.exe = exe
         self.env = shell_env(env)
+        self.launch = launch or Launch("none")
         self.proc: asyncio.subprocess.Process | None = None
         self.busy = False
         self._buffer = b""
@@ -167,12 +174,13 @@ class ShellSession:
     async def start(self) -> None:
         """Start the shell process."""
         self.proc = await asyncio.create_subprocess_exec(
-            *session_argv(self.kind, self.exe),
+            *self.launch.argv(session_argv(self.kind, self.exe)),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             env=self.env,
             **new_process_group(),  # type: ignore[arg-type]
+            preexec_fn=self.launch.preexec,
         )
         if self.kind == "powershell":
             await self._send(POWERSHELL_INIT + "\n")
@@ -182,7 +190,7 @@ class ShellSession:
         if not self.alive:
             await self.start()
         nonce = secrets.token_hex(8)
-        err = Path(tempfile.gettempdir()) / f"forge-{nonce}.err"
+        err = scratch_dir() / f"forge-{nonce}.err"
         wrap = wrap_bash if self.kind == "bash" else wrap_powershell
         await self._send(wrap(command, cwd, nonce, err))
         parts: list[bytes] = []

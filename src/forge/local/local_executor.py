@@ -1,6 +1,7 @@
 """LocalExecutor: runs commands on this machine in persistent shells or as background jobs.
 
-The sandbox policy is recorded but not yet enforced (S28 adds the OS sandboxes).
+Every process starts inside the OS sandbox for its policy (runtime/sandbox.py); persistent
+shells are pooled per policy, because a sandbox cannot be lifted from a running process.
 """
 
 import asyncio
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
 from forge.runtime.proc import run_argv
+from forge.runtime.sandbox import Launch, is_denied, launch_for
 from forge.runtime.shell import (
     ShellExited,
     ShellKind,
@@ -62,11 +64,18 @@ class LocalExecutor:
     ) -> CommandResult:
         """Run a command now, or start it as a background job."""
         self.last_policy = policy
+        launch = launch_for(policy)
         if background:
-            return await self._start_job(cmd)
+            return await self._start_job(cmd, launch)
         if cmd.script is not None and cmd.shell != "none" and not cmd.env:
-            return await self._run_in_shell(cmd, cmd.shell)
-        return await self._run_once(cmd)
+            result = await self._run_in_shell(cmd, cmd.shell, launch)
+        else:
+            result = await self._run_once(cmd, launch)
+        if launch.mechanism != "none" and is_denied(
+            policy, result.exit_code, result.stdout + result.stderr
+        ):
+            result = result.model_copy(update={"sandbox_denied": True})
+        return result
 
     async def job_output(self, job_id: str, since_line: int = 0) -> CommandResult:
         """Log lines of a job from `since_line` (0-based); exit_code is None while running."""
@@ -98,11 +107,11 @@ class LocalExecutor:
                 await shell.close()
         self._shells.clear()
 
-    async def _run_in_shell(self, cmd: Command, kind: ShellKind) -> CommandResult:
+    async def _run_in_shell(self, cmd: Command, kind: ShellKind, launch: Launch) -> CommandResult:
         exe = find_shell(kind)
         if exe is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{kind} is not installed")
-        shell = await self._borrow(kind, exe)
+        shell = await self._borrow(kind, exe, launch)
         script = cmd.script or ""
         outcome = await shell.run(script, Path(cmd.cwd), cmd.timeout_s)
         if outcome.timed_out:
@@ -132,12 +141,17 @@ class LocalExecutor:
             cwd=outcome.cwd,
         )
 
-    async def _borrow(self, kind: ShellKind, exe: str) -> ShellSession:
+    async def _borrow(self, kind: ShellKind, exe: str, launch: Launch) -> ShellSession:
         for shell in self._shells:
-            if shell.kind == kind and not shell.busy and shell.alive:
+            if (
+                shell.kind == kind
+                and not shell.busy
+                and shell.alive
+                and shell.launch.key == launch.key
+            ):
                 shell.busy = True
                 return shell
-        shell = ShellSession(kind, exe)
+        shell = ShellSession(kind, exe, launch=launch)
         await shell.start()
         shell.busy = True
         self._shells.append(shell)
@@ -167,7 +181,7 @@ class LocalExecutor:
         job.exit_code, job.ended = code, time.time()
         await shell.close()
 
-    async def _start_job(self, cmd: Command) -> CommandResult:
+    async def _start_job(self, cmd: Command, launch: Launch) -> CommandResult:
         argv = self._argv(cmd)
         if argv is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{cmd.shell} is not installed")
@@ -176,13 +190,14 @@ class LocalExecutor:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("ab") as log:
             proc = await asyncio.create_subprocess_exec(
-                *argv,
+                *launch.argv(argv),
                 cwd=cmd.cwd,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=log,
                 stderr=asyncio.subprocess.STDOUT,
                 env=shell_env(cmd.env),
                 **new_process_group(),  # type: ignore[arg-type]
+                preexec_fn=launch.preexec,
             )
         job = self._register(job_id, proc)
         job.task = asyncio.create_task(self._watch(job))
@@ -192,11 +207,13 @@ class LocalExecutor:
         job.exit_code = await job.proc.wait()
         job.ended = time.time()
 
-    async def _run_once(self, cmd: Command) -> CommandResult:
+    async def _run_once(self, cmd: Command, launch: Launch) -> CommandResult:
         argv = self._argv(cmd)
         if argv is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{cmd.shell} is not installed")
-        result = await run_argv(argv, Path(cmd.cwd), timeout_s=cmd.timeout_s, env=cmd.env)
+        result = await run_argv(
+            argv, Path(cmd.cwd), timeout_s=cmd.timeout_s, env=cmd.env, launch=launch
+        )
         timed_out = result.code == -1 and result.stderr.startswith("timed out")
         return CommandResult(
             exit_code=None if timed_out else result.code,

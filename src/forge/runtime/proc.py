@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from forge.runtime.sandbox import Launch
+
 QUIET_ENV = {"NO_COLOR": "1", "TERM": "dumb", "CI": "1", "PAGER": "cat", "GIT_PAGER": "cat"}
 
 
@@ -33,15 +35,17 @@ async def run_argv(
     *,
     timeout_s: float = 60,
     env: Mapping[str, str] | None = None,
+    launch: Launch | None = None,
 ) -> ProcResult:
     """Run a program to completion with stdin closed; returns code -1 on timeout."""
     proc = await asyncio.create_subprocess_exec(
-        *argv,
+        *(launch.argv(list(argv)) if launch is not None else argv),
         cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env={**os.environ, **QUIET_ENV, **(env or {})},
+        preexec_fn=launch.preexec if launch is not None else None,
     )
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout_s)

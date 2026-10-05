@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S28
+Next step: S29
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -32,7 +32,8 @@ Next step: S28
 | S25 | 2026-10-05 | 0665ab9 | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
 | S26a | 2026-10-05 | fc87adc | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
 | S26b | 2026-10-05 | e86c777 | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
-| S27 | 2026-10-05 | (next) | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
+| S27 | 2026-10-05 | 56b3c42 | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
+| S28 | 2026-10-05 | (next) | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -131,6 +132,10 @@ Next step: S28
 - S27: S27: input budget = context_window - min(max_output, window/8) of the role's first model; level 2 keeps recent turns up to 30% of the budget, starting at an assistant message; summaries are capped at 20% of the budget.
 - S27: S27: the compacted history is one user message of tagged sections (<spec>, <plan>, <summary>, <unresolved_errors>, <files_touched>, <task>); an error is unresolved while the same tool has not succeeded since.
 - S27: S27: /compact sets ctx.state.compact_request for the next turn; /context reads ctx.state.context_usage recorded on every turn. COMPRESS_TASK prompt added.
+- S28: S28: Linux prefers Landlock (ctypes, applied in preexec_fn; TCP blocked with ABI>=4), bubblewrap as fallback; macOS uses sandbox-exec with an allow-default profile that denies writes outside the writable folders and all network.
+- S28: S28: read-only mode lets commands write only to Forge's scratch folder (<tmp>/forge-scratch) and /dev; workspace-write adds the writable roots and the temp folders.
+- S28: S28: on approval policy on-request, bash/powershell run without asking when an OS sandbox is active, else ask; a command flagged sandbox_denied is offered for one rerun without the sandbox (never: reported as sandbox_denied).
+- S28: S28: persistent shells are pooled per sandbox (Launch.key), since a sandbox cannot be lifted from a running process.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -142,3 +147,5 @@ Next step: S28
 - S23: S23: live contract test for Gemini not run here: no GEMINI_API_KEY.
 - S25: S25: Phase 2 gate (10 providers pass the live contract test) not verified here: no API keys in this environment. 12 live cases exist in tests/contract and skip without keys; run 'uv run pytest tests/contract -m live' with keys set.
 - S26b: S26b: native web search for OpenAI/Gemini providers not implemented (they fall back to unsupported unless an HTTP backend is configured).
+- S28: S28: Windows has no OS sandbox yet (restricted token + job object not implemented); there, commands rely on approvals (on-request asks for every non-read-only command) and Forge's path checks. Sandbox tests skip on Windows.
+- S28: S28: Landlock cannot protect .git/.forge inside a writable root (allow-only rules); only Forge's own file tools enforce protected_path. sandbox_denied detection is a heuristic on error text.
