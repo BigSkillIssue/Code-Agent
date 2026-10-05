@@ -908,8 +908,6 @@ async def _job_call(call: Awaitable[CommandResult]) -> CommandResult:
 # WEB
 # =====================================================================================
 
-MAX_WEB_SEARCHES = 200
-
 
 @tool(group="web", permission="ask", read_only=True, specifier_arg="url")
 async def web_fetch(
@@ -959,10 +957,10 @@ async def web_search(
         "use allowed_domains or blocked_domains, not both",
     )
     allowed, blocked = allowed_domains or [], blocked_domains or []
-    if ctx.state.web_searches >= MAX_WEB_SEARCHES:
+    if ctx.state.web_searches >= ctx.cfg.limits.max_web_searches:
         raise ToolError(
             "limit_reached",
-            "200 web searches in this session",
+            f"{ctx.cfg.limits.max_web_searches} web searches in this session",
             hint="continue with the information you have",
         )
     ctx.state.web_searches += 1

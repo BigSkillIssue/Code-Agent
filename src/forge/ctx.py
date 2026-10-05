@@ -21,6 +21,8 @@ class SessionState:
     plan_rejected: bool = False  # the user rejected the plan without saying what to change
     checkpoints: dict[str, str] = field(default_factory=dict)  # step id -> snapshot ref (S18)
     web_searches: int = 0  # web_search calls so far (limit 200 per session)
+    compact_request: int = 0  # /compact asks for level 2 (or 3 with "hard") on the next turn
+    context_usage: dict[str, int] = field(default_factory=dict)  # last request, by category
 
 
 @dataclass

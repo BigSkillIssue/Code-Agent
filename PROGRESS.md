@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S27
+Next step: S28
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -31,7 +31,8 @@ Next step: S27
 | S24 | 2026-10-05 | 2428362 | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
 | S25 | 2026-10-05 | 0665ab9 | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
 | S26a | 2026-10-05 | fc87adc | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
-| S26b | 2026-10-05 | (next) | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
+| S26b | 2026-10-05 | e86c777 | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
+| S27 | 2026-10-05 | (next) | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -127,6 +128,9 @@ Next step: S27
 - S26b: S26b: HTML cleanup removes script/style/nav/footer/header/noscript/iframe by regex before markdownify, so beautifulsoup4 (a markdownify dependency) is not imported directly.
 - S26b: S26b: native web_search is an optional provider method search_web(); only the Anthropic adapter has it (web_search_20250305 server tool). For searxng the variable named by search_api_key_env holds the instance URL.
 - S26b: S26b: SessionState gained web_searches (per-session search counter).
+- S27: S27: input budget = context_window - min(max_output, window/8) of the role's first model; level 2 keeps recent turns up to 30% of the budget, starting at an assistant message; summaries are capped at 20% of the budget.
+- S27: S27: the compacted history is one user message of tagged sections (<spec>, <plan>, <summary>, <unresolved_errors>, <files_touched>, <task>); an error is unresolved while the same tool has not succeeded since.
+- S27: S27: /compact sets ctx.state.compact_request for the next turn; /context reads ctx.state.context_usage recorded on every turn. COMPRESS_TASK prompt added.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

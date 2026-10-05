@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from forge import prompts
+from forge.compress import compact
 from forge.ctx import Ctx
 from forge.events import ToolFinished, ToolStarted
 from forge.memory import load_memory, render_memory
@@ -56,10 +57,10 @@ async def run_agent(
     system = prompts.render(ROLE_PROMPTS.get(role, "coder"), **prompt_slots(ctx))
     tools = for_role(role, ctx.cfg)
     usage, text = Usage(), ""
+    specs = [t.spec for t in tools]
     for _ in range(max_turns):
-        messages = await compact_if_needed(ctx, messages)
+        messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
         try:
-            specs = [t.spec for t in tools]
             reply, turn_usage = await model_turn(ctx, role, system, messages, specs)
         except ProviderError as err:
             return AgentResult(text=str(err), messages=messages, usage=usage, stopped="error")
@@ -90,11 +91,6 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "plan": checklist(ctx.session.plan) if ctx.session.plan else "(none)",
         "failure": ctx.state.failure or "(none)",
     }
-
-
-async def compact_if_needed(ctx: Ctx, messages: list[Message]) -> list[Message]:
-    """Hook point for context compression (S27); returns the messages unchanged for now."""
-    return messages
 
 
 async def run_tool_calls(ctx: Ctx, calls: list[ToolCall]) -> list[ToolResult]:

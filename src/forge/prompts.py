@@ -11,7 +11,7 @@ Table of contents:
   STEP           per-step user message template
   REVIEWER       check a diff against one criterion -> {"pass", "reason"}
   FINAL_REVIEW   check the whole diff against the acceptance criteria -> report
-  COMPRESSOR     summarize old context into a structured note
+  COMPRESSOR     summarize old context into a structured note (+ COMPRESS_TASK)
   TOOL_FALLBACK  how to call tools in JSON for models without native tools
   FIX_JSON       ask again after an answer that was not valid JSON
   MERGE_ANSWERS  fold the user's answers into the task specification
@@ -284,6 +284,10 @@ Session to condense:
 {transcript}
 """
 
+COMPRESS_TASK = """\
+Write the note now.
+"""
+
 # --------------------------------------------------------------------------- TOOL_FALLBACK
 
 TOOL_FALLBACK = """\
@@ -392,6 +396,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "reviewer": (REVIEWER, REVIEWER_TAIL),
     "final_review": (FINAL_REVIEW, FINAL_REVIEW_TAIL),
     "compressor": (COMPRESSOR, COMPRESSOR_TAIL),
+    "compress_task": (COMPRESS_TASK, ""),
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
     "fix_json": (FIX_JSON, FIX_JSON_TAIL),
     "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
