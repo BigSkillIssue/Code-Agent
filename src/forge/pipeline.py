@@ -9,10 +9,11 @@ from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
 from forge.ctx import Ctx
-from forge.modelcall import complete
+from forge.modelcall import complete, publish_error
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.providers.base import Message, text_message
 from forge.questions import ask, assumption, default_answer
+from forge.runtime.checkpoint import CheckpointError, snapshot
 from forge.structured import StructuredError, parse_as
 
 
@@ -153,7 +154,14 @@ async def run_step(ctx: Ctx, step: Step) -> None:
 
 
 async def before_step(ctx: Ctx, step: Step) -> None:
-    """Hook point before a step starts (checkpoints are taken here from S18)."""
+    """Snapshot the working tree so /undo can roll this step back."""
+    try:
+        ref = await snapshot(ctx.root, ctx.session.id, step.id)
+    except CheckpointError as err:
+        await publish_error(ctx, f"no checkpoint before {step.id}: {err}")
+        return
+    if ref is not None:
+        ctx.state.checkpoints[step.id] = ref
 
 
 def step_brief(step: Step) -> str:

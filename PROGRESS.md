@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S18
+Next step: S19
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -21,7 +21,8 @@ Next step: S18
 | S14 | 2026-10-05 | f2b0084 | src/forge/pipeline.py, src/forge/context.py, src/forge/structured.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_refine.py, tests/fixtures/refine/cases.json | context.gather (tree depth 3, git status, memory, last summary); refine() with json_schema, JSON-block fallback, one retry via FIX_JSON prompt |
 | S15 | 2026-10-05 | 679b07f | src/forge/tools.py, src/forge/questions.py, src/forge/pipeline.py, src/forge/prompts.py, tests/test_clarify.py | ask_user tool (main agent only, validation per kind, headless defaults); clarify(): ask, merge answers via MERGE_ANSWERS, max rounds, /go |
 | S16 | 2026-10-05 | 1ffa07f | src/forge/tools.py, src/forge/pipeline.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_make_plan.py | submit_plan (graph + role + path validation, approval, versioning, replan keeps done steps); make_plan runs the planner role with read-only tools |
-| S17 | 2026-10-05 | (next) | src/forge/tools.py, src/forge/pipeline.py, src/forge/checks.py, src/forge/modelcall.py, src/forge/agent.py, src/forge/runtime/gitops.py, src/forge/plan.py, src/forge/prompts.py, src/forge/ctx.py, tests/test_execute.py | update_plan (transitions, done refused), finish_step → verify → done/check_failed/limit_reached; execute runs steps via run_agent with the STEP prompt, settles steps the agent did not finish, replans after max attempts |
+| S17 | 2026-10-05 | cdfc9a0 | src/forge/tools.py, src/forge/pipeline.py, src/forge/checks.py, src/forge/modelcall.py, src/forge/agent.py, src/forge/runtime/gitops.py, src/forge/plan.py, src/forge/prompts.py, src/forge/ctx.py, tests/test_execute.py | update_plan (transitions, done refused), finish_step → verify → done/check_failed/limit_reached; execute runs steps via run_agent with the STEP prompt, settles steps the agent did not finish, replans after max attempts |
+| S18 | 2026-10-05 | (next) | src/forge/runtime/checkpoint.py, src/forge/commands.py, src/forge/pipeline.py, tests/test_checkpoint.py | snapshots via temp index + write-tree + commit-tree into refs/forge/<session>/<step>; restore via checkout-index from a temp index; /undo rolls back the latest step, else the last file change |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -89,6 +90,9 @@ Next step: S18
 - S17: `checks.py` owns verification (`verify_step`, `settle_step`, `sandbox_policy`); `pipeline.verify_step` delegates to it, as the step card names it in pipeline.py.
 - S17: check commands run with bash on POSIX and PowerShell on Windows, from the project root, timeout 600 s.
 - S17: a replan keeps done/skipped steps; new step ids continue after the highest old id; at most 3 replans per execution.
+- S18: snapshot commits use `commit-tree --no-gpg-sign` with a Forge identity, so they work in repos that sign commits and never need the user's identity.
+- S18: the pipeline takes the snapshot in `before_step`; a failing snapshot is reported as an ErrorEvent and the step still runs.
+- S18: /undo resets the rolled-back step to todo; without checkpoints it falls back to the apply_changes journal.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
