@@ -3,14 +3,14 @@
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from forge.config import ForgeConfig
+from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx
 from forge.events import Event
 from forge.hooks import Hooks
 from forge.local.local_executor import LocalExecutor
 from forge.local.memory_bus import MemoryBus
-from forge.local.memory_store import MemoryStore
-from forge.ports import EventBus, Executor, Renderer, Store
+from forge.local.sqlite_store import SqliteStore
+from forge.ports import EventBus, Executor, Renderer, Session, Store
 from forge.providers.fake import FakeProvider
 from forge.providers.registry import register_provider
 from forge.runtime.ledger import ReadLedger
@@ -51,11 +51,12 @@ async def open_session(
     bus: EventBus | None = None,
     executor: Executor | None = None,
     headless: bool = False,
+    session: Session | None = None,
 ) -> Ctx:
-    """Create a session in the store and a Ctx with local defaults for every missing port."""
+    """A Ctx for a new (or the given) session, with local defaults for every missing port."""
     root = root.resolve()
-    store = store or MemoryStore()
-    session = await store.create_session(str(root))
+    store = store or default_store()
+    session = session or await store.create_session(str(root))
     return Ctx(
         session=session,
         cfg=cfg,
@@ -72,6 +73,11 @@ async def open_session(
     )
 
 
+def default_store() -> SqliteStore:
+    """The session database in ~/.forge (or $FORGE_HOME)."""
+    return SqliteStore(forge_home() / "forge.db")
+
+
 async def show_events(events: AsyncIterator[Event], renderer: Renderer) -> None:
     """Hand every event of a subscription to the renderer until the session is done."""
     async for event in events:
@@ -80,6 +86,7 @@ async def show_events(events: AsyncIterator[Event], renderer: Renderer) -> None:
 
 async def close_session(ctx: Ctx) -> None:
     """Stop background jobs and shells that belong to the session."""
-    close = getattr(ctx.executor, "close", None)
-    if close is not None:
-        await close()
+    for port in (ctx.executor, ctx.store):
+        close = getattr(port, "close", None)
+        if close is not None:
+            await close()

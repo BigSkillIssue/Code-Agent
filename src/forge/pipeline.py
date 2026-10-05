@@ -192,3 +192,15 @@ async def replan(plan: Plan, step: Step, ctx: Ctx) -> Plan:
     ctx.state.failure = ""
     assert ctx.session.plan is not None
     return ctx.session.plan
+
+
+async def resume(ctx: Ctx) -> Plan:
+    """Continue a saved session's plan at its first unfinished step."""
+    plan = ctx.session.plan
+    if plan is None:
+        raise PipelineError("this session has no plan to resume")
+    for step in plan.steps:
+        if step.status == "doing":  # it was interrupted: start it over
+            step.status = "todo"
+    ctx.session.status = "active"
+    return await execute(plan, ctx)

@@ -92,7 +92,10 @@ class LocalExecutor:
             if job.ended is None:
                 await stop_tree(job.proc)
         for shell in self._shells:
-            await shell.close()
+            if shell.busy and shell.proc is not None:
+                await stop_tree(shell.proc)  # interrupted mid-command: stop it and its children
+            else:
+                await shell.close()
         self._shells.clear()
 
     async def _run_in_shell(self, cmd: Command, kind: ShellKind) -> CommandResult:

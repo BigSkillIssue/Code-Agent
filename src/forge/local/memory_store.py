@@ -1,5 +1,6 @@
 """A dict-backed Store, used in tests and until the SQLite store exists."""
 
+import re
 import time
 import uuid
 
@@ -43,7 +44,7 @@ class MemoryStore:
 
     async def search(self, project_root: str, query: str, limit: int = 5) -> list[tuple[str, str]]:
         """Sessions whose texts contain every query word, best match first."""
-        words = query.lower().split()
+        words = [w.lower() for w in re.findall(r"\w+", query)]
         if not words:
             return []
         scored: list[tuple[int, float, str, str]] = []

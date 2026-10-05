@@ -12,12 +12,16 @@ from forge.agent import run_agent
 from forge.config import ConfigError, ForgeConfig, find_project_root, load_config, render_effective
 from forge.events import SessionDone
 from forge.local.rich_renderer import RichRenderer
-from forge.wiring import close_session, open_session, show_events, use_fake_provider
+from forge.pipeline import PipelineError, resume
+from forge.ports import SessionNotFoundError
+from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
 
 EPILOG = """\
 commands:
   forge "<prompt>"     work on a task
   forge config check   validate and print the effective configuration
+  forge sessions       list this project's sessions
+  forge resume [ID]    continue a session's plan (default: the latest)
 """
 
 
@@ -115,8 +119,78 @@ async def run_prompt(root: Path, cfg: ForgeConfig, prompt: str, *, auto_approve:
     return 0 if ok else 1
 
 
+def cmd_sessions(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge sessions`: list this project's sessions, newest first."""
+    root, _ = load(options)
+    return asyncio.run(list_sessions(root))
+
+
+async def list_sessions(root: Path) -> int:
+    """Print one line per session: id, date, status, goal."""
+    store = default_store()
+    try:
+        sessions = await store.list_sessions(str(root))
+    finally:
+        await store.close()
+    if not sessions:
+        print("no sessions yet")
+    for session in sessions:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(session.created_at))
+        goal = (
+            session.spec.goal
+            if session.spec
+            else (session.messages[0].text()[:60] if session.messages else "")
+        )
+        print(f"{session.id[:8]}  {when}  {session.status:<9}  {goal}")
+    return 0
+
+
+def cmd_resume(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge resume [ID]`: continue a session's plan at its first unfinished step."""
+    parser = argparse.ArgumentParser(prog="forge resume")
+    parser.add_argument("session", nargs="?", help="session id or prefix (default: the latest)")
+    args = parser.parse_args(rest)
+    root, cfg = load(options)
+    return asyncio.run(resume_session(root, cfg, args.session, auto_approve=options.yes))
+
+
+async def resume_session(
+    root: Path, cfg: ForgeConfig, wanted: str | None, *, auto_approve: bool
+) -> int:
+    """Load a session and run the rest of its plan."""
+    store = default_store()
+    candidates = [s for s in await store.list_sessions(str(root), limit=100) if s.plan is not None]
+    matching = [s for s in candidates if wanted is None or s.id.startswith(wanted)]
+    if not matching:
+        await store.close()
+        print(f"error: no session with a plan matches '{wanted or 'latest'}'", file=sys.stderr)
+        return 1
+    renderer = RichRenderer(auto_approve=auto_approve)
+    ctx = await open_session(root, cfg, renderer, store=store, session=matching[0])
+    shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
+    try:
+        plan = await resume(ctx)
+        ok = all(s.status in ("done", "skipped") for s in plan.steps)
+        ctx.session.status = "done" if ok else "failed"
+        await store.save_session(ctx.session)
+        report = "all steps done" if ok else "some steps did not finish"
+        await ctx.bus.publish(
+            SessionDone(session_id=ctx.session.id, ts=time.time(), ok=ok, report=report)
+        )
+        await shower
+    except (PipelineError, SessionNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        ok = False
+    finally:
+        shower.cancel()
+        await close_session(ctx)
+    return 0 if ok else 1
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "config": cmd_config,
+    "sessions": cmd_sessions,
+    "resume": cmd_resume,
 }
 
 
