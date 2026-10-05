@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
@@ -9,6 +10,22 @@ from forge.ports import EventBus, Executor, Renderer, Session, Store
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
+
+
+class Team(Protocol):
+    """The session's agents (implemented by team.AgentRegistry; tools reach it through Ctx)."""
+
+    async def spawn(
+        self,
+        ctx: "Ctx",
+        role: str,
+        task: str,
+        *,
+        background: bool,
+        isolation: str,
+        max_turns: int,
+        name: str | None,
+    ) -> str: ...
 
 
 @dataclass
@@ -23,6 +40,7 @@ class SessionState:
     web_searches: int = 0  # web_search calls so far (limit 200 per session)
     compact_request: int = 0  # /compact asks for level 2 (or 3 with "hard") on the next turn
     context_usage: dict[str, int] = field(default_factory=dict)  # last request, by category
+    team: Team | None = None  # set by wiring; None means sub-agents are unavailable
 
 
 @dataclass

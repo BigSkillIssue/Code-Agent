@@ -24,7 +24,7 @@ from forge.providers.base import (
     text_message,
 )
 from forge.runtime.shell import find_shell
-from forge.tools import REGISTRY, call_tool, for_role
+from forge.tools import REGISTRY, agent_tools, call_tool
 
 __all__ = ["AgentResult", "complete", "publish_error", "run_agent"]
 
@@ -54,8 +54,8 @@ async def run_agent(
     answers without tool calls or a limit is hit."""
     messages = [*(history or []), text_message("user", task)]
     _record(ctx, messages[-1])
-    system = prompts.render(ROLE_PROMPTS.get(role, "coder"), **prompt_slots(ctx))
-    tools = for_role(role, ctx.cfg)
+    system = prompts.render(prompt_for(ctx, role), **prompt_slots(ctx))
+    tools = agent_tools(ctx, role)
     usage, text = Usage(), ""
     specs = [t.spec for t in tools]
     for _ in range(max_turns):
@@ -78,6 +78,13 @@ async def run_agent(
     return AgentResult(text=text, messages=messages, usage=usage, stopped="max_turns")
 
 
+def prompt_for(ctx: Ctx, role: str) -> str:
+    """The prompt name: sub-agents get the team-member (or explore) prompt."""
+    if ctx.agent_id != "main":
+        return "explore" if role == "explore" else "team_member"
+    return ROLE_PROMPTS.get(role, "coder")
+
+
 def prompt_slots(ctx: Ctx) -> dict[str, str]:
     """Values for the prompt slots that describe where the agent is working."""
     shells = [kind for kind in ("bash", "powershell") if find_shell(kind)]
@@ -90,6 +97,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "spec": ctx.session.spec.model_dump_json(indent=2) if ctx.session.spec else "(none)",
         "plan": checklist(ctx.session.plan) if ctx.session.plan else "(none)",
         "failure": ctx.state.failure or "(none)",
+        "role": ctx.role,
     }
 
 

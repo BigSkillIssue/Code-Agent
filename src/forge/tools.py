@@ -7,6 +7,7 @@ Table of contents:
   SHELL      bash, powershell, job_output, job_stop
   WEB        web_fetch, web_search
   PLAN       ask_user, submit_plan, update_plan, finish_step
+  AGENTS     spawn_agent
   MEMORY     remember, recall
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
@@ -85,6 +86,7 @@ OUTPUT_PREVIEW = 2_000  # chars shown when spilled
 OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 
 READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
+LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan"})
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
 
 
@@ -210,6 +212,14 @@ def for_role(role: str, cfg: ForgeConfig) -> list[ToolDef]:
     return list(REGISTRY.values())
 
 
+def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
+    """The role's tools; sub-agents never get the lead-only tools."""
+    tools = for_role(role, ctx.cfg)
+    if ctx.agent_id != "main":
+        tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
+    return tools
+
+
 async def call_tool(ctx: Ctx, call: ToolCall) -> ToolResult:
     """validate -> permission -> pre_tool hooks -> run -> cap output -> post_tool hooks -> audit"""
     tool_def = REGISTRY.get(call.name)
@@ -217,6 +227,9 @@ async def call_tool(ctx: Ctx, call: ToolCall) -> ToolResult:
         known = ", ".join(sorted(REGISTRY)) or "none"
         result = failure("invalid_args", f"unknown tool '{call.name}'", hint=f"tools: {known}")
         decision = "unknown"
+    elif tool_def not in agent_tools(ctx, ctx.role):
+        result = failure("unsupported", f"{call.name} is not available to the {ctx.role} role")
+        decision = "refused"
     else:
         result, decision = await _checked_run(ctx, tool_def, call)
     result = await cap_output(ctx.root, result.model_copy(update={"call_id": call.id}))
@@ -1329,6 +1342,37 @@ async def finish_step(
 def step_failed(step: Step) -> bool:
     """True once a step has used up its attempts."""
     return step.status == "failed"
+
+
+# =====================================================================================
+# AGENTS
+# =====================================================================================
+
+
+@tool(group="agents", permission="auto", read_only=False, specifier_arg="role")
+async def spawn_agent(
+    ctx: Ctx,
+    role: Annotated[
+        str, "Role name: explore, coder, tester, reviewer, researcher, or a custom agent."
+    ],
+    task: Annotated[str, "Self-contained instructions: goal, relevant files, what to return."],
+    background: Annotated[bool, "Run in parallel and get a message when done."] = False,
+    isolation: Annotated[Literal["none", "worktree"], "Run in its own git worktree."] = "none",
+    max_turns: Annotated[int, "Turn limit for the sub-agent (1-200)."] = 30,
+    name: Annotated[str | None, "Optional name for messaging, e.g. 'api-tests'."] = None,
+) -> str:
+    """Start a sub-agent with its own context. It returns only its final report."""
+    if ctx.state.team is None:
+        raise ToolError("unsupported", "sub-agents are not available in this session")
+    return await ctx.state.team.spawn(
+        ctx,
+        role,
+        task,
+        background=background,
+        isolation=isolation,
+        max_turns=max_turns,
+        name=name,
+    )
 
 
 # =====================================================================================

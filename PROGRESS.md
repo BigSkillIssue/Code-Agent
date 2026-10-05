@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S30
+Next step: S31
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -34,7 +34,8 @@ Next step: S30
 | S26b | 2026-10-05 | e86c777 | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
 | S27 | 2026-10-05 | 56b3c42 | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
 | S28 | 2026-10-05 | 3e4f00c | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
-| S29 | 2026-10-05 | (next) | tui.py, local/tui_renderer.py, commands.py, cli.py, tests/test_tui.py | Textual app: stream pane, live plan, question picker with Other, approval dialog with diff preview; /plan /compact /context /undo /mode /jobs /help; 'forge' alone opens it |
+| S29 | 2026-10-05 | dd9bf28 | tui.py, local/tui_renderer.py, commands.py, cli.py, tests/test_tui.py | Textual app: stream pane, live plan, question picker with Other, approval dialog with diff preview; /plan /compact /context /undo /mode /jobs /help; 'forge' alone opens it |
+| S30 | 2026-10-05 | (next) | team.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, tests/support.py, tests/test_subagents.py | foreground spawn_agent; child Ctx with own id/role/ledger; lead-only tools removed and enforced in call_tool; TEAM_LEAD/TEAM_MEMBER/EXPLORE prompts |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -138,8 +139,12 @@ Next step: S30
 - S28: S28: on approval policy on-request, bash/powershell run without asking when an OS sandbox is active, else ask; a command flagged sandbox_denied is offered for one rerun without the sandbox (never: reported as sandbox_denied).
 - S28: S28: persistent shells are pooled per sandbox (Launch.key), since a sandbox cannot be lifted from a running process.
 - S29: S29: the TUI keeps one session (ctx) for its lifetime; each prompt runs run_task on it. /jobs reads the executor's jobs by duck typing (the Executor port has no listing method).
+- S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
+- S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
+- S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
+- S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -154,3 +159,4 @@ Next step: S30
 - S28: S28: Windows has no OS sandbox yet (restricted token + job object not implemented); there, commands rely on approvals (on-request asks for every non-read-only command) and Forge's path checks. Sandbox tests skip on Windows.
 - S28: S28: Landlock cannot protect .git/.forge inside a writable root (allow-only rules); only Forge's own file tools enforce protected_path. sandbox_denied detection is a heuristic on error text.
 - S29: S29: Phase 2 gate also needs the live provider contract run (see S25); everything else in Phase 2 is verified offline.
+- S30: S30: sub-agent transcripts are kept in AgentRegistry (memory), not yet saved to the store under the agent id as docs/TOOLS.md says.

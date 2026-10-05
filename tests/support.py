@@ -24,6 +24,7 @@ from forge.ports import (
 from forge.providers.base import ToolCall
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
+from forge.team import AgentRegistry
 
 
 class ScriptedRenderer:
@@ -95,7 +96,7 @@ def make_ctx(
     """A Ctx over in-memory ports for `root`."""
     cfg = cfg or ForgeConfig()
     session = Session(id="test-session", project_root=str(root), created_at=0.0, status="active")
-    return Ctx(
+    ctx = Ctx(
         session=session,
         cfg=cfg,
         root=root.resolve(),
@@ -110,6 +111,8 @@ def make_ctx(
         headless=headless,
         **fields,
     )
+    ctx.state.team = AgentRegistry()
+    return ctx
 
 
 async def drain(subscription: Any, wait_s: float = 0.05) -> list[Event]:

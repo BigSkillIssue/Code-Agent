@@ -15,6 +15,7 @@ from forge.providers.fake import FakeProvider
 from forge.providers.registry import register_provider
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
+from forge.team import AgentRegistry
 
 FAKE_FIXTURE = Path("tests") / "fixtures" / "fake" / "hello.json"
 BUILTIN_FAKE = {
@@ -70,7 +71,7 @@ async def open_session(
     root = root.resolve()
     store = store or default_store()
     session = session or await store.create_session(str(root))
-    return Ctx(
+    ctx = Ctx(
         session=session,
         cfg=cfg,
         root=root,
@@ -84,6 +85,8 @@ async def open_session(
         hooks=Hooks(cfg),
         headless=headless,
     )
+    ctx.state.team = AgentRegistry()
+    return ctx
 
 
 def default_store() -> SqliteStore:
