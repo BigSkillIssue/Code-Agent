@@ -243,6 +243,8 @@ Next step: S45
 - S44: S44: eval commands moved from cli.py to eval_cli.py (cli.py was nearing 500 lines); the SWE-bench runner lives in swebench.py. PROMPTS_VERSION bumped to 2026.10.4 (prompts changed in S30-S38).
 - S44: S43 fix: .gitignore ignored examples/plugin_demo/.forge/, so CI lacked the demo config; it is now re-included.
 
+- S37 (CI fix): a timed-out hook is killed as a process tree on Windows (taskkill /T /F); killing only bash left the child holding the pipes.
+
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
 - S07: TOOLS.md asks read_file to downscale images to 1568 px; no image library is in the dependency list, so images are sent as they are (dimensions read from the file header) and refused above 5 MB. Adding Pillow would allow downscaling.

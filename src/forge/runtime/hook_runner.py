@@ -6,6 +6,7 @@ warning. Placeholders like `{path}` or `{tool}` in the command are filled from t
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -71,18 +72,20 @@ async def run_hook(
     try:
         out, err = await asyncio.wait_for(proc.communicate(data), timeout_s)
     except TimeoutError:
-        kill_tree(proc)
+        await kill_tree(proc)
         await proc.wait()
         return HookRun(None, "", f"timed out after {timeout_s:g}s")
     return HookRun(proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace"))
 
 
-def kill_tree(proc: asyncio.subprocess.Process) -> None:
-    """Kill a hook and everything it started."""
-    try:
-        if sys.platform == "win32":
-            proc.kill()
-        else:
-            os.killpg(proc.pid, 9)
-    except ProcessLookupError:
-        pass
+async def kill_tree(proc: asyncio.subprocess.Process) -> None:
+    """Kill a hook and everything it started (children would keep its pipes open)."""
+    if sys.platform == "win32":
+        killer = await asyncio.create_subprocess_exec(
+            "taskkill", "/PID", str(proc.pid), "/T", "/F",
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )  # fmt: skip
+        await killer.wait()
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, 9)
