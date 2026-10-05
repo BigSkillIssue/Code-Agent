@@ -14,6 +14,7 @@ class MemoryStore:
 
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
+        self._board: dict[tuple[str, str], str] = {}
 
     async def create_session(self, project_root: str) -> Session:
         """Create and save a new active session."""
@@ -41,6 +42,18 @@ class MemoryStore:
         found = [s for s in self._sessions.values() if s.project_root == project_root]
         found.sort(key=lambda s: s.created_at, reverse=True)
         return [s.model_copy(deep=True) for s in found[:limit]]
+
+    async def claim(self, session_id: str, step_id: str, owner: str) -> str:
+        """Set the owner if the step has none (no await in between, so it is atomic)."""
+        return self._board.setdefault((session_id, step_id), owner)
+
+    async def release(self, session_id: str, step_id: str) -> None:
+        """Clear the step's owner."""
+        self._board.pop((session_id, step_id), None)
+
+    async def owners(self, session_id: str) -> dict[str, str]:
+        """step id -> owner."""
+        return {step: owner for (sid, step), owner in self._board.items() if sid == session_id}
 
     async def search(self, project_root: str, query: str, limit: int = 5) -> list[tuple[str, str]]:
         """Sessions whose texts contain every query word, best match first."""

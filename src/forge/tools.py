@@ -8,6 +8,7 @@ Table of contents:
   WEB        web_fetch, web_search
   PLAN       ask_user, submit_plan, update_plan, finish_step
   AGENTS     spawn_agent, send_message, list_agents, stop_agent
+  BOARD      read_board, claim_task, update_task
   MEMORY     remember, recall
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
@@ -87,6 +88,7 @@ OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 
 READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
 LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan"})
+BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 TOOL_GROUPS = frozenset({"files", "search", "shell", "web", "plan", "agents", "memory", "mcp"})
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
 
@@ -222,6 +224,8 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
         tools = for_role(role, ctx.cfg)
     if ctx.agent_id != "main":
         tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
+    if not ctx.state.team_mode:
+        tools = [t for t in tools if t.name not in BOARD_TOOLS]
     return tools
 
 
@@ -1405,6 +1409,35 @@ async def stop_agent(
 ) -> str:
     """Cancel a running agent and its background jobs."""
     return await team_of(ctx).stop(ctx, agent_id, keep_worktree)
+
+
+BoardStatus = Literal["ready", "blocked", "doing", "done", "failed", "skipped"]
+
+
+@tool(group="agents", permission="auto", read_only=True)
+async def read_board(
+    ctx: Ctx,
+    status: Annotated[list[BoardStatus] | None, "Only these statuses; default all."] = None,
+) -> str:
+    """Show the team's tasks with status, owner and dependencies."""
+    return await team_of(ctx).read_board(ctx, list(status) if status else None)
+
+
+@tool(group="agents", permission="auto", read_only=False)
+async def claim_task(ctx: Ctx, task_id: Annotated[str, "Step id, e.g. 's3'."]) -> str:
+    """Take a ready task so no other agent works on it."""
+    return await team_of(ctx).claim_task(ctx, task_id)
+
+
+@tool(group="agents", permission="auto", read_only=False)
+async def update_task(
+    ctx: Ctx,
+    task_id: Annotated[str, "Step id you own."],
+    status: Annotated[Literal["doing", "done", "failed"], "New status."],
+    result: Annotated[str, "What you did, or why it failed (max 4000 chars)."],
+) -> str:
+    """Report progress or the result of your task to the lead."""
+    return await team_of(ctx).update_task(ctx, task_id, status, result)
 
 
 def team_of(ctx: Ctx) -> Team:

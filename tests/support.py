@@ -101,7 +101,7 @@ def make_ctx(
         cfg=cfg,
         root=root.resolve(),
         cwd=root.resolve(),
-        store=MemoryStore(),
+        store=fields.pop("store", None) or MemoryStore(),
         bus=MemoryBus(),
         executor=executor or NoExecutor(),
         renderer=renderer or ScriptedRenderer(),

@@ -4,7 +4,7 @@ v1 implements them in `forge.local`; the core only ever sees these interfaces.
 """
 
 from collections.abc import AsyncIterator
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -47,6 +47,23 @@ class Store(Protocol):
     async def list_sessions(self, project_root: str, limit: int = 20) -> list[Session]: ...
     async def search(self, project_root: str, query: str, limit: int = 5) -> list[tuple[str, str]]:
         """(session_id, excerpt) pairs for `recall`."""
+        ...
+
+
+@runtime_checkable
+class BoardStore(Protocol):
+    """Task owners for teams (beyond the contract): one owner per step, claimed atomically."""
+
+    async def claim(self, session_id: str, step_id: str, owner: str) -> str:
+        """Set the owner if the step has none; returns the owner after the call."""
+        ...
+
+    async def release(self, session_id: str, step_id: str) -> None:
+        """Clear the step's owner."""
+        ...
+
+    async def owners(self, session_id: str) -> dict[str, str]:
+        """step id -> owner for every owned step."""
         ...
 
 

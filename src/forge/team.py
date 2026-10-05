@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
+from forge import board
 from forge.agent import AgentResult, run_agent
 from forge.agent_files import use_agent_file
 from forge.ctx import Ctx
@@ -237,6 +238,24 @@ class AgentRegistry:
 
     # ------------------------------------------------------------------ list and stop
 
+    async def read_board(self, ctx: Ctx, statuses: list[str] | None) -> str:
+        """read_board: the plan as tasks with owners."""
+        return await board.read_board(ctx, statuses)
+
+    async def claim_task(self, ctx: Ctx, task_id: str) -> str:
+        """claim_task: take a ready task."""
+        return await board.claim(ctx, task_id)
+
+    async def update_task(self, ctx: Ctx, task_id: str, status: str, result: str) -> str:
+        """update_task: report progress or the result; the lead is told."""
+        lead = "main"
+
+        def notify(text: str) -> None:
+            if ctx.agent_id != lead:
+                self.post(lead, text)
+
+        return await board.update(ctx, task_id, status, result, notify)
+
     def overview(self, ctx: Ctx) -> str:
         """list_agents: one row per agent."""
         main = self.agents["main"]
@@ -269,9 +288,12 @@ class AgentRegistry:
             await asyncio.wait({info.task_handle}, timeout=1.0)
         info.status = "cancelled"
         stopped = [job for job in info.jobs if await stop_job(ctx, job)]
+        released = await board.release_owned(ctx, info.id)
         text = f"stopped {info.id} ({info.role}) after {info.turns} turns"
         if stopped:
             text += f"; stopped jobs {', '.join(stopped)}"
+        if released:
+            text += f"; released task {', '.join(released)}"
         return text
 
 

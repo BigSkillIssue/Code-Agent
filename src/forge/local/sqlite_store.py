@@ -136,6 +136,47 @@ class SqliteStore:
                     hits.append((session_id, excerpt(body, words[0])))
         return hits[:limit]
 
+    async def claim(self, session_id: str, step_id: str, owner: str) -> str:
+        """Set the owner if the step has none, in one statement; returns the owner after it."""
+        await self._setup()
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO board (session_id, step_id, owner, claimed_at) "
+                    "VALUES (:sid, :step, :owner, :now) "
+                    "ON CONFLICT (session_id, step_id) DO UPDATE "
+                    "SET owner = excluded.owner, claimed_at = excluded.claimed_at "
+                    "WHERE board.owner IS NULL"
+                ),
+                {"sid": session_id, "step": step_id, "owner": owner, "now": time.time()},
+            )
+            row = await conn.execute(
+                text("SELECT owner FROM board WHERE session_id = :sid AND step_id = :step"),
+                {"sid": session_id, "step": step_id},
+            )
+            return str(row.scalar_one())
+
+    async def release(self, session_id: str, step_id: str) -> None:
+        """Clear the step's owner."""
+        await self._setup()
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE board SET owner = NULL WHERE session_id = :sid AND step_id = :step"),
+                {"sid": session_id, "step": step_id},
+            )
+
+    async def owners(self, session_id: str) -> dict[str, str]:
+        """step id -> owner for every owned step."""
+        await self._setup()
+        async with self.engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT step_id, owner FROM board WHERE session_id = :sid AND owner IS NOT NULL"
+                ),
+                {"sid": session_id},
+            )
+            return {str(step): str(owner) for step, owner in rows}
+
     async def close(self) -> None:
         """Release the database connection pool."""
         await self.engine.dispose()
