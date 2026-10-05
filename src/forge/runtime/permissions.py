@@ -11,9 +11,16 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 
-from forge.config import ForgeConfig
+from forge.config import ForgeConfig, forge_home
 from forge.ports import SandboxPolicy
-from forge.runtime.rules import COMMAND_TOOLS, Rule, parse_rules, rule_matches
+from forge.runtime.rules import (
+    COMMAND_TOOLS,
+    PATH_TOOLS,
+    Rule,
+    parse_rules,
+    rule_matches,
+    simple_commands,
+)
 from forge.runtime.sandbox import launch_for
 
 if TYPE_CHECKING:
@@ -63,6 +70,8 @@ class Permissions:
 
     def decide(self, name: str, spec: str, tool: "ToolDef", root: Path) -> Decision:
         """Evaluate the rules and defaults for one call of `name` with specifier `spec`."""
+        if name in COMMAND_TOOLS:
+            return self.decide_command(name, spec, tool, root)
         if rule := first_match(self.deny, name, spec, root):
             return Decision(action="deny", reason=f"denied by rule {rule.text}")
         if rule := first_match(self.ask, name, spec, root):
@@ -71,7 +80,25 @@ class Permissions:
             return Decision(action="run", reason=f"allowed by rule {rule.text}")
         if (name, spec) in self._remembered:
             return Decision(action="run", reason="approved earlier in this session")
-        if name in COMMAND_TOOLS and is_read_only_command(spec):
+        if tool.read_only and name in PATH_TOOLS and reads_outside(spec, root, self.cfg):
+            return Decision(action="ask", reason=f"{name} reads {spec}, outside the project")
+        return self.default(tool)
+
+    def decide_command(self, name: str, command: str, tool: "ToolDef", root: Path) -> Decision:
+        """Deny/ask rules match if any command inside the line matches (`a; b`, `sh -c`,
+        `$(...)`, `sudo` ...); allow rules only if every command inside is allowed."""
+        parts = simple_commands(command) or [command]
+        candidates = [command, *parts]
+        if rule := first_match_any(self.deny, name, candidates, root):
+            return Decision(action="deny", reason=f"denied by rule {rule.text}")
+        if rule := first_match_any(self.ask, name, candidates, root):
+            return Decision(action="ask", reason=f"rule {rule.text} asks first")
+        allowing = [first_match(self.allow, name, part, root) for part in parts]
+        if all(allowing):
+            return Decision(action="run", reason=f"allowed by rule {allowing[0].text}")  # type: ignore[union-attr]
+        if (name, command) in self._remembered:
+            return Decision(action="run", reason="approved earlier in this session")
+        if is_read_only_command(command):
             return Decision(action="run", reason="read-only command")
         return self.default(tool)
 
@@ -108,6 +135,24 @@ class Permissions:
     def remember(self, tool: "ToolDef", args: dict[str, Any]) -> None:
         """Allow this tool with this specifier for the rest of the session."""
         self._remembered.add((tool.name, specifier(tool, args)))
+
+
+def first_match_any(rules: list[Rule], name: str, specs: list[str], root: Path) -> Rule | None:
+    """The first rule matching any of the specifiers."""
+    return next((r for r in rules for spec in specs if rule_matches(r, name, spec, root)), None)
+
+
+def reads_outside(spec: str, root: Path, cfg: ForgeConfig) -> bool:
+    """True if a path (symlinks resolved) is outside the project, the writable roots and the
+    user's Forge skills (which agents are told to read)."""
+    target = Path(spec or ".").expanduser()
+    target = (target if target.is_absolute() else root / target).resolve()
+    allowed = [
+        root.resolve(),
+        *(Path(p).expanduser().resolve() for p in cfg.sandbox.writable_roots),
+    ]
+    allowed.append((forge_home() / "skills").resolve())
+    return not any(target == base or target.is_relative_to(base) for base in allowed)
 
 
 def first_match(rules: list[Rule], name: str, spec: str, root: Path) -> Rule | None:

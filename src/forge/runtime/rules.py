@@ -9,6 +9,7 @@
 """
 
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -68,10 +69,74 @@ def rule_matches(rule: Rule, tool: str, specifier: str, root: Path) -> bool:
 
 
 def applies_to(rule_tool: str, tool: str) -> bool:
-    """A read_file rule also covers the tools that write files; `mcp__github__*` globs names."""
+    """A read_file rule also covers the tools that write files, a bash rule also covers
+    powershell (and the other way round), and `mcp__github__*` globs tool names."""
     if "*" in rule_tool:
         return glob_to_regex(rule_tool, any_char=True).fullmatch(tool) is not None
+    if rule_tool in COMMAND_TOOLS and tool in COMMAND_TOOLS:
+        return True
     return rule_tool == tool or (rule_tool == "read_file" and tool in WRITE_TOOLS)
+
+
+# ----------------------------------------------------------------------------- command lines
+
+SEPARATORS = re.compile(r"\|\||&&|[;|&\n]")
+SUBSHELLS = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
+WRAPPERS = frozenset(
+    {"sudo", "nohup", "exec", "time", "command", "nice", "env", "xargs", "builtin"}
+)
+SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"})
+SHELL_FLAGS = frozenset({"-c", "-command", "/c", "-encodedcommand"})
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def simple_commands(command: str, depth: int = 0) -> list[str]:
+    """Every simple command inside a command line: chained, piped, in $(...), or wrapped
+    in `sh -c`, `sudo`, `env`, `xargs` ... (rules must see each one)."""
+    found: list[str] = []
+    for inner in SUBSHELLS.findall(command):
+        found += simple_commands(inner[0] or inner[1], depth + 1) if depth < 5 else []
+    for segment in split_segments(SUBSHELLS.sub(" ", command)):
+        words = split_words(segment.strip().strip("()").strip())
+        while words and (
+            words[0].lower() in WRAPPERS or ASSIGNMENT.match(words[0]) or words[0].startswith("-")
+        ):
+            words = words[1:]
+        if not words:
+            continue
+        name = words[0].lower().rsplit("/", 1)[-1].removesuffix(".exe")
+        if name in SHELLS and len(words) > 2 and words[1].lower() in SHELL_FLAGS and depth < 5:
+            found += simple_commands(" ".join(words[2:]), depth + 1)
+        else:
+            found.append(" ".join(words))
+    return found
+
+
+def split_segments(command: str) -> list[str]:
+    """Split at ; | & && || and line breaks, but not inside quotes."""
+    segments, current, quote = [], "", ""
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif match := SEPARATORS.match(command, index):
+            segments.append(current)
+            current, index = "", match.end()
+            continue
+        current += char
+        index += 1
+    return [*segments, current]
+
+
+def split_words(text: str) -> list[str]:
+    """Shell-like words (quotes removed); falls back to whitespace for unbalanced quotes."""
+    try:
+        return shlex.split(text, posix=True)
+    except ValueError:
+        return text.split()
 
 
 def command_matches(pattern: str, command: str) -> bool:

@@ -28,7 +28,7 @@ ROOT = Path("/work/project")
         ("bash(npm run test:*)", "bash", "npm run test -- --watch", True),
         ("bash(npm run test:*)", "bash", "npm run testing", False),
         ("bash(rm -rf *)", "bash", "rm -rf /tmp/x", True),
-        ("bash(rm -rf *)", "powershell", "rm -rf /tmp/x", False),
+        ("bash(rm -rf *)", "powershell", "rm -rf /tmp/x", True),  # S46: rules cover both shells
         ("bash", "bash", "anything at all", True),
         ("Bash(ls)", "bash", "ls", True),
         ("read_file(./.env*)", "read_file", ".env", True),

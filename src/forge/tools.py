@@ -69,6 +69,7 @@ from forge.runtime.patch import FileOp, PatchSyntaxError, apply_hunks, parse_pat
 from forge.runtime.readers import IMAGE_TYPES, read_image, read_notebook, read_pdf, read_text
 from forge.runtime.repomap import build_map, render_map
 from forge.runtime.search import GrepQuery, format_hits, search
+from forge.runtime.secrets import mask_secrets
 from forge.runtime.shell import ShellKind, find_shell
 from forge.runtime.tree import build_tree, render_tree
 from forge.runtime.web import SearchResult, fetch_page, filter_results, search_http, size_text
@@ -279,7 +280,10 @@ async def call_tool(ctx: Ctx, call: ToolCall) -> ToolResult:
         decision = "refused"
     else:
         result, decision = await _checked_run(ctx, tool_def, call)
-    result = await cap_output(ctx.root, result.model_copy(update={"call_id": call.id}))
+    masked = mask_secrets(result.text)  # before capping, so spill files are masked too
+    result = await cap_output(
+        ctx.root, result.model_copy(update={"call_id": call.id, "text": masked})
+    )
     if tool_def is not None and decision in ("run", "approved"):
         result = await _post_tool_hooks(ctx, call, result)
     await asyncio.to_thread(_append_audit, ctx, call, result, decision)
@@ -563,11 +567,13 @@ async def edit_file(
     require(old != new, "new must differ from old")
     target = resolve_path(ctx.cwd, path)
     display = display_path(ctx.root, target)
+    check_writable(
+        ctx.root, writable_roots(ctx.root, ctx.cfg), target
+    )  # before revealing existence
     if not target.exists():
         raise ToolError(
             "not_found", f"{display} does not exist", hint="use write_file to create a new file"
         )
-    check_writable(ctx.root, writable_roots(ctx.root, ctx.cfg), target)
     entry = ctx.ledger.get(target)
     if entry is None:
         raise ToolError("not_read", f"read {display} with read_file before editing it")
