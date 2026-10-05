@@ -55,6 +55,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/forge/config_docs.py" = ["E501"]  # reference texts are data
 # Tool docstrings and prompts are model-facing text that must match docs/TOOLS.md word for word.
 "src/forge/tools.py" = ["E501"]
 "src/forge/prompts.py" = ["E501"]

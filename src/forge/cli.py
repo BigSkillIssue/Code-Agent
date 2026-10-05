@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import json
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -30,6 +31,7 @@ commands:
   forge "<prompt>"     work on a task
   forge run --json     work on a task headless: JSON events, exit 0/1/2 (done/failed/needs input)
   forge config check   validate and print the effective configuration
+  forge config schema  the configuration schema (--markdown: the reference in docs/config.md)
   forge trust          let this project's config set providers, MCP servers and hooks
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
@@ -109,10 +111,17 @@ def cmd_trust(options: argparse.Namespace, rest: list[str]) -> int:
 
 
 def cmd_config(options: argparse.Namespace, rest: list[str]) -> int:
-    """`forge config check`: validate and print the effective configuration."""
+    """`forge config check` (effective config) or `forge config schema [--markdown]`."""
     parser = argparse.ArgumentParser(prog="forge config")
-    parser.add_argument("action", choices=["check"])
-    parser.parse_args(rest)
+    parser.add_argument("action", choices=["check", "schema"])
+    parser.add_argument("--markdown", action="store_true", help="schema as the Markdown reference")
+    args = parser.parse_args(rest)
+    if args.action == "schema":
+        from forge.config_docs import config_markdown
+
+        schema = json.dumps(ForgeConfig.model_json_schema(), indent=2)
+        print(config_markdown() if args.markdown else schema, end="" if args.markdown else "\n")
+        return 0
     try:
         _, cfg = load(options)
     except ConfigError as exc:
