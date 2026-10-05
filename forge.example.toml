@@ -1,0 +1,67 @@
+profile = "default"                    # selected profile, overridable with -p
+
+[providers.openai]
+kind = "openai_compat"                 # openai_compat | anthropic | google | litellm
+wire = "chat"                          # chat | responses (openai_compat only)
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+headers = {}
+
+[providers.anthropic]
+kind = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[providers.ollama]
+kind = "openai_compat"
+base_url = "http://localhost:11434/v1"
+
+[models."ollama/qwen3:32b"]            # optional capability overrides for unknown models
+context_window = 32000
+tools = true
+
+[roles]                                # role -> fallback chain of "provider/model"
+refiner    = ["openai/gpt-5-mini"]
+planner    = ["anthropic/claude-sonnet"]
+coder      = ["anthropic/claude-sonnet", "openai/gpt-5"]
+reviewer   = ["openai/gpt-5-mini"]
+compressor = ["openai/gpt-5-mini"]
+explore    = ["openai/gpt-5-mini"]
+
+[sandbox]
+mode = "workspace-write"               # read-only | workspace-write | full-access
+network = false
+writable_roots = []
+
+[approval]
+policy = "on-request"                  # on-request | always | never
+
+[permissions]
+allow = ["bash(git status*)", "bash(pytest *)"]
+ask   = ["bash(git push *)"]
+deny  = ["bash(rm -rf *)", "read_file(./.env*)"]
+
+[limits]
+max_turns_per_step = 40
+max_step_attempts = 3
+max_clarify_rounds = 3
+max_parallel_agents = 4
+max_cost_usd = 5.0
+compact_at = 0.70                      # level 2 summary
+reset_at = 0.90                        # level 3 reset
+mcp_defer_threshold = 40               # above this many MCP tools, load schemas via tool_search
+max_web_searches = 200                 # per session
+
+[web]
+search_backend = "native"              # native | brave | tavily | searxng
+search_api_key_env = ""
+
+[mcp_servers.github]                   # S36
+command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+env_keys = ["GITHUB_TOKEN"]
+
+[hooks]                                # S37
+post_tool = [{ match = "edit_file|write_file", command = "ruff format {path}" }]
+
+[profiles.ci]
+approval = { policy = "never" }
+limits = { max_cost_usd = 1.0 }

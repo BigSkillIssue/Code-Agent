@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Forge: a provider-agnostic coding agent that refines, plans, executes and verifies every task."
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+    "pydantic>=2.9",
+]
 
 [project.scripts]
 forge = "forge.cli:main"
@@ -45,6 +47,7 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 packages = ["forge"]
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
