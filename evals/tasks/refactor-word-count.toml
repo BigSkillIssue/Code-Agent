@@ -1,0 +1,8 @@
+name = "refactor-word-count"
+category = "refactor"
+repo = "repos/textutil"
+prompt = "Refactor: add words(text) returning the list of whitespace-separated words, make word_count use it, and fix the typo in the docstring of shout."
+check = '''{python} -c "import inspect, textutil; assert textutil.words('a b  c') == ['a', 'b', 'c']; assert textutil.word_count('a b') == 2; assert 'words(' in inspect.getsource(textutil.word_count); assert 'Retrun' not in inspect.getsource(textutil.shout)"'''
+
+[fake]
+edits = [{ path = "textutil.py", old = "def word_count(text: str) -> int:\n    \"\"\"Number of whitespace-separated words.\"\"\"\n    return len(text.split())", new = "def words(text: str) -> list[str]:\n    \"\"\"The whitespace-separated words.\"\"\"\n    return text.split()\n\n\ndef word_count(text: str) -> int:\n    \"\"\"Number of whitespace-separated words.\"\"\"\n    return len(words(text))" }, { path = "textutil.py", old = "    \"\"\"Retrun the text in upper case.\"\"\"", new = "    \"\"\"Return the text in upper case.\"\"\"" }]

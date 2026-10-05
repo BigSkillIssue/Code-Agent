@@ -1,0 +1,8 @@
+name = "feature-truncate"
+category = "feature"
+repo = "repos/textutil"
+prompt = "Add truncate(text, limit) to textutil.py: texts longer than limit are cut to limit - 3 characters plus '...'; shorter ones stay as they are."
+check = '''{python} -c "from textutil import truncate; assert truncate('hello world', 8) == 'hello...'; assert truncate('hi', 8) == 'hi'"'''
+
+[fake]
+edits = [{ path = "textutil.py", old = "def word_count(text: str) -> int:", new = "def truncate(text: str, limit: int) -> str:\n    \"\"\"Cut long texts to `limit` characters, ending in '...'.\"\"\"\n    return text if len(text) <= limit else text[: limit - 3] + \"...\"\n\n\ndef word_count(text: str) -> int:" }]

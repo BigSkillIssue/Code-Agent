@@ -1,0 +1,8 @@
+name = "feature-level-case"
+category = "feature"
+repo = "repos/logparse"
+prompt = "parse_line must accept levels in any case ('error', 'Warn') and store them in upper case."
+check = '''{python} -c "from logparse import parse_line, count_levels; assert parse_line('2026-01-01 10:00:00 error x').level == 'ERROR'; assert count_levels(['2026-01-01 10:00:00 Warn a', '2026-01-01 10:00:00 WARN b']) == {'WARN': 2}"'''
+
+[fake]
+edits = [{ path = "logparse.py", old = "    return Entry(date, time, level, message)", new = "    return Entry(date, time, level.upper(), message)" }]

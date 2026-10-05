@@ -1,0 +1,8 @@
+name = "bug-low-stock-zero"
+category = "bug"
+repo = "repos/inventory"
+prompt = "Store.is_low raises KeyError for unknown items; it must return True for items the store does not have."
+check = '''{python} -c "from store import Store; from items import Item; s = Store(); s.add_item(Item('pen', 1.0, 9)); assert s.is_low('ink') is True; assert s.is_low('pen') is False"'''
+
+[fake]
+edits = [{ path = "store.py", old = "        return self.items[name].quantity < 5", new = "        item = self.items.get(name)\n        return item is None or item.quantity < 5" }]

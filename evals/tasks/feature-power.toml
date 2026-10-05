@@ -1,0 +1,8 @@
+name = "feature-power"
+category = "feature"
+repo = "repos/calc"
+prompt = "Add power(base, exponent) to calc.py; negative exponents must raise ValueError."
+check = '''{python} -c "from calc import power; assert power(2, 10) == 1024; import unittest; unittest.TestCase().assertRaises(ValueError, power, 2, -1)"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "def multiply(a: float, b: float) -> float:", new = "def power(base: float, exponent: int) -> float:\n    \"\"\"Return base ** exponent for exponent >= 0.\"\"\"\n    if exponent < 0:\n        raise ValueError(\"exponent must not be negative\")\n    return base**exponent\n\n\ndef multiply(a: float, b: float) -> float:" }]

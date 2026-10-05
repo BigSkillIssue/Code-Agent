@@ -16,14 +16,7 @@ from forge.config import (
     render_effective,
     set_trusted,
 )
-from forge.evals import (
-    EvalResult,
-    EvalTask,
-    compare_table,
-    load_tasks,
-    results_table,
-    run_eval,
-)
+from forge.eval_cli import cmd_eval
 from forge.events import SessionDone
 from forge.local.json_renderer import JsonRenderer, NeedsInput
 from forge.local.rich_renderer import RichRenderer
@@ -227,62 +220,6 @@ async def resume_session(
         shower.cancel()
         await close_session(ctx)
     return 0 if ok else 1
-
-
-def cmd_eval(options: argparse.Namespace, rest: list[str]) -> int:
-    """`forge eval`: run benchmark tasks and print pass/fail, cost and time."""
-    parser = argparse.ArgumentParser(prog="forge eval")
-    parser.add_argument("--suite", help="only tasks whose name or category starts with this")
-    parser.add_argument(
-        "--evals", type=Path, help="folder holding tasks/ and repos/ (default: ./evals)"
-    )
-    parser.add_argument(
-        "--compare", help="run every task in each mode, e.g. 'solo,team'; ok if the last wins"
-    )
-    args = parser.parse_args(rest)
-    root = find_project_root(options.cwd or Path.cwd())
-    cfg = load_config(root, profile=options.profile)
-    evals_dir = args.evals or root / "evals"
-    tasks = load_tasks(evals_dir, args.suite)
-    if not tasks:
-        print(f"error: no eval tasks in {evals_dir / 'tasks'}", file=sys.stderr)
-        return 1
-    fake = options.fake is not None
-    if args.compare:
-        return compare_modes(tasks, evals_dir, cfg, args.compare.split(","), fake=fake)
-    results = asyncio.run(run_evals(tasks, evals_dir, cfg, fake=fake, mode=options.mode))
-    print(results_table(results))
-    return 0 if all(r.passed for r in results) else 1
-
-
-def compare_modes(
-    tasks: list[EvalTask], evals_dir: Path, cfg: ForgeConfig, modes: list[str], *, fake: bool
-) -> int:
-    """Run the tasks once per mode; exit 0 only if the last mode passes more than the first."""
-    if len(modes) < 2 or any(m not in ("solo", "subagents", "team") for m in modes):
-        print("error: --compare takes two or more of solo, subagents, team", file=sys.stderr)
-        return 2
-    results = {m: asyncio.run(run_evals(tasks, evals_dir, cfg, fake=fake, mode=m)) for m in modes}
-    print(compare_table(results))
-    first, last = (sum(r.passed for r in results[m]) for m in (modes[0], modes[-1]))
-    verdict = "passes more" if last > first else "does not pass more"
-    print(f"{modes[-1]} {verdict} tasks than {modes[0]} ({last} vs {first})")
-    return 0 if last > first else 1
-
-
-async def run_evals(
-    tasks: list[EvalTask], evals_dir: Path, cfg: ForgeConfig, *, fake: bool, mode: str | None
-) -> list[EvalResult]:
-    """Run the tasks one after another, printing each result as it comes."""
-    results = []
-    for task in tasks:
-        result = await run_eval(task, evals_dir, cfg, fake=fake, mode=mode)
-        print(
-            f"{'pass' if result.passed else 'FAIL'}  {task.name}  {result.note}".rstrip(),
-            flush=True,
-        )
-        results.append(result)
-    return results
 
 
 EXIT_DONE, EXIT_FAILED, EXIT_NEEDS_INPUT = 0, 1, 2

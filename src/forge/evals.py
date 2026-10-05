@@ -16,6 +16,7 @@ from forge.local.auto_renderer import AutoRenderer
 from forge.local.local_executor import LocalExecutor
 from forge.local.memory_store import MemoryStore
 from forge.pipeline import run_task
+from forge.prompts import PROMPTS_VERSION
 from forge.providers.fake import FakeProvider
 from forge.runtime.proc import run_argv
 from forge.runtime.shell import find_shell
@@ -183,6 +184,45 @@ def compare_table(results: dict[str, list[EvalResult]]) -> str:
         seconds = sum(r.seconds for r in results[mode])
         lines.append(f"{mode}: passed {passed}/{len(names)}, cost ${cost:.4f}, time {seconds:.1f}s")
     return "\n".join(lines)
+
+
+MODEL_ROLES = (
+    "refiner", "planner", "replanner", "coder", "reviewer", "compressor",
+    "explore", "tester", "researcher", "lead",
+)  # fmt: skip
+
+
+def with_model(cfg: ForgeConfig, model: str) -> ForgeConfig:
+    """A copy of the config where every role uses `provider/model`."""
+    changed = cfg.model_copy(deep=True)
+    changed.roles = {role: [model] for role in MODEL_ROLES}
+    return changed
+
+
+RESULTS_HEADER = (
+    "| date | model | prompts | suite | passed | pass rate | cost | time |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+)
+
+
+def results_row(model: str, suite: str, results: list[EvalResult], day: str) -> str:
+    """One Markdown table row summarising a run of the suite with one model."""
+    passed = sum(r.passed for r in results)
+    rate = f"{passed / len(results):.0%}" if results else "-"
+    cost = sum(r.cost_usd for r in results)
+    seconds = sum(r.seconds for r in results)
+    return (
+        f"| {day} | {model} | {PROMPTS_VERSION} | {suite} | {passed}/{len(results)} | {rate} "
+        f"| ${cost:.2f} | {seconds:.0f}s |\n"
+    )
+
+
+def append_results(path: Path, rows: list[str]) -> None:
+    """Add rows to the results table in `path` (created with a header when missing)."""
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if RESULTS_HEADER not in text:
+        text += ("\n" if text and not text.endswith("\n") else "") + "\n" + RESULTS_HEADER
+    path.write_text(text + "".join(rows), encoding="utf-8")
 
 
 def results_table(results: list[EvalResult]) -> str:

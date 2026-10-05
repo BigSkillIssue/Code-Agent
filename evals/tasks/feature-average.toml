@@ -1,0 +1,8 @@
+name = "feature-average"
+category = "feature"
+repo = "repos/calc"
+prompt = "Add average(numbers) to calc.py; an empty list raises ValueError('no numbers')."
+check = '''{python} -c "from calc import average; assert average([1, 2, 3, 6]) == 3; import unittest; unittest.TestCase().assertRaises(ValueError, average, [])"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "def multiply(a: float, b: float) -> float:", new = "def average(numbers: list[float]) -> float:\n    \"\"\"The mean of a non-empty list.\"\"\"\n    if not numbers:\n        raise ValueError(\"no numbers\")\n    return sum(numbers) / len(numbers)\n\n\ndef multiply(a: float, b: float) -> float:" }]

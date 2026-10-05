@@ -1,0 +1,8 @@
+name = "refactor-line-total"
+category = "refactor"
+repo = "repos/shop"
+prompt = "Refactor: give CartItem a line_total() method (price times quantity) and make Cart.total() use it; behaviour stays the same."
+check = '''{python} -c "from models import CartItem, Product; from cart import Cart; assert CartItem(Product('a', 2), 3).line_total() == 6; c = Cart(); c.add(Product('a', 2), 3); assert c.total() == 6; import inspect, cart; assert 'line_total' in inspect.getsource(cart.Cart.total)"'''
+
+[fake]
+edits = [{ path = "models.py", old = "    product: Product\n    quantity: int\n", new = "    product: Product\n    quantity: int\n\n    def line_total(self) -> int:\n        \"\"\"Price of this line in cents.\"\"\"\n        return self.product.price_cents * self.quantity\n" }, { path = "cart.py", old = "        return sum(item.product.price_cents * item.quantity for item in self.items)", new = "        return sum(item.line_total() for item in self.items)" }]

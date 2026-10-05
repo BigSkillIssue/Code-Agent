@@ -1,0 +1,8 @@
+# Extends Forge without touching its code: one hook and one MCP tool.
+# Hooks and MCP servers only load in trusted projects: run `forge trust` here first.
+
+[hooks]
+post_tool = [{ match = "write_file|edit_file|apply_patch", command = "python .forge/hooks/log_change.py {path}" }]
+
+[mcp_servers.demo]
+command = ["python", "tools/word_count_server.py"]

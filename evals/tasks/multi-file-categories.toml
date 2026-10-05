@@ -1,0 +1,8 @@
+name = "multi-file-categories"
+category = "multi-file"
+repo = "repos/inventory"
+prompt = "Give Item a category (default 'general', keep it the last field) and add Store.by_category(category) returning the item names in that category, sorted."
+check = '''{python} -c "from store import Store; from items import Item; s = Store(); s.add_item(Item('pen', 1.0, 2, 'office')); s.add_item(Item('apple', 0.5, 9)); s.add_item(Item('ink', 2.0, 1, 'office')); assert s.by_category('office') == ['ink', 'pen']; assert s.by_category('general') == ['apple']"'''
+
+[fake]
+edits = [{ path = "items.py", old = "    quantity: int\n", new = "    quantity: int\n    category: str = \"general\"\n" }, { path = "store.py", old = "    def total_value(self) -> float:", new = "    def by_category(self, category: str) -> list[str]:\n        return sorted(name for name, item in self.items.items() if item.category == category)\n\n    def total_value(self) -> float:" }]

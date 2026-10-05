@@ -1,0 +1,8 @@
+name = "windows-crlf"
+category = "windows"
+repo = "repos/winpaths"
+prompt = "read_lines breaks on files with Windows line endings (CRLF) and returns an empty last line for files ending in a newline; it must return the lines without line endings for LF and CRLF files."
+check = '''{python} -c "import pathlib; from winpaths import read_lines; pathlib.Path('crlf.txt').write_bytes(b'a\r\nb\r\n'); pathlib.Path('lf.txt').write_bytes(b'a\nb'); assert read_lines('crlf.txt') == ['a', 'b'], read_lines('crlf.txt'); assert read_lines('lf.txt') == ['a', 'b']"'''
+
+[fake]
+edits = [{ path = "winpaths.py", old = "        return handle.read().split(\"\\n\")", new = "        return handle.read().splitlines()" }]

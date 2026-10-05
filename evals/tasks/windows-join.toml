@@ -1,0 +1,8 @@
+name = "windows-join"
+category = "windows"
+repo = "repos/winpaths"
+prompt = "join_parts must not double the separator when a part already ends or starts with a slash or backslash: join_parts('C:\\\\data\\\\', 'x') is 'C:\\\\data/x'."
+check = '''{python} -c "from winpaths import join_parts; assert join_parts('a/', '/b', 'c') == 'a/b/c'; assert join_parts(r'C:\data' + chr(92), 'x') == r'C:\data/x'"'''
+
+[fake]
+edits = [{ path = "winpaths.py", old = "    return \"/\".join(parts)", new = "    cleaned = [p.rstrip(\"/\\\\\") if i == 0 else p.strip(\"/\\\\\") for i, p in enumerate(parts)]\n    return \"/\".join(cleaned)" }]

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S44
+Next step: S45
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -48,7 +48,8 @@ Next step: S44
 | S40 | 2026-10-05 | 9405b08 | cli.py, local/json_renderer.py, tests/e2e/test_headless.py | forge run --json/--yes/--no-defaults: contract events as JSON lines, SessionDone last, exit 0/1/2 |
 | S41 | 2026-10-05 | 37ee4e4 | api.py, __init__.py, runtime/gitops.py, examples/embed.py, tests/test_api.py | Forge(config, renderer, store, executor, root=, approve=); run() -> Report; stream() -> events ending with SessionDone; examples/embed.py --fake fixes examples/buggy in a temp copy |
 | S42 | 2026-10-05 | 203200f | config.py, cli.py, tests/test_trust.py | forge trust [--remove] writes ~/.forge/trusted.toml; every command prints config warnings; profiles via -p |
-| S43 | 2026-10-05 | (next) | local/json_store.py, local/memory_store.py, tests/conformance/, examples/plugin_demo/ | conformance suites for Store/BoardStore (Memory, Sqlite, Json), EventBus, Executor, Renderer; JsonStore needs no core change; plugin_demo adds a hook + MCP tool via config only. Phase 4 gate: pipeline.py and agent.py unchanged in this commit. |
+| S43 | 2026-10-05 | 29bf75e | local/json_store.py, local/memory_store.py, tests/conformance/, examples/plugin_demo/ | conformance suites for Store/BoardStore (Memory, Sqlite, Json), EventBus, Executor, Renderer; JsonStore needs no core change; plugin_demo adds a hook + MCP tool via config only. Phase 4 gate: pipeline.py and agent.py unchanged in this commit. |
+| S44 | 2026-10-05 | (next) | evals/tasks/ (33 tasks), evals/repos/logparse, evals/repos/winpaths, evals.py, eval_cli.py, swebench.py, cli.py, prompts.py, evals/RESULTS.md, tests/test_evals.py, tests/test_review.py, .gitignore | 33 offline-verified tasks (bug 7, feature 9, refactor 4, multi-file 3, windows 4, large 5, trivial 1); --models/--report results table with PROMPTS_VERSION; SWE-bench Lite runner (--swebench JSONL) |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -176,6 +177,9 @@ Next step: S44
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
 - S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
+- S44: S44: every eval task is generated and verified by a script: the check fails on the original repo and passes after the task's [fake] solution. Checks avoid $ and backslash escapes that bash and PowerShell treat differently.
+- S44: S44: eval commands moved from cli.py to eval_cli.py (cli.py was nearing 500 lines); the SWE-bench runner lives in swebench.py. PROMPTS_VERSION bumped to 2026.10.4 (prompts changed in S30-S38).
+- S44: S43 fix: .gitignore ignored examples/plugin_demo/.forge/, so CI lacked the demo config; it is now re-included.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -202,6 +206,9 @@ Next step: S44
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
 - S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
+- S44: S44: every eval task is generated and verified by a script: the check fails on the original repo and passes after the task's [fake] solution. Checks avoid $ and backslash escapes that bash and PowerShell treat differently.
+- S44: S44: eval commands moved from cli.py to eval_cli.py (cli.py was nearing 500 lines); the SWE-bench runner lives in swebench.py. PROMPTS_VERSION bumped to 2026.10.4 (prompts changed in S30-S38).
+- S44: S43 fix: .gitignore ignored examples/plugin_demo/.forge/, so CI lacked the demo config; it is now re-included.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -218,6 +225,9 @@ Next step: S44
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
 - S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
+- S44: S44: every eval task is generated and verified by a script: the check fails on the original repo and passes after the task's [fake] solution. Checks avoid $ and backslash escapes that bash and PowerShell treat differently.
+- S44: S44: eval commands moved from cli.py to eval_cli.py (cli.py was nearing 500 lines); the SWE-bench runner lives in swebench.py. PROMPTS_VERSION bumped to 2026.10.4 (prompts changed in S30-S38).
+- S44: S43 fix: .gitignore ignored examples/plugin_demo/.forge/, so CI lacked the demo config; it is now re-included.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -229,6 +239,9 @@ Next step: S44
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
 - S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
+- S44: S44: every eval task is generated and verified by a script: the check fails on the original repo and passes after the task's [fake] solution. Checks avoid $ and backslash escapes that bash and PowerShell treat differently.
+- S44: S44: eval commands moved from cli.py to eval_cli.py (cli.py was nearing 500 lines); the SWE-bench runner lives in swebench.py. PROMPTS_VERSION bumped to 2026.10.4 (prompts changed in S30-S38).
+- S44: S43 fix: .gitignore ignored examples/plugin_demo/.forge/, so CI lacked the demo config; it is now re-included.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -246,3 +259,4 @@ Next step: S44
 - S30: S30: sub-agent transcripts are kept in AgentRegistry (memory), not yet saved to the store under the agent id as docs/TOOLS.md says.
 - S36: S36: Phase 3 gate (team passes more large tasks than solo) needs live models; offline (--fake) both modes pass 5/5 by construction. Run: uv run forge eval --suite large --compare solo,team
 - S40: S40: --no-defaults only takes effect with --json; plain 'forge run' asks on stdin (EOF = defaults).
+- S44: S44: live eval runs (forge eval --models ... --report evals/RESULTS.md) and SWE-bench Lite need API keys and the dataset; only the offline row exists. The SWE-bench runner uses the current Python environment instead of the official per-repo Docker images.

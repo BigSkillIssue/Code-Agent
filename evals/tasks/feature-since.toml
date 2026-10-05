@@ -1,0 +1,8 @@
+name = "feature-since"
+category = "feature"
+repo = "repos/logparse"
+prompt = "Add entries_since(lines, date) returning the parsed entries whose date (YYYY-MM-DD) is on or after the given date."
+check = '''{python} -c "from logparse import entries_since; got = entries_since(['2026-01-01 10:00:00 INFO a', '2026-02-01 10:00:00 WARN b', '2026-03-01 10:00:00 INFO c'], '2026-02-01'); assert [e.message for e in got] == ['b', 'c']"'''
+
+[fake]
+edits = [{ path = "logparse.py", old = "def errors(lines: list[str]) -> list[str]:", new = "def entries_since(lines: list[str], date: str) -> list[Entry]:\n    \"\"\"Entries on or after `date` (YYYY-MM-DD compares as text).\"\"\"\n    return [entry for entry in map(parse_line, lines) if entry.date >= date]\n\n\ndef errors(lines: list[str]) -> list[str]:" }]

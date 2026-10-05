@@ -1,0 +1,8 @@
+name = "bug-negative-price"
+category = "bug"
+repo = "repos/shop"
+prompt = "format_price(-123) returns '$-2.77'; negative prices must look like '-$1.23'."
+check = '''{python} -c "from pricing import format_price; assert format_price(-123) == '-' + chr(36) + '1.23'; assert format_price(5) == chr(36) + '0.05'"'''
+
+[fake]
+edits = [{ path = "pricing.py", old = "    \"\"\"1234 -> '$12.34'.\"\"\"\n    return f\"${cents // 100}.{cents % 100:02d}\"", new = "    \"\"\"1234 -> '$12.34', -123 -> '-$1.23'.\"\"\"\n    sign = \"-\" if cents < 0 else \"\"\n    cents = abs(cents)\n    return f\"{sign}${cents // 100}.{cents % 100:02d}\"" }]

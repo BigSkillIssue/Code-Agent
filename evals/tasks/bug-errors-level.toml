@@ -1,0 +1,8 @@
+name = "bug-errors-level"
+category = "bug"
+repo = "repos/logparse"
+prompt = "errors() also returns INFO lines that merely mention ERROR in their message; it must only return lines whose level is ERROR."
+check = '''{python} -c "from logparse import errors; lines = ['2026-01-01 10:00:00 INFO no ERROR here', '2026-01-01 10:00:01 ERROR boom']; assert errors(lines) == ['boom'], errors(lines)"'''
+
+[fake]
+edits = [{ path = "logparse.py", old = "    return [parse_line(line).message for line in lines if \"ERROR\" in line]", new = "    entries = [parse_line(line) for line in lines]\n    return [entry.message for entry in entries if entry.level == \"ERROR\"]" }]

@@ -1,0 +1,8 @@
+name = "bug-blank-lines"
+category = "bug"
+repo = "repos/logparse"
+prompt = "count_levels crashes on blank lines (log files end with one); it must skip lines that are empty or only whitespace."
+check = '''{python} -c "from logparse import count_levels; assert count_levels(['2026-01-01 10:00:00 INFO a', '', '   ', '2026-01-01 10:00:01 INFO b']) == {'INFO': 2}"'''
+
+[fake]
+edits = [{ path = "logparse.py", old = "    for line in lines:\n        entry = parse_line(line)", new = "    for line in lines:\n        if not line.strip():\n            continue\n        entry = parse_line(line)" }]

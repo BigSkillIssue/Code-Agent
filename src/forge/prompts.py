@@ -33,7 +33,7 @@ and always comes last.
 
 import string
 
-PROMPTS_VERSION = "2026.10.3"
+PROMPTS_VERSION = "2026.10.4"
 
 # The only slots a template may use; a typo in a slot name fails loudly in render().
 KNOWN_SLOTS = frozenset(

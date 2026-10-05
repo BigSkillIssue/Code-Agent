@@ -1,0 +1,8 @@
+name = "multi-file-report"
+category = "multi-file"
+repo = "repos/calc"
+prompt = "Extend report.summary with the difference: 'sum=.. product=.. difference=..'; add subtract(a, b) to calc.py for it (and fix add while you are there)."
+check = '''{python} -c "from report import summary; assert summary(5, 3) == 'sum=8 product=15 difference=2', summary(5, 3)"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "    \"\"\"Return a + b.\"\"\"\n    return a - b", new = "    \"\"\"Return a + b.\"\"\"\n    return a + b\n\n\ndef subtract(a: float, b: float) -> float:\n    \"\"\"Return a - b.\"\"\"\n    return a - b" }, { path = "report.py", old = "from calc import add, multiply\n\n\ndef summary(a: float, b: float) -> str:\n    return f\"sum={add(a, b)} product={multiply(a, b)}\"", new = "from calc import add, multiply, subtract\n\n\ndef summary(a: float, b: float) -> str:\n    return f\"sum={add(a, b)} product={multiply(a, b)} difference={subtract(a, b)}\"" }]

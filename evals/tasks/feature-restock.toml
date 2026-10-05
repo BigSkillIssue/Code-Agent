@@ -1,0 +1,8 @@
+name = "feature-restock"
+category = "feature"
+repo = "repos/inventory"
+prompt = "Add Store.restock(name, amount) that increases an item's quantity; unknown names raise KeyError and amounts below 1 raise ValueError."
+check = '''{python} -c "from store import Store; from items import Item; s = Store(); s.add_item(Item('pen', 1.0, 2)); s.restock('pen', 5); assert s.items['pen'].quantity == 7; import unittest; t = unittest.TestCase(); t.assertRaises(KeyError, s.restock, 'ink', 1); t.assertRaises(ValueError, s.restock, 'pen', 0)"'''
+
+[fake]
+edits = [{ path = "store.py", old = "    def total_value(self) -> float:", new = "    def restock(self, name: str, amount: int) -> None:\n        if amount < 1:\n            raise ValueError(\"amount must be at least 1\")\n        self.items[name].quantity += amount\n\n    def total_value(self) -> float:" }]

@@ -118,7 +118,7 @@ def test_forge_eval_fake_runs_offline(
     monkeypatch.chdir(REPO)
     code = main(["--fake", "eval"])
     out = capsys.readouterr().out
-    assert "passed 15/15" in out, out
+    assert "passed 33/33" in out, out
     assert code == 0
 
 

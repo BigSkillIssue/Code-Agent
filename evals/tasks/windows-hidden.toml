@@ -1,0 +1,8 @@
+name = "windows-hidden"
+category = "windows"
+repo = "repos/winpaths"
+prompt = "is_hidden must also return True for the files Windows hides by convention, desktop.ini and Thumbs.db, in any letter case."
+check = '''{python} -c "from winpaths import is_hidden; assert is_hidden('.git'); assert is_hidden('Desktop.INI'); assert is_hidden('thumbs.db'); assert not is_hidden('notes.txt')"'''
+
+[fake]
+edits = [{ path = "winpaths.py", old = "    return name.startswith(\".\")", new = "    return name.startswith(\".\") or name.lower() in (\"desktop.ini\", \"thumbs.db\")" }]

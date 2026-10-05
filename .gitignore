@@ -13,8 +13,10 @@ dist/
 .coverage
 htmlcov/
 
-# Forge runtime data inside a project
+# Forge runtime data inside a project (the plugin demo's .forge/ is part of the example)
 .forge/
+!examples/plugin_demo/.forge/
+examples/plugin_demo/.forge/changes.log
 
 # Editors and OS
 .idea/

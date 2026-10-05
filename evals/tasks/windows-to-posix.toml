@@ -1,0 +1,8 @@
+name = "windows-to-posix"
+category = "windows"
+repo = "repos/winpaths"
+prompt = "Add to_posix(path) that turns Windows paths like C:\\\\Users\\\\me\\\\file.txt into C:/Users/me/file.txt and leaves POSIX paths unchanged."
+check = '''{python} -c "from winpaths import to_posix; assert to_posix(r'C:\Users\me\file.txt') == 'C:/Users/me/file.txt'; assert to_posix('/home/me/a.txt') == '/home/me/a.txt'"'''
+
+[fake]
+edits = [{ path = "winpaths.py", old = "def read_lines(path: str) -> list[str]:", new = "def to_posix(path: str) -> str:\n    \"\"\"Forward slashes only: C:\\\\Users\\\\me -> C:/Users/me.\"\"\"\n    return path.replace(\"\\\\\", \"/\")\n\n\ndef read_lines(path: str) -> list[str]:" }]
