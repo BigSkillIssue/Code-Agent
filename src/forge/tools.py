@@ -2,10 +2,11 @@
 
 Table of contents:
   FRAMEWORK  ToolDef, REGISTRY, tool(), make_tool_def(), for_role(), call_tool()
-  FILES      read_file, write_file, edit_file, list_dir
+  FILES      read_file, write_file, edit_file, apply_patch, list_dir
   SEARCH     glob, grep
   SHELL      bash, powershell, job_output, job_stop
   PLAN       ask_user, submit_plan, update_plan, finish_step
+  MEMORY     remember, recall
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -13,6 +14,7 @@ once and never described twice.
 """
 
 import asyncio
+import datetime
 import difflib
 import inspect
 import json
@@ -29,7 +31,7 @@ from typing import Annotated, Any, Literal, TypeVar, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from forge.checks import sandbox_policy, save_plan, settle_step
-from forge.config import ForgeConfig
+from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx
 from forge.events import PlanUpdated
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
@@ -56,6 +58,7 @@ from forge.runtime.files import (
 )
 from forge.runtime.ignore import expand_braces, glob_regex, matches_glob, project_files
 from forge.runtime.ledger import sha256_of
+from forge.runtime.patch import FileOp, PatchSyntaxError, apply_hunks, parse_patch
 from forge.runtime.readers import IMAGE_TYPES, read_image, read_notebook, read_pdf, read_text
 from forge.runtime.search import GrepQuery, format_hits, search
 from forge.runtime.shell import ShellKind, find_shell
@@ -520,6 +523,77 @@ async def edit_file(
             "\nnote: file had changed on disk since your last read; re-read before larger edits"
         )
     return summary
+
+
+MAX_PATCH_BYTES = 2 * 1024 * 1024
+
+
+@tool(group="files", permission="auto", read_only=False)
+async def apply_patch(
+    ctx: Ctx,
+    patch: Annotated[
+        str, "Patch in the Forge/Codex format, from *** Begin Patch to *** End Patch."
+    ],
+) -> str:
+    """Add, update, move and delete several files in one atomic change."""
+    if len(patch.encode("utf-8")) > MAX_PATCH_BYTES:
+        raise ToolError("too_large", "the patch is larger than 2 MB")
+    try:
+        ops = parse_patch(patch)
+    except PatchSyntaxError as err:
+        raise ToolError("invalid_args", "the patch could not be parsed", hint=str(err)) from err
+    changes: list[FileChange] = []
+    summary: list[str] = []
+    for op in ops:
+        file_changes, line = await patch_file(ctx, op)
+        changes += file_changes
+        summary.append(line)
+    paths = [c.path for c in changes]
+    require(len(paths) == len(set(paths)), "the patch changes the same file more than once")
+    await apply_changes(ctx, changes)  # only reached when every file succeeded
+    return f"applied patch: {len(ops)} files\n" + "\n".join(summary)
+
+
+async def patch_file(ctx: Ctx, op: FileOp) -> tuple[list[FileChange], str]:
+    """The changes for one file operation, and its summary line."""
+    target = resolve_path(ctx.cwd, op.path)
+    display = display_path(ctx.root, target)
+    check_writable(ctx.root, writable_roots(ctx.root, ctx.cfg), target)
+    if op.kind == "add":
+        if target.exists():
+            raise ToolError("invalid_args", f"{display} already exists", hint="use *** Update File")
+        content = "".join(line + "\n" for line in op.added)
+        return [FileChange(target, encode_text(content, None))], f"  A {display} (+{len(op.added)})"
+    file = await read_for_patch(ctx, target, display)
+    if op.kind == "delete":
+        return [FileChange(target, None)], f"  D {display}"
+    old_lines = split_lines(file.text)
+    new_lines = apply_hunks(old_lines, op.hunks, display)
+    ends_with_break = file.text.endswith("\n") or not file.text
+    content = "\n".join(new_lines) + ("\n" if new_lines and ends_with_break else "")
+    added, removed = diff_counts(old_lines, new_lines)
+    data = encode_text(content, file)
+    if op.move_to is None:
+        return [FileChange(target, data)], f"  M {display} (+{added} -{removed})"
+    dest = resolve_path(ctx.cwd, op.move_to)
+    check_writable(ctx.root, writable_roots(ctx.root, ctx.cfg), dest)
+    moved = display_path(ctx.root, dest)
+    if dest.exists():
+        raise ToolError("invalid_args", f"cannot move to {moved}: it already exists")
+    changes = [FileChange(dest, data), FileChange(target, None)]
+    return changes, f"  R {display} -> {moved} (+{added} -{removed})"
+
+
+async def read_for_patch(ctx: Ctx, target: Path, display: str) -> TextFile:
+    """The decoded file an Update or Delete works on; it must exist and have been read."""
+    if not target.is_file():
+        raise ToolError("not_found", f"{display} does not exist")
+    if ctx.ledger.get(target) is None:
+        raise ToolError("not_read", f"read {display} with read_file before patching it")
+    data = await read_bytes(target)
+    if is_binary(data):
+        raise ToolError("binary_file", f"{display} is a binary file")
+    return decode_text(data)
 
 
 @tool(group="files", permission="auto", read_only=True, specifier_arg="path")
@@ -1085,3 +1159,76 @@ async def finish_step(
 def step_failed(step: Step) -> bool:
     """True once a step has used up its attempts."""
     return step.status == "failed"
+
+
+# =====================================================================================
+# MEMORY
+# =====================================================================================
+
+NOTES_HEADING = "## Notes from Forge"
+MAX_NOTE_CHARS = 500
+
+
+@tool(group="memory", permission="ask", read_only=False)
+async def remember(
+    ctx: Ctx,
+    note: Annotated[str, "One fact or rule to keep for future sessions, max 500 chars."],
+    scope: Annotated[
+        Literal["project", "user"], "project = ./FORGE.md, user = ~/.forge/FORGE.md."
+    ] = "project",
+) -> str:
+    """Save a lasting note, e.g. a build command or a coding convention."""
+    note = " ".join(note.split())
+    require(0 < len(note) <= MAX_NOTE_CHARS, "note must be 1-500 characters")
+    target = ctx.root / "FORGE.md" if scope == "project" else forge_home() / "FORGE.md"
+    old = decode_text(await read_bytes(target)) if target.is_file() else None
+    text = with_note(old.text if old else "", note, datetime.date.today().isoformat())
+    if text is None:
+        return f'already remembered: "{note}"'
+    data = encode_text(text, old)
+    if scope == "project":
+        await apply_changes(ctx, [FileChange(target, data)])
+    else:
+        # The user file lives outside the project's writable roots, so it is written directly.
+        await asyncio.to_thread(_write_user_file, target, data)
+    return f'remembered in {"FORGE.md" if scope == "project" else target}: "{note}"'
+
+
+def with_note(text: str, note: str, today: str) -> str | None:
+    """`text` with the note appended under the Forge heading; None if it is already there."""
+    if any(line.startswith(f"- {note} (added ") for line in split_lines(text)):
+        return None
+    text = text or "# FORGE.md\n"
+    if NOTES_HEADING not in split_lines(text):
+        text = text.rstrip("\n") + f"\n\n{NOTES_HEADING}\n\n"
+    elif not text.endswith("\n"):
+        text += "\n"
+    return text + f"- {note} (added {today})\n"
+
+
+def _write_user_file(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+@tool(group="memory", permission="auto", read_only=True)
+async def recall(
+    ctx: Ctx,
+    query: Annotated[str, "Words to search for in past sessions of this project."],
+    limit: Annotated[int, "Number of results (1-20)."] = 5,
+) -> str:
+    """Search earlier sessions of this project: messages, summaries and plans."""
+    require(query.strip() != "", "query must not be empty")
+    require(1 <= limit <= 20, "limit must be between 1 and 20")
+    hits = await ctx.store.search(str(ctx.root), query, limit + 1)
+    hits = [(sid, text) for sid, text in hits if sid != ctx.session.id][:limit]
+    if not hits:
+        return f'no earlier sessions mention "{query}"'
+    lines: list[str] = []
+    for number, (session_id, text) in enumerate(hits, start=1):
+        session = await ctx.store.load_session(session_id)
+        day = datetime.date.fromtimestamp(session.created_at).isoformat()
+        title = session.spec.goal if session.spec else ""
+        lines.append(f'{number}. session {session_id[:8]} ({day}) "{title}"')
+        lines.append("   ..." + " ".join(text.split()) + "...")
+    return "\n".join(lines)

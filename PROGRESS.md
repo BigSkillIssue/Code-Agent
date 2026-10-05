@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S26
+Next step: S26b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -29,7 +29,8 @@ Next step: S26
 | S22 | 2026-10-05 | 882de38 | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
 | S23 | 2026-10-05 | a1f6b6f | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
 | S24 | 2026-10-05 | 2428362 | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
-| S25 | 2026-10-05 | (next) | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
+| S25 | 2026-10-05 | 0665ab9 | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
+| S26a | 2026-10-05 | (next) | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -118,6 +119,9 @@ Next step: S26
 - S24: S24: Responses wire lives in providers/responses.py (body, input items, event parsing), outside the card's file list, to keep openai_compat.py focused; requests are stateless (store=false) and encrypted reasoning items round-trip via Message.reasoning.
 - S25: S25: the tool fallback wraps the provider in modelcall.model_turn (with_tool_fallback) when the request has tools and capabilities(model).tools is false; malformed JSON gets one corrective FIX_JSON turn, then the reply is passed on as plain text.
 - S25: S25: LiteLLM is imported lazily with LITELLM_LOCAL_MODEL_COST_MAP=True so it never downloads its price table.
+- S26a: S26: split into S26a (apply_patch, remember, recall) and S26b (repo_map, web_fetch, web_search).
+- S26a: S26a: fuzzy hunk matches keep the file's own context lines; per-path permission checks for apply_patch arrive with the permission engine in S28 (paths already pass outside_root/protected_path).
+- S26a: S26a: remember with scope=user writes ~/.forge/FORGE.md directly (outside the writable roots, so not covered by /undo).
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
