@@ -14,6 +14,7 @@ from typing import Any
 import anthropic
 import httpx2
 
+from forge import prompts
 from forge.config import ModelOverride, ProviderConfig
 from forge.providers.base import (
     Capabilities,
@@ -112,6 +113,37 @@ class AnthropicProvider:
             await client.close()
         usage = state.usage(self.capabilities(req.model))
         yield StreamItem(done=state.message(), usage=usage)
+
+    async def search_web(
+        self, model: str, query: str, max_results: int, allowed: list[str], blocked: list[str]
+    ) -> list[tuple[str, str, str]]:
+        """(title, url, snippet) from Claude's server-side web search tool, one search only."""
+        search_tool: dict[str, Any] = {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 1,
+        }
+        if allowed:
+            search_tool["allowed_domains"] = allowed
+        if blocked:
+            search_tool["blocked_domains"] = blocked
+        client = self.make_client()
+        try:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=2048,
+                tools=[search_tool],
+                messages=[{"role": "user", "content": prompts.render("web_search", query=query)}],
+            )
+        except anthropic.APIStatusError as exc:
+            raise error_from_status(
+                exc.status_code, exc.response.text, exc.response.headers
+            ) from exc
+        except (anthropic.APIConnectionError, httpx2.HTTPError) as exc:
+            raise ProviderError("network", f"{type(exc).__name__}: {exc}") from exc
+        finally:
+            await client.close()
+        return search_hits(response.content)[:max_results]
 
     def request_params(self, req: ChatRequest) -> dict[str, Any]:
         """The Messages API request body for a ChatRequest."""
@@ -296,3 +328,20 @@ def stream_error(text: str) -> ProviderError:
     if any(hint in lowered for hint in OVERFLOW_HINTS):
         return ProviderError("context_overflow", text[:500])
     return ProviderError("bad_request", text[:500])
+
+
+def search_hits(blocks: list[Any]) -> list[tuple[str, str, str]]:
+    """Hits from web_search_tool_result blocks; cited text (if any) becomes the snippet."""
+    quotes: dict[str, str] = {}
+    for block in blocks:
+        for citation in getattr(block, "citations", None) or []:
+            url = getattr(citation, "url", "")
+            if url and url not in quotes:
+                quotes[url] = str(getattr(citation, "cited_text", ""))
+    hits: list[tuple[str, str, str]] = []
+    for block in blocks:
+        if getattr(block, "type", "") == "web_search_tool_result" and isinstance(
+            block.content, list
+        ):
+            hits += [(str(r.title), str(r.url), quotes.get(r.url, "")) for r in block.content]
+    return hits

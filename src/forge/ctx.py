@@ -20,6 +20,7 @@ class SessionState:
     failure: str = ""  # why the last step failed, for the replanner
     plan_rejected: bool = False  # the user rejected the plan without saying what to change
     checkpoints: dict[str, str] = field(default_factory=dict)  # step id -> snapshot ref (S18)
+    web_searches: int = 0  # web_search calls so far (limit 200 per session)
 
 
 @dataclass

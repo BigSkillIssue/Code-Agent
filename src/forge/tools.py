@@ -3,8 +3,9 @@
 Table of contents:
   FRAMEWORK  ToolDef, REGISTRY, tool(), make_tool_def(), for_role(), call_tool()
   FILES      read_file, write_file, edit_file, apply_patch, list_dir
-  SEARCH     glob, grep
+  SEARCH     glob, grep, repo_map
   SHELL      bash, powershell, job_output, job_stop
+  WEB        web_fetch, web_search
   PLAN       ask_user, submit_plan, update_plan, finish_step
   MEMORY     remember, recall
 
@@ -19,6 +20,7 @@ import difflib
 import inspect
 import json
 import logging
+import os
 import re
 import shlex
 import time
@@ -30,13 +32,15 @@ from typing import Annotated, Any, Literal, TypeVar, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
+from forge import prompts
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx
 from forge.events import PlanUpdated
+from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.ports import Command, CommandResult, JobNotFoundError
-from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec
+from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec, text_message
 from forge.providers.registry import resolve_role
 from forge.questions import ask
 from forge.runtime.edit import adapt_newlines, edit_summary, replace_text
@@ -60,9 +64,11 @@ from forge.runtime.ignore import expand_braces, glob_regex, matches_glob, projec
 from forge.runtime.ledger import sha256_of
 from forge.runtime.patch import FileOp, PatchSyntaxError, apply_hunks, parse_patch
 from forge.runtime.readers import IMAGE_TYPES, read_image, read_notebook, read_pdf, read_text
+from forge.runtime.repomap import build_map, render_map
 from forge.runtime.search import GrepQuery, format_hits, search
 from forge.runtime.shell import ShellKind, find_shell
 from forge.runtime.tree import build_tree, render_tree
+from forge.runtime.web import SearchResult, fetch_page, filter_results, search_http, size_text
 
 log = logging.getLogger(__name__)
 
@@ -669,6 +675,22 @@ async def grep(
     return format_hits(hits, query, ctx.root, offset=offset, head_limit=head_limit)
 
 
+@tool(group="search", permission="auto", read_only=True, specifier_arg="path")
+async def repo_map(
+    ctx: Ctx,
+    path: Annotated[str, "Folder to map."] = ".",
+    max_tokens: Annotated[int, "Size budget for the map (200-20000)."] = 2000,
+    include_private: Annotated[bool, "Include names starting with '_'."] = False,
+) -> str:
+    """Outline of the most important files with their classes, functions and signatures."""
+    require(200 <= max_tokens <= 20000, "max_tokens must be between 200 and 20000")
+    base = existing_path(ctx, path)
+    require(base.is_dir(), f"{display_path(ctx.root, base)} is not a folder")
+    files = await project_files(base)
+    repo = await asyncio.to_thread(build_map, ctx.root, files)
+    return render_map(repo, max_tokens, include_private)
+
+
 # =====================================================================================
 # SHELL
 # =====================================================================================
@@ -880,6 +902,125 @@ async def _job_call(call: Awaitable[CommandResult]) -> CommandResult:
         raise ToolError(
             "not_found", f"no background job {exc.args[0]}", hint=f"known jobs: {known}"
         ) from exc
+
+
+# =====================================================================================
+# WEB
+# =====================================================================================
+
+MAX_WEB_SEARCHES = 200
+
+
+@tool(group="web", permission="ask", read_only=True, specifier_arg="url")
+async def web_fetch(
+    ctx: Ctx,
+    url: Annotated[str, "Full http(s) URL."],
+    question: Annotated[
+        str | None, "If set, return only the answer to this question, extracted from the page."
+    ] = None,
+    max_chars: Annotated[
+        int, "Maximum characters of page content to return (1000-100000)."
+    ] = 20000,
+) -> str:
+    """Download a web page and return it as Markdown, or answer a question about it."""
+    require(1000 <= max_chars <= 100_000, "max_chars must be between 1000 and 100000")
+    page = await fetch_page(ctx.root, url)
+    if page.redirect:
+        return f"redirected to {page.redirect}; call web_fetch again with that URL if you trust it"
+    content = page.content
+    if len(content) > max_chars:
+        content = content[:max_chars] + f"\n[content cut at {max_chars} chars]"
+    cached = " (cached)" if page.cached else ""
+    head = (
+        f"url: {page.url} ({page.status}, {page.content_type}, {size_text(page.size)} -> "
+        f"{len(page.content):,} chars){cached}"
+    )
+    lines = [head] + ([f"title: {page.title}"] if page.title else [])
+    if question is None:
+        return "\n".join([*lines, "--- content ---", content])
+    system = prompts.render("web_extract", question=question, page=content)
+    answer, _ = await complete(ctx, "compressor", system, [text_message("user", question)])
+    return "\n".join([*lines, "--- answer ---", answer.text().strip()])
+
+
+@tool(group="web", permission="ask", read_only=True)
+async def web_search(
+    ctx: Ctx,
+    query: Annotated[str, "Search query."],
+    allowed_domains: Annotated[list[str] | None, "Only return results from these domains."] = None,
+    blocked_domains: Annotated[list[str] | None, "Never return results from these domains."] = None,
+    max_results: Annotated[int, "Number of results (1-20)."] = 8,
+) -> str:
+    """Search the web and return titles, URLs and snippets. Use web_fetch to read a result."""
+    require(1 <= len(query.strip()) <= 400, "query must be 1-400 characters")
+    require(1 <= max_results <= 20, "max_results must be between 1 and 20")
+    require(
+        not (allowed_domains and blocked_domains),
+        "use allowed_domains or blocked_domains, not both",
+    )
+    allowed, blocked = allowed_domains or [], blocked_domains or []
+    if ctx.state.web_searches >= MAX_WEB_SEARCHES:
+        raise ToolError(
+            "limit_reached",
+            "200 web searches in this session",
+            hint="continue with the information you have",
+        )
+    ctx.state.web_searches += 1
+    backend, results = await run_search(ctx, query, max_results, allowed, blocked)
+    results = filter_results(results, allowed, blocked, max_results)
+    if not results:
+        return f'no results for "{query}"'
+    lines = [f'results for "{query}" (backend: {backend}, {len(results)} results)']
+    for number, hit in enumerate(results, start=1):
+        lines += [f"{number}. {hit.title}", f"   {hit.url}"]
+        if hit.snippet:
+            lines.append(f"   {' '.join(hit.snippet.split())[:300]}")
+    return "\n".join(lines)
+
+
+async def run_search(
+    ctx: Ctx, query: str, max_results: int, allowed: list[str], blocked: list[str]
+) -> tuple[str, list[SearchResult]]:
+    """(backend name, raw results) from the configured backend."""
+    backend = ctx.cfg.web.search_backend
+    if backend == "native":
+        native = await native_search(ctx, query, max_results, allowed, blocked)
+        if native is not None:
+            return "native", native
+    else:
+        key = (
+            os.environ.get(ctx.cfg.web.search_api_key_env, "")
+            if ctx.cfg.web.search_api_key_env
+            else ""
+        )
+        if key:
+            return backend, await search_http(backend, key, query, max_results, allowed, blocked)
+    raise ToolError(
+        "unsupported",
+        "no web search backend is available",
+        hint="set [web] search_backend in forge.toml",
+    )
+
+
+async def native_search(
+    ctx: Ctx, query: str, max_results: int, allowed: list[str], blocked: list[str]
+) -> list[SearchResult] | None:
+    """Results from the coder model's own search tool, or None when it has none."""
+    try:
+        chain = resolve_role("coder", ctx.cfg)
+    except ProviderError:
+        return None
+    if not chain:
+        return None
+    provider, model = chain[0]
+    search_web = getattr(provider, "search_web", None)
+    if search_web is None or not provider.capabilities(model).web_search:
+        return None
+    try:
+        hits = await search_web(model, query, max_results, allowed, blocked)
+    except ProviderError as err:
+        raise ToolError("network", f"native search failed ({err.kind}): {err}") from err
+    return [SearchResult(title, url, snippet) for title, url, snippet in hits]
 
 
 # =====================================================================================

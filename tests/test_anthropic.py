@@ -164,3 +164,47 @@ def test_bedrock_and_vertex_use_the_sdk_clients() -> None:
 def test_registry_builds_anthropic_preset() -> None:
     p = get_provider("anthropic", ForgeConfig())
     assert isinstance(p, AnthropicProvider)
+
+
+async def test_native_web_search_returns_results_with_cited_snippets() -> None:
+    result = {"type": "web_search_result", "title": "Cats", "url": "https://c.example.com/"}
+    citation = {
+        "type": "web_search_result_location",
+        "url": "https://c.example.com/",
+        "title": "Cats",
+        "encrypted_index": "y",
+        "cited_text": "Cats purr.",
+    }
+    body = {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-5-5",
+        "content": [
+            {
+                "type": "server_tool_use",
+                "id": "srvtoolu_1",
+                "name": "web_search",
+                "input": {"query": "cats"},
+            },
+            {
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_1",
+                "content": [{**result, "encrypted_content": "x", "page_age": None}],
+            },
+            {"type": "text", "text": "Cats purr.", "citations": [citation]},
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+    bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        bodies.append(json.loads(request.content))
+        return httpx2.Response(200, json=body)
+
+    hits = await provider(handler).search_web("claude-sonnet-5-5", "cats", 5, ["example.com"], [])
+    assert hits == [("Cats", "https://c.example.com/", "Cats purr.")]
+    assert bodies[0]["tools"][0]["allowed_domains"] == ["example.com"]
+    assert "cats" in bodies[0]["messages"][0]["content"]

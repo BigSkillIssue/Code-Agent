@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S26b
+Next step: S27
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -30,7 +30,8 @@ Next step: S26b
 | S23 | 2026-10-05 | a1f6b6f | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
 | S24 | 2026-10-05 | 2428362 | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
 | S25 | 2026-10-05 | 0665ab9 | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
-| S26a | 2026-10-05 | (next) | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
+| S26a | 2026-10-05 | fc87adc | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
+| S26b | 2026-10-05 | (next) | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -122,6 +123,10 @@ Next step: S26b
 - S26a: S26: split into S26a (apply_patch, remember, recall) and S26b (repo_map, web_fetch, web_search).
 - S26a: S26a: fuzzy hunk matches keep the file's own context lines; per-path permission checks for apply_patch arrive with the permission engine in S28 (paths already pass outside_root/protected_path).
 - S26a: S26a: remember with scope=user writes ~/.forge/FORGE.md directly (outside the writable roots, so not covered by /undo).
+- S26b: S26b: repo_map ranks by word occurrences in other files (regex identifiers), not by tree-sitter identifier nodes; grammars are downloaded by tree-sitter-language-pack on first use (offline: language counts as unsupported).
+- S26b: S26b: HTML cleanup removes script/style/nav/footer/header/noscript/iframe by regex before markdownify, so beautifulsoup4 (a markdownify dependency) is not imported directly.
+- S26b: S26b: native web_search is an optional provider method search_web(); only the Anthropic adapter has it (web_search_20250305 server tool). For searxng the variable named by search_api_key_env holds the instance URL.
+- S26b: S26b: SessionState gained web_searches (per-session search counter).
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -132,3 +137,4 @@ Next step: S26b
 - S22: S22: live contract test (tests/contract) not run here: no API keys in this environment.
 - S23: S23: live contract test for Gemini not run here: no GEMINI_API_KEY.
 - S25: S25: Phase 2 gate (10 providers pass the live contract test) not verified here: no API keys in this environment. 12 live cases exist in tests/contract and skip without keys; run 'uv run pytest tests/contract -m live' with keys set.
+- S26b: S26b: native web search for OpenAI/Gemini providers not implemented (they fall back to unsupported unless an HTTP backend is configured).
