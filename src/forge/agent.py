@@ -80,6 +80,8 @@ async def run_agent(
 
 def prompt_for(ctx: Ctx, role: str) -> str:
     """The prompt name: sub-agents get the team-member (or explore) prompt."""
+    if role in ctx.state.custom_roles:
+        return "custom_agent"
     if ctx.agent_id != "main":
         return "explore" if role == "explore" else "team_member"
     return ROLE_PROMPTS.get(role, "coder")
@@ -98,6 +100,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "plan": checklist(ctx.session.plan) if ctx.session.plan else "(none)",
         "failure": ctx.state.failure or "(none)",
         "role": ctx.role,
+        "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 
 

@@ -12,6 +12,15 @@ from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
 
 
+@dataclass
+class CustomRole:
+    """A role defined by an agent file (.forge/agents/<name>.md)."""
+
+    prompt: str  # the file's body, added to the team-member prompt
+    tools: list[str] | None = None  # tool or group names; None = the coder's tools
+    description: str = ""
+
+
 class Team(Protocol):
     """The session's agents (implemented by team.AgentRegistry; tools reach it through Ctx)."""
 
@@ -41,6 +50,7 @@ class SessionState:
     compact_request: int = 0  # /compact asks for level 2 (or 3 with "hard") on the next turn
     context_usage: dict[str, int] = field(default_factory=dict)  # last request, by category
     team: Team | None = None  # set by wiring; None means sub-agents are unavailable
+    custom_roles: dict[str, CustomRole] = field(default_factory=dict)  # from agent files
 
 
 @dataclass

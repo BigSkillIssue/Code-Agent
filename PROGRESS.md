@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S31
+Next step: S32
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -35,7 +35,8 @@ Next step: S31
 | S27 | 2026-10-05 | 56b3c42 | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
 | S28 | 2026-10-05 | 3e4f00c | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
 | S29 | 2026-10-05 | dd9bf28 | tui.py, local/tui_renderer.py, commands.py, cli.py, tests/test_tui.py | Textual app: stream pane, live plan, question picker with Other, approval dialog with diff preview; /plan /compact /context /undo /mode /jobs /help; 'forge' alone opens it |
-| S30 | 2026-10-05 | (next) | team.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, tests/support.py, tests/test_subagents.py | foreground spawn_agent; child Ctx with own id/role/ledger; lead-only tools removed and enforced in call_tool; TEAM_LEAD/TEAM_MEMBER/EXPLORE prompts |
+| S30 | 2026-10-05 | 45dde81 | team.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, tests/support.py, tests/test_subagents.py | foreground spawn_agent; child Ctx with own id/role/ledger; lead-only tools removed and enforced in call_tool; TEAM_LEAD/TEAM_MEMBER/EXPLORE prompts |
+| S31 | 2026-10-05 | (next) | team.py, ctx.py, agent.py, tools.py, prompts.py, tests/test_agent_files.py, tests/fixtures/agents/ | agent files (.forge/agents, ~/.forge/agents; project wins); custom role gets its model chain, tool list and prompt |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -141,10 +142,12 @@ Next step: S31
 - S29: S29: the TUI keeps one session (ctx) for its lifetime; each prompt runs run_task on it. /jobs reads the executor's jobs by duck typing (the Executor port has no listing method).
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
 - S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
+- S31: S31: a custom role is installed into the session on spawn: model -> cfg.roles[name], tools and prompt -> ctx.state.custom_roles; its system prompt is TEAM_MEMBER plus the file body (CUSTOM_AGENT_TAIL). tools may name tools or groups.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
 - S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
+- S31: S31: a custom role is installed into the session on spawn: model -> cfg.roles[name], tools and prompt -> ctx.state.custom_roles; its system prompt is TEAM_MEMBER plus the file body (CUSTOM_AGENT_TAIL). tools may name tools or groups.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

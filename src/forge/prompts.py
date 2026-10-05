@@ -58,6 +58,7 @@ KNOWN_SLOTS = frozenset(
         "page",
         "query",
         "role",
+        "agent_prompt",
     }
 )
 
@@ -235,6 +236,11 @@ Work only on your task. When you are done, reply with a report the lead can act 
 
 TEAM_MEMBER_TAIL = """
 Your role: {role}.
+"""
+
+CUSTOM_AGENT_TAIL = """
+Your role: {role}. Instructions for this role, from its agent file:
+{agent_prompt}
 """
 
 EXPLORE = (
@@ -441,6 +447,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "coder": (CODER, "\n" + ENVIRONMENT),
     "team_lead": (TEAM_LEAD, "\n" + ENVIRONMENT),
     "team_member": (TEAM_MEMBER, TEAM_MEMBER_TAIL + "\n" + ENVIRONMENT),
+    "custom_agent": (TEAM_MEMBER, CUSTOM_AGENT_TAIL + "\n" + ENVIRONMENT),
     "explore": (EXPLORE, "\n" + ENVIRONMENT),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),

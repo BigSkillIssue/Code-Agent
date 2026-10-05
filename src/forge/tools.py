@@ -87,6 +87,7 @@ OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 
 READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
 LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan"})
+TOOL_GROUPS = frozenset({"files", "search", "shell", "web", "plan", "agents", "memory", "mcp"})
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
 
 
@@ -213,8 +214,12 @@ def for_role(role: str, cfg: ForgeConfig) -> list[ToolDef]:
 
 
 def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
-    """The role's tools; sub-agents never get the lead-only tools."""
-    tools = for_role(role, ctx.cfg)
+    """The role's tools (an agent file may list them); sub-agents never get lead-only tools."""
+    custom = ctx.state.custom_roles.get(role)
+    if custom is not None and custom.tools is not None:
+        tools = [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+    else:
+        tools = for_role(role, ctx.cfg)
     if ctx.agent_id != "main":
         tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
     return tools
