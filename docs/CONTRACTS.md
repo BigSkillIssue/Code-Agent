@@ -1,0 +1,432 @@
+# Contracts — interfaces the agent must implement exactly
+
+These signatures are binding: implement names, fields, types and defaults exactly as written. Bodies shown as `...` are yours to write. Each block names its file. If a contract cannot work, implement it anyway and raise an *Open issue* in `PROGRESS.md` (see AGENTS.md).
+
+## Messages and events — `src/forge/providers/base.py`, `src/forge/events.py`
+
+One internal message format for every provider; adapters translate to and from it.
+
+```python
+# providers/base.py
+from typing import Literal, Any
+from pydantic import BaseModel, Field
+
+Role = Literal["system", "user", "assistant", "tool"]
+
+class TextPart(BaseModel):
+    type: Literal["text"] = "text"
+    text: str
+
+class ImagePart(BaseModel):
+    type: Literal["image"] = "image"
+    media_type: str                 # "image/png"
+    data_b64: str
+
+class ToolCall(BaseModel):
+    id: str                         # provider's id, or "call_<n>" if none
+    name: str
+    arguments: dict[str, Any]
+
+class ToolResult(BaseModel):
+    call_id: str
+    ok: bool
+    text: str                       # what the model sees (already capped)
+    spill_path: str | None = None   # full output file when capped
+    code: str | None = None         # error code when ok=False (see docs/TOOLS.md)
+    images: list["ImagePart"] = []   # images for vision models (read_file, MCP)
+
+class Message(BaseModel):
+    role: Role
+    parts: list[TextPart | ImagePart] = Field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)    # assistant only
+    tool_result: ToolResult | None = None                       # tool only
+    reasoning: str | None = None    # thinking text, kept only if provider needs it back
+
+class Usage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    cost_usd: float = 0.0
+```
+
+```python
+# events.py — everything the core reports goes through EventBus as one of these
+class Event(BaseModel):
+    session_id: str
+    agent_id: str = "main"
+    ts: float                       # time.time()
+
+class ModelDelta(Event):    kind: Literal["model_delta"] = "model_delta";   text: str
+class ModelDone(Event):     kind: Literal["model_done"] = "model_done";     message: Message; usage: Usage
+class ToolStarted(Event):   kind: Literal["tool_started"] = "tool_started"; call: ToolCall
+class ToolFinished(Event):  kind: Literal["tool_finished"] = "tool_finished"; result: ToolResult
+class QuestionAsked(Event): kind: Literal["question"] = "question";         questions: list["Question"]
+class PlanUpdated(Event):   kind: Literal["plan_updated"] = "plan_updated"; plan: "Plan"
+class StepDone(Event):      kind: Literal["step_done"] = "step_done";       step_id: str; ok: bool
+class Compacted(Event):     kind: Literal["compacted"] = "compacted";       level: int; tokens_before: int; tokens_after: int
+class SessionDone(Event):   kind: Literal["session_done"] = "session_done"; ok: bool; report: str
+class ErrorEvent(Event):    kind: Literal["error"] = "error";               message: str
+```
+
+Rule: every event serializes to one JSON line (`model_dump_json()`); headless mode (S40) prints exactly these lines.
+
+## Provider interface — `src/forge/providers/base.py`
+
+```python
+class ToolSpec(BaseModel):
+    name: str
+    description: str
+    parameters: dict[str, Any]      # JSON Schema (object)
+
+class Capabilities(BaseModel):
+    context_window: int = 32_000
+    max_output: int = 4_096
+    tools: bool = True              # native tool calling
+    parallel_tools: bool = False
+    vision: bool = False
+    reasoning: bool = False
+    prompt_cache: bool = False
+    web_search: bool = False        # provider-native search tool
+    cost_in: float = 0.0            # USD per 1M input tokens
+    cost_out: float = 0.0
+
+class ChatRequest(BaseModel):
+    model: str                      # model id as the provider knows it
+    system: str
+    messages: list[Message]
+    tools: list[ToolSpec] = []
+    max_output: int | None = None
+    temperature: float | None = None
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
+    json_schema: dict[str, Any] | None = None   # structured output when supported
+
+class StreamItem(BaseModel):        # what stream() yields, in order
+    delta: str = ""                 # text chunk
+    done: Message | None = None     # final assistant message (last item only)
+    usage: Usage | None = None      # with the last item
+
+class Provider(Protocol):
+    name: str                       # "openai", "anthropic", "openrouter", ...
+    async def stream(self, req: ChatRequest) -> AsyncIterator[StreamItem]: ...
+    async def count_tokens(self, req: ChatRequest) -> int: ...
+    def capabilities(self, model: str) -> Capabilities: ...
+
+class ProviderError(Exception):
+    kind: Literal["auth", "rate_limit", "overloaded", "context_overflow", "bad_request", "network"]
+    retry_after_s: float | None
+```
+
+Rules:
+
+- `stream()` retries `rate_limit`, `overloaded` and `network` itself (backoff 1, 2, 4, 8, 16 s); it raises `ProviderError` only when retries are exhausted or the error is not retryable. The registry then tries the next model in the role's fallback chain.
+- If `capabilities(model).tools` is `False`, the adapter itself applies the `TOOL_FALLBACK` prompt and parses tool calls out of the text, so callers never see the difference.
+- `count_tokens` may estimate (characters / 4) when the provider has no counting endpoint.
+
+```python
+# providers/registry.py
+def get_provider(name: str, cfg: "ForgeConfig") -> Provider: ...
+def resolve_role(role: str, cfg: "ForgeConfig") -> list[tuple[Provider, str]]:
+    """Return the (provider, model) fallback chain for a role, e.g. 'coder'."""
+```
+
+`FakeProvider` (`src/forge/providers/fake.py`) implements the same `Provider` protocol and is the only provider used in offline tests.
+
+## Ports — `src/forge/ports.py`
+
+The four seams. v1 implements them in `src/forge/local/`; a server later adds new implementations that pass the same conformance tests (S43).
+
+```python
+class Session(BaseModel):
+    id: str                          # uuid4 hex
+    project_root: str
+    created_at: float
+    status: Literal["active", "waiting", "done", "failed", "cancelled"]
+    spec: "TaskSpec | None" = None
+    plan: "Plan | None" = None
+    messages: list[Message] = []     # full transcript, never compacted
+    summary: str = ""                # latest compaction summary
+
+class Store(Protocol):
+    async def create_session(self, project_root: str) -> Session: ...
+    async def save_session(self, s: Session) -> None: ...
+    async def load_session(self, session_id: str) -> Session: ...
+    async def list_sessions(self, project_root: str, limit: int = 20) -> list[Session]: ...
+    async def search(self, project_root: str, query: str, limit: int = 5) -> list[tuple[str, str]]:
+        """(session_id, excerpt) pairs for `recall`."""
+
+class EventBus(Protocol):
+    async def publish(self, event: Event) -> None: ...
+    def subscribe(self, session_id: str) -> AsyncIterator[Event]: ...
+
+class Command(BaseModel):
+    argv: list[str] | None = None    # exec form, or
+    script: str | None = None        # text sent to a persistent shell
+    shell: Literal["bash", "powershell", "none"] = "none"
+    cwd: str
+    timeout_s: float = 120
+    env: dict[str, str] = {}
+
+class CommandResult(BaseModel):
+    exit_code: int | None            # None = still running (background)
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+    sandbox_denied: bool = False     # failed because the sandbox blocked it
+    job_id: str | None = None
+
+class SandboxPolicy(BaseModel):
+    mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
+    writable_roots: list[str] = []
+    network: bool = False
+
+class Executor(Protocol):
+    async def run(self, cmd: Command, policy: SandboxPolicy, background: bool = False) -> CommandResult: ...
+    async def job_output(self, job_id: str, since_line: int = 0) -> CommandResult: ...
+    async def job_stop(self, job_id: str) -> CommandResult: ...
+
+class Answer(BaseModel):
+    question_index: int
+    values: list[str]                # chosen options or typed text
+
+class Approval(BaseModel):
+    allow: bool
+    remember: bool = False           # add an allow rule for this session
+    feedback: str = ""               # "no, do X instead" goes back to the model
+
+class Renderer(Protocol):
+    async def show(self, event: Event) -> None: ...
+    async def ask(self, questions: list["Question"]) -> list[Answer]: ...
+    async def approve(self, call: ToolCall, reason: str) -> Approval: ...
+```
+
+## Plan models — `src/forge/plan.py`
+
+```python
+class Question(BaseModel):
+    text: str
+    kind: Literal["choice", "multi", "text", "confirm"]
+    options: list[str] = []          # 2–6 for choice / multi
+    default: str | None = None       # used in headless mode
+    why: str                         # one line: what changes with the answer
+
+class TaskSpec(BaseModel):
+    goal: str
+    context: str
+    requirements: list[str]
+    constraints: list[str] = []
+    acceptance_criteria: list[str]   # at least 1
+    assumptions: list[str] = []
+    open_questions: list[Question] = []
+    size: Literal["trivial", "small", "medium", "large"]
+
+StepStatus = Literal["todo", "doing", "done", "failed", "skipped"]
+
+class Step(BaseModel):
+    id: str                          # "s1", "s2", ...
+    title: str
+    detail: str
+    files: list[str] = []
+    depends_on: list[str] = []
+    check: str                       # shell command, or "review: <criterion>"
+    role: str = "coder"
+    status: StepStatus = "todo"
+    notes: str = ""
+    attempts: int = 0
+
+class Plan(BaseModel):
+    spec: TaskSpec
+    steps: list[Step]
+    version: int = 1
+
+    def next_ready_step(self) -> Step | None:
+        """First 'todo' step whose dependencies are all 'done' or 'skipped'."""
+    def validate_graph(self) -> list[str]:
+        """Errors: duplicate ids, unknown dependencies, cycles, missing checks. Empty = valid."""
+    def ready_steps(self) -> list[Step]:
+        """All steps that could run now in parallel (used by teams)."""
+```
+
+**Check semantics.** A `check` starting with `review:` is judged by the reviewer role against the step's diff and must return `{"pass": bool, "reason": str}`. Any other `check` is a shell command run with the session's sandbox; exit code 0 = pass.
+
+```python
+# pipeline.py — public entry points
+async def run_task(prompt: str, ctx: "Ctx") -> "Report": ...      # whole pipeline
+async def refine(prompt: str, ctx: "Ctx") -> TaskSpec: ...
+async def clarify(spec: TaskSpec, ctx: "Ctx") -> TaskSpec: ...
+async def make_plan(spec: TaskSpec, ctx: "Ctx") -> Plan: ...
+async def execute(plan: Plan, ctx: "Ctx") -> Plan: ...
+async def final_review(plan: Plan, ctx: "Ctx") -> "Report": ...
+
+class Report(BaseModel):
+    ok: bool
+    summary: str
+    files_changed: list[str]
+    assumptions: list[str]
+    manual_checks: list[str]
+    usage: Usage
+```
+
+## Agent loop — `src/forge/agent.py`
+
+```python
+class AgentResult(BaseModel):
+    text: str                        # final assistant text
+    messages: list[Message]          # this agent's transcript
+    usage: Usage
+    stopped: Literal["done", "max_turns", "budget", "cancelled", "error"]
+
+async def run_agent(ctx: Ctx, task: str, *, role: str = "coder",
+                    history: list[Message] | None = None,
+                    max_turns: int = 40) -> AgentResult:
+    """Loop: build request (prompts.render(role)), stream via the role's fallback chain,
+    run tool calls with call_tool (parallel only if the model asked for several and
+    all are read_only), append results, compact if needed, repeat until the model
+    answers without tool calls or a limit is hit."""
+```
+
+## Tool framework — `src/forge/tools.py` (top of file), `src/forge/ctx.py`
+
+```python
+# ctx.py — everything a tool or agent may touch, passed explicitly
+@dataclass
+class Ctx:
+    session: Session
+    cfg: "ForgeConfig"
+    root: Path                       # project root, resolved
+    cwd: Path                        # current dir, always inside root
+    store: Store
+    bus: EventBus
+    executor: Executor
+    renderer: Renderer
+    ledger: "ReadLedger"             # path -> sha256 of last read content
+    permissions: "Permissions"
+    hooks: "Hooks"
+    agent_id: str = "main"
+    role: str = "coder"
+    headless: bool = False
+```
+
+```python
+# tools.py — framework part (above all tool definitions)
+Permission = Literal["auto", "ask"]
+
+@dataclass(frozen=True)
+class ToolDef:
+    name: str
+    group: str                       # "shell", "files", "search", "web", "plan", "agents", "memory", "mcp"
+    fn: Callable[..., Awaitable[str | ToolResult]]
+    spec: ToolSpec                   # generated from signature + docstring
+    permission: Permission
+    read_only: bool                  # True = allowed in plan mode and for reviewer roles
+    specifier_arg: str | None        # arg used by rules: "command", "path", "url", "role"
+
+REGISTRY: dict[str, ToolDef] = {}
+
+def tool(*, group: str, permission: Permission = "auto", read_only: bool = False,
+         specifier_arg: str | None = None) -> Callable: ...
+    """Register an async function `fn(ctx: Ctx, **args)` as a tool. First param must be ctx."""
+
+def for_role(role: str, cfg: "ForgeConfig") -> list[ToolDef]: ...
+async def call_tool(ctx: Ctx, call: ToolCall) -> ToolResult: ...
+    """validate -> permission -> pre_tool hooks -> run -> cap output -> post_tool hooks -> audit"""
+
+OUTPUT_CAP_OK = 30_000               # chars inline on success
+OUTPUT_PREVIEW = 2_000               # chars shown when spilled
+OUTPUT_CAP_FAIL = 10_000             # head+tail chars on failure
+```
+
+Rules: a tool returns `str` (wrapped as `ok=True`) or a `ToolResult`; it returns `ToolResult(ok=False, text="error: ...")` for expected failures and never raises for them. The docstring's first line is the tool description the model sees; parameter descriptions come from `Annotated[str, "description"]`.
+
+```python
+# permissions.py
+class Decision(BaseModel):
+    action: Literal["run", "ask", "deny"]
+    reason: str
+
+class Permissions:
+    def check(self, tool: ToolDef, args: dict[str, Any], ctx: Ctx) -> Decision: ...
+    """deny rules -> ask rules -> allow rules -> read-only list -> sandbox mode x approval policy"""
+
+# hooks.py
+HookEvent = Literal["session_start", "prompt_submit", "pre_tool", "post_tool",
+                    "step_done", "pre_compact", "stop", "subagent_stop"]
+class HookOutcome(BaseModel):
+    block: bool = False
+    message: str = ""                # shown to the model when blocking
+```
+
+## Config schema — `src/forge/config.py`
+
+`ForgeConfig` is one Pydantic model; this TOML is its full v1 shape. `forge.example.toml` in the repo must equal this file, and a test loads it.
+
+```toml
+profile = "default"                    # selected profile, overridable with -p
+
+[providers.openai]
+kind = "openai_compat"                 # openai_compat | anthropic | google | litellm
+wire = "chat"                          # chat | responses (openai_compat only)
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+headers = {}
+
+[providers.anthropic]
+kind = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[providers.ollama]
+kind = "openai_compat"
+base_url = "http://localhost:11434/v1"
+
+[models."ollama/qwen3:32b"]            # optional capability overrides for unknown models
+context_window = 32000
+tools = true
+
+[roles]                                # role -> fallback chain of "provider/model"
+refiner    = ["openai/gpt-5-mini"]
+planner    = ["anthropic/claude-sonnet"]
+coder      = ["anthropic/claude-sonnet", "openai/gpt-5"]
+reviewer   = ["openai/gpt-5-mini"]
+compressor = ["openai/gpt-5-mini"]
+explore    = ["openai/gpt-5-mini"]
+
+[sandbox]
+mode = "workspace-write"               # read-only | workspace-write | full-access
+network = false
+writable_roots = []
+
+[approval]
+policy = "on-request"                  # on-request | always | never
+
+[permissions]
+allow = ["bash(git status*)", "bash(pytest *)"]
+ask   = ["bash(git push *)"]
+deny  = ["bash(rm -rf *)", "read_file(./.env*)"]
+
+[limits]
+max_turns_per_step = 40
+max_step_attempts = 3
+max_clarify_rounds = 3
+max_parallel_agents = 4
+max_cost_usd = 5.0
+compact_at = 0.70                      # level 2 summary
+reset_at = 0.90                        # level 3 reset
+mcp_defer_threshold = 40               # above this many MCP tools, load schemas via tool_search
+max_web_searches = 200                 # per session
+
+[web]
+search_backend = "native"              # native | brave | tavily | searxng
+search_api_key_env = ""
+
+[mcp_servers.github]                   # S36
+command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+env_keys = ["GITHUB_TOKEN"]
+
+[hooks]                                # S37
+post_tool = [{ match = "edit_file|write_file", command = "ruff format {path}" }]
+
+[profiles.ci]
+approval = { policy = "never" }
+limits = { max_cost_usd = 1.0 }
+```
+
+Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. A project config may **not** set `providers.*`, `mcp_servers.*` or `hooks.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning.
