@@ -151,7 +151,7 @@ class LocalExecutor:
             ):
                 shell.busy = True
                 return shell
-        shell = ShellSession(kind, exe, launch=launch)
+        shell = ShellSession(kind, exe, env=launch.env, launch=launch)
         await shell.start()
         shell.busy = True
         self._shells.append(shell)
@@ -195,7 +195,7 @@ class LocalExecutor:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=log,
                 stderr=asyncio.subprocess.STDOUT,
-                env=shell_env(cmd.env),
+                env=shell_env({**launch.env, **cmd.env}),
                 **new_process_group(),  # type: ignore[arg-type]
                 preexec_fn=launch.preexec,
             )
@@ -212,7 +212,11 @@ class LocalExecutor:
         if argv is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{cmd.shell} is not installed")
         result = await run_argv(
-            argv, Path(cmd.cwd), timeout_s=cmd.timeout_s, env=cmd.env, launch=launch
+            argv,
+            Path(cmd.cwd),
+            timeout_s=cmd.timeout_s,
+            env={**launch.env, **cmd.env},
+            launch=launch,
         )
         timed_out = result.code == -1 and result.stderr.startswith("timed out")
         return CommandResult(

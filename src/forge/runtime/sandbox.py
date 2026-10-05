@@ -38,6 +38,7 @@ class Launch:
     prefix: list[str] = field(default_factory=list)
     preexec: Callable[[], None] | None = None
     key: str = ""  # equal keys mean equal sandboxes (shells are reused only between those)
+    env: dict[str, str] = field(default_factory=dict)  # extra environment for the process
 
     def argv(self, argv: list[str]) -> list[str]:
         """The command line to execute."""
@@ -48,6 +49,16 @@ def launch_for(policy: SandboxPolicy) -> Launch:
     """The sandbox for a policy on this machine (mechanism 'none' when unavailable)."""
     if policy.mode == "full-access":
         return Launch("none", key="none")
+    launch = os_launch(policy)
+    if launch.mechanism != "none" and policy.mode == "read-only":
+        # Shells need a temp folder (here-documents); the scratch folder is the writable one.
+        scratch = os.path.realpath(scratch_dir())
+        launch.env = {"TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
+    return launch
+
+
+def os_launch(policy: SandboxPolicy) -> Launch:
+    """The OS mechanism for a restricted policy."""
     writable = writable_paths(policy)
     key = f"{policy.mode}|{policy.network}|{'|'.join(writable)}"
     if sys.platform == "darwin" and shutil.which("sandbox-exec"):
