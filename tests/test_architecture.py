@@ -66,3 +66,17 @@ def test_checker_catches_a_forbidden_import() -> None:
     assert any(matches(n, "subprocess") for n in names)
     assert any(matches(n, "forge.local") for n in names)
     assert not any(matches(n, "subprocess") for n in imported_modules(tree, True))
+
+
+def test_no_prompt_text_outside_prompts_py() -> None:
+    """Every model instruction lives in prompts.py (heuristic: long strings starting 'You are')."""
+    offenders = []
+    for path in sorted(SRC.rglob("*.py")):
+        if path.name == "prompts.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                text = node.value.strip()
+                if len(text) > 200 and text.lower().startswith("you are"):
+                    offenders.append(f"{path.relative_to(SRC)}:{node.lineno}")
+    assert not offenders, "prompt text outside prompts.py: " + ", ".join(offenders)

@@ -82,6 +82,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "os": f"{platform.system()} {platform.release()}",
         "shell": " and ".join(shells) or "none",
         "date": datetime.date.today().isoformat(),
+        "memory": "(none)",
     }
 
 
