@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S25
+Next step: S26
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -28,7 +28,8 @@ Next step: S25
 | S21 | 2026-10-05 | 70e0862 | src/forge/providers/catalog.py, src/forge/providers/registry.py, tests/test_registry.py | 17 provider presets (zero-config for known vendors), model catalog with capabilities and prices, aliases (claude-sonnet → claude-sonnet-5-5), config overrides, fallback chain tested end to end |
 | S22 | 2026-10-05 | 882de38 | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
 | S23 | 2026-10-05 | a1f6b6f | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
-| S24 | 2026-10-05 | (next) | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
+| S24 | 2026-10-05 | 2428362 | providers/openai_compat.py, providers/responses.py, tests/test_openai_responses.py | wire picks /chat/completions or /responses per provider |
+| S25 | 2026-10-05 | (next) | providers/litellm.py, providers/fallback_tools.py, providers/registry.py, modelcall.py, docs/PROVIDERS.md, tests/test_fallback_tools.py, tests/contract/test_provider_contract.py | LiteLLM adapter; JSON tool-call fallback with one FIX_JSON error turn; PROVIDERS.md with 12 providers |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -115,6 +116,8 @@ Next step: S25
 - S23: S23: Gemini assistant turns are replayed from the raw parts kept in Message.reasoning (keeps thought signatures); rebuilt from text/tool_calls when absent.
 - S23: S23: reasoning_effort maps to thinking_budget (1024/8192/24576) on Gemini 2.5 and thinking_level LOW/HIGH on later models; json_schema is sent only when no tools are given.
 - S24: S24: Responses wire lives in providers/responses.py (body, input items, event parsing), outside the card's file list, to keep openai_compat.py focused; requests are stateless (store=false) and encrypted reasoning items round-trip via Message.reasoning.
+- S25: S25: the tool fallback wraps the provider in modelcall.model_turn (with_tool_fallback) when the request has tools and capabilities(model).tools is false; malformed JSON gets one corrective FIX_JSON turn, then the reply is passed on as plain text.
+- S25: S25: LiteLLM is imported lazily with LITELLM_LOCAL_MODEL_COST_MAP=True so it never downloads its price table.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -124,3 +127,4 @@ Next step: S25
 - S14: `Ctx` gained one field beyond the contract, `state: SessionState` (default factory): runtime state shared by all agents of a session — the usage tally now, the agent registry and budgets later. All contract fields are unchanged.
 - S22: S22: live contract test (tests/contract) not run here: no API keys in this environment.
 - S23: S23: live contract test for Gemini not run here: no GEMINI_API_KEY.
+- S25: S25: Phase 2 gate (10 providers pass the live contract test) not verified here: no API keys in this environment. 12 live cases exist in tests/contract and skip without keys; run 'uv run pytest tests/contract -m live' with keys set.

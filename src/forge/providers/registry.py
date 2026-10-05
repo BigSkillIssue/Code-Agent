@@ -7,6 +7,7 @@ from forge.providers.anthropic import AnthropicProvider
 from forge.providers.base import Provider, ProviderError
 from forge.providers.catalog import PRESETS, canonical_model
 from forge.providers.google import GoogleProvider
+from forge.providers.litellm import LiteLLMProvider
 from forge.providers.openai_compat import OpenAICompatProvider
 
 
@@ -37,6 +38,8 @@ def build_provider(name: str, config: ProviderConfig, cfg: ForgeConfig) -> Provi
         return AnthropicProvider(name, config, cfg.models)
     if config.kind == "google":
         return GoogleProvider(name, config, cfg.models)
+    if config.kind == "litellm":
+        return LiteLLMProvider(name, config, cfg.models)
     raise ProviderError("bad_request", f"provider kind '{config.kind}' is not available yet")
 
 

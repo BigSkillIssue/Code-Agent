@@ -1,24 +1,40 @@
 """Shared provider contract: every adapter must pass these against its live API (marked `live`).
 
-Each case is skipped when its API key is missing. Add a row to ADAPTERS when a new adapter lands.
+Each case is skipped when its API key is missing (Ollama: set FORGE_LIVE_OLLAMA=1 with a
+local server running). Add a row to ADAPTERS when a new adapter lands.
 """
 
 import os
 
 import pytest
 
-from forge.config import ForgeConfig
+from forge.config import ForgeConfig, ProviderConfig
 from forge.providers.base import ChatRequest, Message, ToolResult, ToolSpec, text_message
 from forge.providers.registry import get_provider
 
 pytestmark = pytest.mark.live
 
-# (provider preset, model, env var holding the key)
+# (provider, model, env var holding the key); every name is a preset or listed in EXTRA.
 ADAPTERS = [
     ("anthropic", "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
     ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
+    ("openai-responses", "gpt-5-mini", "OPENAI_API_KEY"),
     ("gemini", "gemini-2.5-flash", "GEMINI_API_KEY"),
+    ("openrouter", "anthropic/claude-haiku-4.5", "OPENROUTER_API_KEY"),
+    ("groq", "llama-3.3-70b-versatile", "GROQ_API_KEY"),
+    ("deepseek", "deepseek-chat", "DEEPSEEK_API_KEY"),
+    ("mistral", "mistral-small-latest", "MISTRAL_API_KEY"),
+    ("xai", "grok-4-fast", "XAI_API_KEY"),
+    ("together", "meta-llama/Llama-3.3-70B-Instruct-Turbo", "TOGETHER_API_KEY"),
+    ("ollama", "qwen3:8b", "FORGE_LIVE_OLLAMA"),
+    ("litellm", "anthropic/claude-haiku-4-5", "ANTHROPIC_API_KEY"),
 ]
+
+EXTRA = {
+    "openai-responses": ProviderConfig(
+        base_url="https://api.openai.com/v1", api_key_env="OPENAI_API_KEY", wire="responses"
+    ),
+}
 
 ADD_TOOL = ToolSpec(
     name="add",
@@ -46,7 +62,7 @@ def cases() -> list[object]:
 
 @pytest.mark.parametrize(("name", "model"), cases())
 async def test_text_reply_with_usage(name: str, model: str) -> None:
-    provider = get_provider(name, ForgeConfig())
+    provider = get_provider(name, ForgeConfig(providers=EXTRA))
     req = ChatRequest(
         model=model, system="Answer in one word.", messages=[text_message("user", "Say hi")]
     )
@@ -57,7 +73,7 @@ async def test_text_reply_with_usage(name: str, model: str) -> None:
 
 @pytest.mark.parametrize(("name", "model"), cases())
 async def test_tool_call_round_trip(name: str, model: str) -> None:
-    provider = get_provider(name, ForgeConfig())
+    provider = get_provider(name, ForgeConfig(providers=EXTRA))
     history = [text_message("user", "Use the add tool to add 2 and 3, then say the result.")]
     req = ChatRequest(model=model, system="Use tools.", messages=history, tools=[ADD_TOOL])
     first = [item async for item in provider.stream(req)][-1].done

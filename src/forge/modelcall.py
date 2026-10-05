@@ -6,6 +6,7 @@ from typing import Any
 from forge.ctx import Ctx
 from forge.events import ErrorEvent, ModelDelta, ModelDone
 from forge.providers.base import ChatRequest, Message, Provider, ProviderError, ToolSpec, Usage
+from forge.providers.fallback_tools import with_tool_fallback
 from forge.providers.registry import resolve_role
 
 
@@ -39,7 +40,7 @@ async def model_turn(
             model=model, system=system, messages=messages, tools=specs, json_schema=json_schema
         )
         try:
-            return await stream_reply(ctx, provider, request)
+            return await stream_reply(ctx, with_tool_fallback(provider, request), request)
         except ProviderError as err:
             last_error = err
             await publish_error(ctx, f"{provider.name}/{model} failed ({err.kind}): {err}")
