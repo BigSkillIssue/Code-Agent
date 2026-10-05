@@ -12,6 +12,7 @@ from forge import prompts
 from forge.ctx import Ctx
 from forge.events import ErrorEvent, ModelDelta, ModelDone, ToolFinished, ToolStarted
 from forge.memory import load_memory, render_memory
+from forge.plan import checklist
 from forge.providers.base import (
     ChatRequest,
     Message,
@@ -26,7 +27,7 @@ from forge.providers.registry import resolve_role
 from forge.runtime.shell import find_shell
 from forge.tools import REGISTRY, ToolDef, call_tool, for_role
 
-ROLE_PROMPTS = {"coder": "coder"}
+ROLE_PROMPTS = {"coder": "coder", "planner": "planner", "replanner": "replanner"}
 
 
 class AgentResult(BaseModel):
@@ -84,6 +85,9 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "shell": " and ".join(shells) or "none",
         "date": datetime.date.today().isoformat(),
         "memory": render_memory(load_memory(ctx.root, ctx.cwd), ctx.root),
+        "spec": ctx.session.spec.model_dump_json(indent=2) if ctx.session.spec else "(none)",
+        "plan": checklist(ctx.session.plan) if ctx.session.plan else "(none)",
+        "failure": ctx.state.failure or "(none)",
     }
 
 

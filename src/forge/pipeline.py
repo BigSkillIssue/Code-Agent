@@ -1,12 +1,13 @@
 """The pipeline every task goes through: refine -> clarify -> plan -> execute -> verify."""
 
 import json
+from dataclasses import replace
 
 from forge import prompts
-from forge.agent import complete
+from forge.agent import complete, run_agent
 from forge.context import gather
 from forge.ctx import Ctx
-from forge.plan import Question, TaskSpec
+from forge.plan import Plan, Question, TaskSpec
 from forge.providers.base import Message, text_message
 from forge.questions import ask, assumption, default_answer
 from forge.structured import StructuredError, parse_as
@@ -14,6 +15,10 @@ from forge.structured import StructuredError, parse_as
 
 class PipelineError(Exception):
     """A pipeline stage could not produce its result (e.g. no valid spec after a retry)."""
+
+
+class PlanRejected(PipelineError):
+    """The user rejected the plan without asking for changes."""
 
 
 async def refine(prompt: str, ctx: Ctx) -> TaskSpec:
@@ -93,3 +98,20 @@ async def merge_answers(
     lines = "\n".join(f"- {q.text} -> {a}" for q, a in zip(questions, answers, strict=True))
     note = prompts.render("merge_answers", spec=spec.model_dump_json(indent=2), context=lines)
     return await ask_for_spec(ctx, system, [text_message("user", note)], schema)
+
+
+PLANNER_TURNS = 30
+
+
+async def make_plan(spec: TaskSpec, ctx: Ctx) -> Plan:
+    """Let the planner study the code and submit a plan the user approves."""
+    ctx.session.spec = spec
+    ctx.session.plan = None
+    ctx.state.plan_rejected = False
+    planner = replace(ctx, role="planner")
+    await run_agent(planner, prompts.render("plan_task"), role="planner", max_turns=PLANNER_TURNS)
+    if ctx.state.plan_rejected:
+        raise PlanRejected("the user rejected the plan")
+    if ctx.session.plan is None:
+        raise PipelineError("the planner did not submit a valid plan")
+    return ctx.session.plan

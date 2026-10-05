@@ -17,6 +17,8 @@ class SessionState:
 
     usage: Usage = field(default_factory=Usage)  # all model calls of the session so far
     notes: list[str] = field(default_factory=list)  # assumptions made before a spec exists
+    failure: str = ""  # why the last step failed, for the replanner
+    plan_rejected: bool = False  # the user rejected the plan without saying what to change
 
 
 @dataclass

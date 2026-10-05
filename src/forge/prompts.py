@@ -15,6 +15,7 @@ Table of contents:
   TOOL_FALLBACK  how to call tools in JSON for models without native tools
   FIX_JSON       ask again after an answer that was not valid JSON
   MERGE_ANSWERS  fold the user's answers into the task specification
+  PLAN_TASK      the planner's user message
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -317,6 +318,16 @@ Answers:
 {context}
 """
 
+# --------------------------------------------------------------------------- PLAN_TASK
+
+PLAN_TASK = """\
+Plan the task in the specification. Look at the code first, then call submit_plan.
+"""
+
+REPLAN_TASK = """\
+The step described under "What failed" could not be completed. Find out why, then submit the revised remaining steps with submit_plan.
+"""
+
 # --------------------------------------------------------------------------- OVERRIDES
 
 # Small additions per model family, appended after a prompt's static text. Never forks.
@@ -348,6 +359,8 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
     "fix_json": (FIX_JSON, FIX_JSON_TAIL),
     "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
+    "plan_task": (PLAN_TASK, ""),
+    "replan_task": (REPLAN_TASK, ""),
 }
 
 

@@ -5,7 +5,7 @@ Table of contents:
   FILES      read_file, write_file, edit_file, list_dir
   SEARCH     glob, grep
   SHELL      bash, powershell, job_output, job_stop
-  PLAN       ask_user
+  PLAN       ask_user, submit_plan
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -30,7 +30,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
-from forge.plan import Question
+from forge.events import PlanUpdated
+from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec
 from forge.providers.registry import resolve_role
@@ -885,3 +886,104 @@ def check_question(number: int, question: QuestionIn) -> None:
         )
     elif question.kind == "confirm":
         require(default in ("yes", "no"), f"{where}: a confirm default is 'yes' or 'no'")
+
+
+class StepIn(BaseModel):
+    """A plan step as the planner writes it."""
+
+    title: str = Field(max_length=100)
+    detail: str
+    files: list[str] = []
+    depends_on: list[int] = []  # 1-based numbers of earlier steps in this list
+    check: str  # shell command, or "review: <criterion>"
+    role: str = "coder"
+
+
+PLANNING_ROLES = frozenset({"planner", "replanner"})
+BUILTIN_ROLES = frozenset({"coder", "tester", "reviewer", "researcher", "explore", "lead"})
+
+
+@tool(group="plan", permission="auto", read_only=True)
+async def submit_plan(
+    ctx: Ctx,
+    steps: Annotated[list[StepIn], "Ordered steps, 1-30."],
+    explanation: Annotated[str, "One or two sentences on the approach."] = "",
+) -> str:
+    """Submit the implementation plan for user approval."""
+    if ctx.role not in PLANNING_ROLES:
+        raise ToolError("unsupported", "only the planner can submit a plan")
+    spec = ctx.session.spec
+    if spec is None:
+        raise ToolError("invalid_args", "there is no task specification to plan for yet")
+    require(1 <= len(steps) <= 30, "submit 1 to 30 steps")
+    plan = build_plan(ctx, spec, steps)
+    problems = plan.validate_graph() + plan_problems(ctx, plan)
+    if problems:
+        raise ToolError(
+            "invalid_args", "the plan is not valid", body="\n".join(f"- {p}" for p in problems)
+        )
+    if not ctx.headless:
+        call = ToolCall(id="plan", name="submit_plan", arguments={"steps": len(plan.steps)})
+        approval = await ctx.renderer.approve(
+            call, f"approve this plan?\n{checklist(plan)}\n{explanation}".rstrip()
+        )
+        if not approval.allow:
+            ctx.state.plan_rejected = not approval.feedback
+            hint = approval.feedback or "the user rejected the plan; stop and say so"
+            raise ToolError("permission_denied", "the user did not approve the plan", hint=hint)
+    ctx.session.plan = plan
+    await ctx.store.save_session(ctx.session)
+    await ctx.bus.publish(
+        PlanUpdated(session_id=ctx.session.id, agent_id=ctx.agent_id, ts=time.time(), plan=plan)
+    )
+    return plan_summary(plan)
+
+
+def build_plan(ctx: Ctx, spec: TaskSpec, steps: list[StepIn]) -> Plan:
+    """New Steps with ids; a replan keeps the finished steps and numbers on after them."""
+    old = ctx.session.plan
+    kept = (
+        [s for s in old.steps if s.status in ("done", "skipped")]
+        if old and ctx.role == "replanner"
+        else []
+    )
+    first = max((int(s.id[1:]) for s in kept if s.id[1:].isdigit()), default=0) + 1
+    ids = [f"s{first + i}" for i in range(len(steps))]
+    new_steps = [
+        Step(
+            id=ids[i],
+            title=s.title,
+            detail=s.detail,
+            files=s.files,
+            depends_on=[ids[n - 1] if 1 <= n <= len(ids) else f"#{n}" for n in s.depends_on],
+            check=s.check,
+            role=s.role,
+        )
+        for i, s in enumerate(steps)
+    ]
+    version = old.version + 1 if old else 1
+    return Plan(spec=spec, steps=[*kept, *new_steps], version=version)
+
+
+def plan_problems(ctx: Ctx, plan: Plan) -> list[str]:
+    """Unknown roles and files outside the project."""
+    roles = BUILTIN_ROLES | set(ctx.cfg.roles)
+    problems = [f"{s.id} has unknown role '{s.role}'" for s in plan.steps if s.role not in roles]
+    for step in plan.steps:
+        for name in step.files:
+            if not is_within(resolve_path(ctx.root, name), ctx.root):
+                problems.append(f"{step.id} lists {name}, which is outside the project")
+    return problems
+
+
+def plan_summary(plan: Plan) -> str:
+    """`plan approved: N steps (version V)` and one aligned line per step."""
+    rows = []
+    for step in plan.steps:
+        after = f" (after {', '.join(step.depends_on)})" if step.depends_on else ""
+        rows.append((f"{step.id} [{step.role}]", f"{step.title}{after}", step.check))
+    left = max(len(r[0]) for r in rows)
+    middle = max(len(r[1]) for r in rows)
+    lines = [f"plan approved: {len(plan.steps)} steps (version {plan.version})"]
+    lines += [f"{a.ljust(left)}  {b.ljust(middle)}  -> check: {c}" for a, b, c in rows]
+    return "\n".join(lines)
