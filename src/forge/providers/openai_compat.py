@@ -15,7 +15,6 @@ from forge.config import ModelOverride, ProviderConfig
 from forge.providers.base import (
     Capabilities,
     ChatRequest,
-    ErrorKind,
     ImagePart,
     Message,
     ProviderError,
@@ -26,20 +25,13 @@ from forge.providers.base import (
     cost_usd,
 )
 from forge.providers.catalog import capabilities_for
+from forge.providers.errors import OVERFLOW_HINTS, error_from_status
 from forge.providers.retry import RETRY_DELAYS, Sleep, stream_with_retries
 from forge.providers.sse import read_events
 from forge.providers.tokens import estimate_tokens
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 TIMEOUT = httpx.Timeout(600.0, connect=10.0)
-OVERFLOW_HINTS = (
-    "context_length",
-    "context length",
-    "maximum context",
-    "context window",
-    "too many tokens",
-    "prompt is too long",
-)
 
 
 class OpenAICompatProvider:
@@ -271,26 +263,6 @@ def parse_usage(data: Mapping[str, Any]) -> Usage:
     )
 
 
-def error_from_status(status: int, body: str, headers: Mapping[str, str]) -> ProviderError:
-    """Map an HTTP error response to a ProviderError kind."""
-    lowered = body.lower()
-    message = f"HTTP {status}: {body[:500]}"
-    kind: ErrorKind
-    if status in (401, 403) or "insufficient_quota" in lowered:
-        kind = "auth"
-    elif status == 429:
-        return ProviderError("rate_limit", message, retry_after(headers))
-    elif status in (408, 425):
-        kind = "network"
-    elif status >= 500:
-        kind = "overloaded"
-    elif status == 413 or any(hint in lowered for hint in OVERFLOW_HINTS):
-        kind = "context_overflow"
-    else:
-        kind = "bad_request"
-    return ProviderError(kind, message)
-
-
 def error_from_payload(error: Any) -> ProviderError:
     """Map an error object sent inside the event stream."""
     text = json.dumps(error).lower()
@@ -301,15 +273,3 @@ def error_from_payload(error: Any) -> ProviderError:
     if any(hint in text for hint in OVERFLOW_HINTS):
         return ProviderError("context_overflow", text[:500])
     return ProviderError("bad_request", text[:500])
-
-
-def retry_after(headers: Mapping[str, str]) -> float | None:
-    """Seconds to wait, from `retry-after-ms` or `retry-after` (numeric form only)."""
-    for name, scale in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
-        value = headers.get(name)
-        if value is not None:
-            try:
-                return float(value) * scale
-            except ValueError:
-                return None
-    return None

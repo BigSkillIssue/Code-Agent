@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S22
+Next step: S23
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -25,7 +25,8 @@ Next step: S22
 | S18 | 2026-10-05 | 5746aea | src/forge/runtime/checkpoint.py, src/forge/commands.py, src/forge/pipeline.py, tests/test_checkpoint.py | snapshots via temp index + write-tree + commit-tree into refs/forge/<session>/<step>; restore via checkout-index from a temp index; /undo rolls back the latest step, else the last file change |
 | S19 | 2026-10-05 | a37a6b3 | src/forge/local/sqlite_store.py, src/forge/pipeline.py, src/forge/cli.py, src/forge/wiring.py, src/forge/local/memory_store.py, src/forge/local/local_executor.py, tests/test_sqlite_store.py, tests/e2e/test_resume.py, pyproject.toml | Phase 1 gate passed: a plan killed mid-step resumes from the database and completes; SqliteStore (session JSON + FTS5 index + board table), forge sessions, forge resume [id] |
 | S20 | 2026-10-05 | 5dab705 | src/forge/pipeline.py, src/forge/evals.py, src/forge/local/auto_renderer.py, src/forge/runtime/gitops.py, src/forge/wiring.py, src/forge/cli.py, evals/tasks/*.toml (10), evals/repos/, tests/test_review.py, tests/fixtures/fake/*.json | final_review → Report; run_task runs the whole pipeline (trivial tasks skip clarify/plan); forge eval with 10 tasks on 3 sample repos, offline via compact fake solutions |
-| S21 | 2026-10-05 | (next) | src/forge/providers/catalog.py, src/forge/providers/registry.py, tests/test_registry.py | 17 provider presets (zero-config for known vendors), model catalog with capabilities and prices, aliases (claude-sonnet → claude-sonnet-5-5), config overrides, fallback chain tested end to end |
+| S21 | 2026-10-05 | 70e0862 | src/forge/providers/catalog.py, src/forge/providers/registry.py, tests/test_registry.py | 17 provider presets (zero-config for known vendors), model catalog with capabilities and prices, aliases (claude-sonnet → claude-sonnet-5-5), config overrides, fallback chain tested end to end |
+| S22 | 2026-10-05 | (next) | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -106,6 +107,9 @@ Next step: S22
 - S20: `forge \"<prompt>\"` now runs `run_task`; the fake fixtures include a refiner answer.
 - S21: a role entry naming a provider without a [providers.*] entry uses the catalog preset (base URL + API-key env var); a config entry always wins.
 - S21: catalog prices are vendor list prices per 1M tokens at the time of writing (Claude values from the Anthropic model table of 2026-09-25); `[models.*]` overrides any of them.
+- S22: S22: Anthropic adapter tests inject an httpx2 client (SDK 1.x uses httpx2, so respx cannot mock it); fixtures are recorded SSE event lists.
+- S22: S22: Bedrock via base_url 'bedrock://<region>' (AnthropicBedrockMantle), Vertex via 'vertex://<project>/<region>'.
+- S22: S22: ChatRequest.json_schema is not sent to Claude; structured.py's prompt + parse path covers it.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -113,3 +117,4 @@ Next step: S22
 - S07: TOOLS.md says reads outside the project need approval; that is a permission rule and is implemented with the full permission engine in S28.
 - S08: `CommandResult` gained four optional fields that the shell and job tools need and the contract lacks: `cwd` (folder after a shell command), `pid`, `elapsed_s` and `total_lines` (job status and paging). `ports.JobNotFoundError` was added for unknown job ids. All contract fields are unchanged.
 - S14: `Ctx` gained one field beyond the contract, `state: SessionState` (default factory): runtime state shared by all agents of a session — the usage tally now, the agent registry and budgets later. All contract fields are unchanged.
+- S22: S22: live contract test (tests/contract) not run here: no API keys in this environment.

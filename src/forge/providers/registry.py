@@ -3,6 +3,7 @@
 from typing import cast
 
 from forge.config import ForgeConfig, ProviderConfig
+from forge.providers.anthropic import AnthropicProvider
 from forge.providers.base import Provider, ProviderError
 from forge.providers.catalog import PRESETS, canonical_model
 from forge.providers.openai_compat import OpenAICompatProvider
@@ -31,6 +32,8 @@ def build_provider(name: str, config: ProviderConfig, cfg: ForgeConfig) -> Provi
     """Create the adapter for one provider entry."""
     if config.kind == "openai_compat":
         return OpenAICompatProvider(name, config, cfg.models)
+    if config.kind == "anthropic":
+        return AnthropicProvider(name, config, cfg.models)
     raise ProviderError("bad_request", f"provider kind '{config.kind}' is not available yet")
 
 
