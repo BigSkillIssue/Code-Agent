@@ -1,0 +1,9 @@
+name = "remove-item"
+category = "multi-file"
+repo = "repos/inventory"
+prompt = "Add Store.remove_item(name) and a test file test_store.py for it."
+check = '''{python} -c "from store import Store; from items import Item; s = Store(); s.add_item(Item('a', 1.0, 1)); s.remove_item('a'); assert not s.items" && {python} -c "import pathlib; assert pathlib.Path('test_store.py').exists()"'''
+
+[fake]
+edits = [{ path = "store.py", old = "    def total_value(self)", new = "    def remove_item(self, name: str) -> None:\n        del self.items[name]\n\n    def total_value(self)" }]
+writes = [{ path = "test_store.py", content = "from items import Item\nfrom store import Store\n\n\ndef test_remove_item() -> None:\n    s = Store()\n    s.add_item(Item(\"a\", 1.0, 1))\n    s.remove_item(\"a\")\n    assert not s.items\n" }]

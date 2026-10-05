@@ -17,6 +17,17 @@ from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
 
 FAKE_FIXTURE = Path("tests") / "fixtures" / "fake" / "hello.json"
+BUILTIN_FAKE = {
+    "roles": {
+        "refiner": [
+            {
+                "text": '{"goal": "Say hello", "context": "", "requirements": [], '
+                '"acceptance_criteria": ["a greeting is printed"], "size": "trivial"}'
+            }
+        ]
+    },
+    "turns": [{"text": "Hello from the fake provider."}],
+}
 FAKE_ROLES = (
     "refiner",
     "planner",
@@ -33,10 +44,12 @@ FAKE_ROLES = (
 def use_fake_provider(cfg: ForgeConfig, script: Path | None, project_root: Path) -> FakeProvider:
     """Send every role to a FakeProvider replaying `script` (default: the hello fixture)."""
     path = script or project_root / FAKE_FIXTURE
-    if path.is_file():
-        fake = FakeProvider.from_file(path)
-    else:
-        fake = FakeProvider.from_data([{"text": "Hello from the fake provider."}])
+    fake = FakeProvider.from_file(path) if path.is_file() else FakeProvider.from_data(BUILTIN_FAKE)
+    return install_fake(cfg, fake)
+
+
+def install_fake(cfg: ForgeConfig, fake: FakeProvider) -> FakeProvider:
+    """Route every role to `fake`, using the role name as the model name."""
     register_provider(cfg, fake)
     cfg.roles = {role: [f"fake/{role}"] for role in (*FAKE_ROLES, *cfg.roles)}
     return fake

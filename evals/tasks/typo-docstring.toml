@@ -1,0 +1,8 @@
+name = "typo-docstring"
+category = "trivial"
+repo = "repos/textutil"
+prompt = "Fix the typo 'Retrun' in textutil.py."
+check = '''{python} -c "import pathlib; assert 'Retrun' not in pathlib.Path('textutil.py').read_text()"'''
+
+[fake]
+edits = [{ path = "textutil.py", old = "Retrun", new = "Return" }]

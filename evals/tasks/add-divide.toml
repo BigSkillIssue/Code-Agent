@@ -1,0 +1,8 @@
+name = "add-divide"
+category = "feature"
+repo = "repos/calc"
+prompt = "Add divide(a, b) to calc.py that raises ZeroDivisionError for b == 0."
+check = '''{python} -c "from calc import divide; assert divide(6, 3) == 2"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "    return a * b\n", new = "    return a * b\n\n\ndef divide(a: float, b: float) -> float:\n    \"\"\"Return a / b.\"\"\"\n    if b == 0:\n        raise ZeroDivisionError(\"b must not be 0\")\n    return a / b\n" }]

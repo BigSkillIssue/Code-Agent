@@ -1,0 +1,8 @@
+name = "low-stock-constant"
+category = "refactor"
+repo = "repos/inventory"
+prompt = "Replace the magic number 5 in Store.is_low with a module constant LOW_STOCK."
+check = '''{python} -c "import store; assert store.LOW_STOCK == 5"'''
+
+[fake]
+edits = [{ path = "store.py", old = "from items import Item\n", new = "from items import Item\n\nLOW_STOCK = 5\n" }, { path = "store.py", old = "quantity < 5", new = "quantity < LOW_STOCK" }]

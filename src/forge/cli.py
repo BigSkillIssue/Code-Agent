@@ -8,11 +8,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from forge import __version__
-from forge.agent import run_agent
 from forge.config import ConfigError, ForgeConfig, find_project_root, load_config, render_effective
+from forge.evals import EvalResult, EvalTask, load_tasks, results_table, run_eval
 from forge.events import SessionDone
 from forge.local.rich_renderer import RichRenderer
-from forge.pipeline import PipelineError, resume
+from forge.pipeline import PipelineError, report_text, resume, run_task
 from forge.ports import SessionNotFoundError
 from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
 
@@ -22,6 +22,7 @@ commands:
   forge config check   validate and print the effective configuration
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
+  forge eval           run the benchmark tasks in evals/tasks (--fake: offline)
 """
 
 
@@ -107,14 +108,15 @@ async def run_prompt(root: Path, cfg: ForgeConfig, prompt: str, *, auto_approve:
     ctx = await open_session(root, cfg, renderer)
     shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
     try:
-        result = await run_agent(ctx, prompt, max_turns=cfg.limits.max_turns_per_step)
-        ok = result.stopped == "done"
-        report = result.text if ok else f"{result.stopped}: {result.text}"
-        await ctx.bus.publish(
-            SessionDone(session_id=ctx.session.id, ts=time.time(), ok=ok, report=report)
+        report = await run_task(prompt, ctx)
+        ok = report.ok
+        event = SessionDone(
+            session_id=ctx.session.id, ts=time.time(), ok=ok, report=report_text(report)
         )
+        await ctx.bus.publish(event)
         await shower
     finally:
+        shower.cancel()
         await close_session(ctx)
     return 0 if ok else 1
 
@@ -187,7 +189,43 @@ async def resume_session(
     return 0 if ok else 1
 
 
+def cmd_eval(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge eval`: run benchmark tasks and print pass/fail, cost and time."""
+    parser = argparse.ArgumentParser(prog="forge eval")
+    parser.add_argument("--suite", help="only tasks whose name or category starts with this")
+    parser.add_argument(
+        "--evals", type=Path, help="folder holding tasks/ and repos/ (default: ./evals)"
+    )
+    args = parser.parse_args(rest)
+    root = find_project_root(options.cwd or Path.cwd())
+    cfg = load_config(root, profile=options.profile)
+    evals_dir = args.evals or root / "evals"
+    tasks = load_tasks(evals_dir, args.suite)
+    if not tasks:
+        print(f"error: no eval tasks in {evals_dir / 'tasks'}", file=sys.stderr)
+        return 1
+    results = asyncio.run(run_evals(tasks, evals_dir, cfg, fake=options.fake is not None))
+    print(results_table(results))
+    return 0 if all(r.passed for r in results) else 1
+
+
+async def run_evals(
+    tasks: list[EvalTask], evals_dir: Path, cfg: ForgeConfig, *, fake: bool
+) -> list[EvalResult]:
+    """Run the tasks one after another, printing each result as it comes."""
+    results = []
+    for task in tasks:
+        result = await run_eval(task, evals_dir, cfg, fake=fake)
+        print(
+            f"{'pass' if result.passed else 'FAIL'}  {task.name}  {result.note}".rstrip(),
+            flush=True,
+        )
+        results.append(result)
+    return results
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
+    "eval": cmd_eval,
     "config": cmd_config,
     "sessions": cmd_sessions,
     "resume": cmd_resume,

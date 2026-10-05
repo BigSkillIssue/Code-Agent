@@ -1,0 +1,8 @@
+name = "fix-add"
+category = "bug"
+repo = "repos/calc"
+prompt = "add() returns the wrong result. Fix it."
+check = '''{python} -c "from calc import add; assert add(2, 3) == 5"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "return a - b", new = "return a + b" }]

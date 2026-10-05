@@ -1,0 +1,8 @@
+name = "rename-multiply"
+category = "refactor"
+repo = "repos/calc"
+prompt = "Rename multiply to times everywhere."
+check = '''{python} -c "import calc, report; assert calc.times(2, 3) == 6 and not hasattr(calc, 'multiply') and 'product=6' in report.summary(2, 3)"'''
+
+[fake]
+edits = [{ path = "calc.py", old = "def multiply(", new = "def times(" }, { path = "report.py", old = "from calc import add, multiply", new = "from calc import add, times" }, { path = "report.py", old = "multiply(a, b)", new = "times(a, b)" }]

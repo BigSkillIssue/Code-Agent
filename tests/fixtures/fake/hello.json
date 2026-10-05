@@ -1,5 +1,14 @@
 {
+  "roles": {
+    "refiner": [
+      {
+        "text": "{\"goal\": \"Say hello\", \"context\": \"\", \"requirements\": [], \"constraints\": [], \"acceptance_criteria\": [\"a greeting is printed\"], \"assumptions\": [], \"open_questions\": [], \"size\": \"trivial\"}"
+      }
+    ]
+  },
   "turns": [
-    {"text": "Hello from the fake provider. Nothing to do."}
+    {
+      "text": "Hello from the fake provider. Nothing to do."
+    }
   ]
 }

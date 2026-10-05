@@ -1,0 +1,8 @@
+name = "fix-slugify"
+category = "bug"
+repo = "repos/textutil"
+prompt = "slugify should join words with hyphens, not underscores."
+check = '''{python} -c "from textutil import slugify; assert slugify('Hello World!') == 'hello-world'"'''
+
+[fake]
+edits = [{ path = "textutil.py", old = "\"_\".join", new = "\"-\".join" }]

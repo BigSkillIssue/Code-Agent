@@ -31,3 +31,16 @@ async def diff_since(root: Path, ref: str | None = None) -> str:
             body = "\n".join(f"+{line}" for line in text.splitlines())
             parts.append(f"new file: {name}\n{body}")
     return "\n\n".join(p for p in parts if p) or "(no changes)"
+
+
+async def changed_files(root: Path, ref: str | None = None) -> list[str]:
+    """Root-relative paths changed since `ref` (default HEAD), untracked files included."""
+    if not await is_repo(root):
+        return []
+    base = ref or "HEAD"
+    has_base = (await run_argv(["git", "rev-parse", "--verify", "--quiet", base], root)).code == 0
+    names = await run_argv(
+        ["git", "diff", "--name-only", base] if has_base else ["git", "diff", "--name-only"], root
+    )
+    untracked = await run_argv(["git", "ls-files", "--others", "--exclude-standard"], root)
+    return sorted(set(names.stdout.split()) | set(untracked.stdout.split()))

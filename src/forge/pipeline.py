@@ -3,6 +3,8 @@
 import json
 from dataclasses import replace
 
+from pydantic import BaseModel
+
 from forge import prompts
 from forge.agent import run_agent
 from forge.checks import CheckResult, save_plan, settle_step
@@ -11,10 +13,30 @@ from forge.context import gather
 from forge.ctx import Ctx
 from forge.modelcall import complete, publish_error
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
-from forge.providers.base import Message, text_message
+from forge.providers.base import Message, ProviderError, Usage, text_message
 from forge.questions import ask, assumption, default_answer
 from forge.runtime.checkpoint import CheckpointError, snapshot
+from forge.runtime.gitops import changed_files, diff_since
 from forge.structured import StructuredError, parse_as
+
+
+class Report(BaseModel):
+    """What the user reads at the end of a task."""
+
+    ok: bool
+    summary: str
+    files_changed: list[str]
+    assumptions: list[str]
+    manual_checks: list[str]
+    usage: Usage
+
+
+class ReviewAnswer(BaseModel):
+    """The reviewer's final verdict."""
+
+    ok: bool
+    summary: str
+    manual_checks: list[str] = []
 
 
 class PipelineError(Exception):
@@ -204,3 +226,106 @@ async def resume(ctx: Ctx) -> Plan:
             step.status = "todo"
     ctx.session.status = "active"
     return await execute(plan, ctx)
+
+
+MAX_REVIEW_DIFF = 80_000
+
+
+async def final_review(plan: Plan, ctx: Ctx) -> Report:
+    """The reviewer checks the whole diff against the acceptance criteria and writes the report."""
+    base = first_checkpoint(ctx, plan)
+    diff = (await diff_since(ctx.root, base))[:MAX_REVIEW_DIFF]
+    system = prompts.render("final_review", spec=plan.spec.model_dump_json(indent=2), diff=diff)
+    all_done = all(s.status in ("done", "skipped") for s in plan.steps)
+    try:
+        reply, _ = await complete(
+            ctx, "reviewer", system, [text_message("user", prompts.render("review_task"))]
+        )
+        answer = parse_as(reply.text(), ReviewAnswer)
+    except (ProviderError, StructuredError) as err:
+        answer = ReviewAnswer(
+            ok=all_done,
+            summary=f"The final review could not run ({err}).",
+            manual_checks=["review the diff by hand"],
+        )
+    return Report(
+        ok=answer.ok and all_done,
+        summary=answer.summary,
+        files_changed=await changed_files(ctx.root, base),
+        assumptions=assumptions_of(ctx, plan.spec),
+        manual_checks=answer.manual_checks,
+        usage=ctx.state.usage,
+    )
+
+
+def first_checkpoint(ctx: Ctx, plan: Plan) -> str | None:
+    """The snapshot taken before the first step that has one (the task's starting point)."""
+    return next(
+        (ctx.state.checkpoints[s.id] for s in plan.steps if s.id in ctx.state.checkpoints), None
+    )
+
+
+def assumptions_of(ctx: Ctx, spec: TaskSpec | None) -> list[str]:
+    """Every assumption made on the user's behalf, without repeats."""
+    found = [*(spec.assumptions if spec else []), *ctx.state.notes]
+    return list(dict.fromkeys(found))
+
+
+async def run_task(prompt: str, ctx: Ctx) -> Report:
+    """The whole pipeline: refine, clarify, plan, execute, final review."""
+    ctx.session.status = "active"
+    try:
+        spec = await refine(prompt, ctx)
+        ctx.session.spec = spec
+        if spec.size == "trivial":
+            report = await run_trivial(prompt, spec, ctx)
+        else:
+            spec = await clarify(spec, ctx)
+            plan = await execute(await make_plan(spec, ctx), ctx)
+            report = await final_review(plan, ctx)
+    except PlanRejected:
+        report = stopped_report(ctx, "You rejected the plan, so nothing was changed.")
+    except PipelineError as err:
+        report = stopped_report(ctx, str(err))
+    ctx.session.status = "done" if report.ok else "failed"
+    ctx.session.summary = report.summary
+    await ctx.store.save_session(ctx.session)
+    return report
+
+
+async def run_trivial(prompt: str, spec: TaskSpec, ctx: Ctx) -> Report:
+    """Trivial tasks skip questions and planning: one agent run straight on the prompt."""
+    result = await run_agent(ctx, prompt, max_turns=ctx.cfg.limits.max_turns_per_step)
+    return Report(
+        ok=result.stopped == "done",
+        summary=result.text,
+        files_changed=await changed_files(ctx.root),
+        assumptions=assumptions_of(ctx, spec),
+        manual_checks=[],
+        usage=ctx.state.usage,
+    )
+
+
+def stopped_report(ctx: Ctx, why: str) -> Report:
+    """A report for a task that ended before any work was done."""
+    return Report(
+        ok=False,
+        summary=why,
+        files_changed=[],
+        assumptions=assumptions_of(ctx, ctx.session.spec),
+        manual_checks=[],
+        usage=ctx.state.usage,
+    )
+
+
+def report_text(report: Report) -> str:
+    """The report as plain text for the terminal and SessionDone."""
+    lines = [report.summary]
+    if report.files_changed:
+        lines.append("Files changed: " + ", ".join(report.files_changed))
+    lines += [f"Assumed: {a}" for a in report.assumptions]
+    lines += [f"Check by hand: {c}" for c in report.manual_checks]
+    usage = report.usage
+    tokens = f"{usage.input_tokens} in, {usage.output_tokens} out tokens"
+    lines.append(f"Cost: ${usage.cost_usd:.4f} ({tokens})")
+    return "\n".join(lines)

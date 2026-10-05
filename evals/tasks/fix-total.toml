@@ -1,0 +1,8 @@
+name = "fix-total"
+category = "bug"
+repo = "repos/inventory"
+prompt = "Store.total_value must multiply price by quantity."
+check = '''{python} -c "from store import Store; from items import Item; s = Store(); s.add_item(Item('a', 2.0, 3)); assert s.total_value() == 6.0"'''
+
+[fake]
+edits = [{ path = "store.py", old = "sum(item.price for", new = "sum(item.price * item.quantity for" }]

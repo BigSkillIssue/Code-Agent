@@ -1,0 +1,8 @@
+name = "item-repr"
+category = "feature"
+repo = "repos/inventory"
+prompt = "Give Item a value() method returning price * quantity."
+check = '''{python} -c "from items import Item; assert Item('a', 2.0, 4).value() == 8.0"'''
+
+[fake]
+edits = [{ path = "items.py", old = "    quantity: int\n", new = "    quantity: int\n\n    def value(self) -> float:\n        return self.price * self.quantity\n" }]

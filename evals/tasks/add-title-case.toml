@@ -1,0 +1,8 @@
+name = "add-title-case"
+category = "feature"
+repo = "repos/textutil"
+prompt = "Add title_case(text) that capitalises every word."
+check = '''{python} -c "from textutil import title_case; assert title_case('hello big world') == 'Hello Big World'"'''
+
+[fake]
+edits = [{ path = "textutil.py", old = "def shout(", new = "def title_case(text: str) -> str:\n    \"\"\"Capitalise every word.\"\"\"\n    return \" \".join(w.capitalize() for w in text.split())\n\n\ndef shout(" }]
