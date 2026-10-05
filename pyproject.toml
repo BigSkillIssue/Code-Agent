@@ -5,6 +5,7 @@ description = "Forge: a provider-agnostic coding agent that refines, plans, exec
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
+    "httpx>=0.27",
     "pydantic>=2.9",
 ]
 

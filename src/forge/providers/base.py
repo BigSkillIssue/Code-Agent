@@ -1,6 +1,7 @@
 """The internal message format every provider adapter translates to and from."""
 
-from typing import Any, Literal
+from collections.abc import AsyncIterator
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -75,3 +76,80 @@ class Usage(BaseModel):
 def text_message(role: Role, text: str) -> Message:
     """A message holding a single text part."""
     return Message(role=role, parts=[TextPart(text=text)])
+
+
+class ToolSpec(BaseModel):
+    """A tool as the model sees it: name, description and JSON Schema of its arguments."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]  # JSON Schema (object)
+
+
+class Capabilities(BaseModel):
+    """What a model can do and what it costs."""
+
+    context_window: int = 32_000
+    max_output: int = 4_096
+    tools: bool = True  # native tool calling
+    parallel_tools: bool = False
+    vision: bool = False
+    reasoning: bool = False
+    prompt_cache: bool = False
+    web_search: bool = False  # provider-native search tool
+    cost_in: float = 0.0  # USD per 1M input tokens
+    cost_out: float = 0.0
+
+
+class ChatRequest(BaseModel):
+    """One model call."""
+
+    model: str  # model id as the provider knows it
+    system: str
+    messages: list[Message]
+    tools: list[ToolSpec] = []
+    max_output: int | None = None
+    temperature: float | None = None
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
+    json_schema: dict[str, Any] | None = None  # structured output when supported
+
+
+class StreamItem(BaseModel):
+    """What `stream()` yields, in order: text deltas, then one final item with `done`."""
+
+    delta: str = ""  # text chunk
+    done: Message | None = None  # final assistant message (last item only)
+    usage: Usage | None = None  # with the last item
+
+
+class Provider(Protocol):
+    """One API endpoint (vendor, gateway or local server)."""
+
+    name: str  # "openai", "anthropic", "openrouter", ...
+
+    def stream(self, req: ChatRequest) -> AsyncIterator[StreamItem]: ...
+    async def count_tokens(self, req: ChatRequest) -> int: ...
+    def capabilities(self, model: str) -> Capabilities: ...
+
+
+ErrorKind = Literal[
+    "auth", "rate_limit", "overloaded", "context_overflow", "bad_request", "network"
+]
+RETRYABLE: frozenset[ErrorKind] = frozenset({"rate_limit", "overloaded", "network"})
+
+
+class ProviderError(Exception):
+    """A provider call failed after its retries, or with an error retrying cannot fix."""
+
+    kind: ErrorKind
+    retry_after_s: float | None
+
+    def __init__(self, kind: ErrorKind, message: str = "", retry_after_s: float | None = None):
+        super().__init__(message or kind)
+        self.kind = kind
+        self.retry_after_s = retry_after_s
+
+
+def cost_usd(usage: Usage, caps: Capabilities) -> float:
+    """Price of `usage` at the model's per-million-token rates."""
+    return (usage.input_tokens * caps.cost_in + usage.output_tokens * caps.cost_out) / 1_000_000

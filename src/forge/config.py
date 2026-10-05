@@ -155,11 +155,17 @@ class ForgeConfig(_Strict):
     profiles: dict[str, dict[str, Any]] = {}
 
     _warnings: list[str] = PrivateAttr(default_factory=list)
+    _instances: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     @property
     def warnings(self) -> list[str]:
         """Problems found while loading that did not stop it (e.g. untrusted keys)."""
         return self._warnings
+
+    @property
+    def instances(self) -> dict[str, Any]:
+        """Provider objects built for this config, by name (built once, then reused)."""
+        return self._instances
 
 
 def forge_home() -> Path:
