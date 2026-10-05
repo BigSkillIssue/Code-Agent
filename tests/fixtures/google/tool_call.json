@@ -1,0 +1,47 @@
+[
+ {
+  "candidates": [
+   {
+    "content": {
+     "role": "model",
+     "parts": [
+      {
+       "text": "Checking the file.",
+       "thought": true
+      }
+     ]
+    },
+    "index": 0
+   }
+  ],
+  "modelVersion": "gemini-2.5-flash"
+ },
+ {
+  "candidates": [
+   {
+    "content": {
+     "role": "model",
+     "parts": [
+      {
+       "functionCall": {
+        "name": "read_file",
+        "args": {
+         "path": "calc.py"
+        }
+       },
+       "thoughtSignature": "c2lnLTEyMw=="
+      }
+     ]
+    },
+    "index": 0,
+    "finishReason": "STOP"
+   }
+  ],
+  "modelVersion": "gemini-2.5-flash",
+  "usageMetadata": {
+   "promptTokenCount": 40,
+   "candidatesTokenCount": 9,
+   "totalTokenCount": 49
+  }
+ }
+]

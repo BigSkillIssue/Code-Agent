@@ -17,6 +17,7 @@ pytestmark = pytest.mark.live
 ADAPTERS = [
     ("anthropic", "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
     ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
+    ("gemini", "gemini-2.5-flash", "GEMINI_API_KEY"),
 ]
 
 ADD_TOOL = ToolSpec(

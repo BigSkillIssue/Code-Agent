@@ -1,0 +1,42 @@
+[
+ {
+  "candidates": [
+   {
+    "content": {
+     "role": "model",
+     "parts": [
+      {
+       "text": "Hello"
+      }
+     ]
+    },
+    "index": 0
+   }
+  ],
+  "modelVersion": "gemini-2.5-flash"
+ },
+ {
+  "candidates": [
+   {
+    "content": {
+     "role": "model",
+     "parts": [
+      {
+       "text": " there"
+      }
+     ]
+    },
+    "index": 0,
+    "finishReason": "STOP"
+   }
+  ],
+  "modelVersion": "gemini-2.5-flash",
+  "usageMetadata": {
+   "promptTokenCount": 2000,
+   "cachedContentTokenCount": 1500,
+   "candidatesTokenCount": 4,
+   "thoughtsTokenCount": 6,
+   "totalTokenCount": 2010
+  }
+ }
+]

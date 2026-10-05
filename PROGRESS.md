@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S23
+Next step: S24
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -26,7 +26,8 @@ Next step: S23
 | S19 | 2026-10-05 | a37a6b3 | src/forge/local/sqlite_store.py, src/forge/pipeline.py, src/forge/cli.py, src/forge/wiring.py, src/forge/local/memory_store.py, src/forge/local/local_executor.py, tests/test_sqlite_store.py, tests/e2e/test_resume.py, pyproject.toml | Phase 1 gate passed: a plan killed mid-step resumes from the database and completes; SqliteStore (session JSON + FTS5 index + board table), forge sessions, forge resume [id] |
 | S20 | 2026-10-05 | 5dab705 | src/forge/pipeline.py, src/forge/evals.py, src/forge/local/auto_renderer.py, src/forge/runtime/gitops.py, src/forge/wiring.py, src/forge/cli.py, evals/tasks/*.toml (10), evals/repos/, tests/test_review.py, tests/fixtures/fake/*.json | final_review → Report; run_task runs the whole pipeline (trivial tasks skip clarify/plan); forge eval with 10 tasks on 3 sample repos, offline via compact fake solutions |
 | S21 | 2026-10-05 | 70e0862 | src/forge/providers/catalog.py, src/forge/providers/registry.py, tests/test_registry.py | 17 provider presets (zero-config for known vendors), model catalog with capabilities and prices, aliases (claude-sonnet → claude-sonnet-5-5), config overrides, fallback chain tested end to end |
-| S22 | 2026-10-05 | (next) | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
+| S22 | 2026-10-05 | 882de38 | providers/anthropic.py, providers/errors.py, providers/registry.py, tests/test_anthropic.py, tests/contract/test_provider_contract.py, tests/fixtures/anthropic/*.json | SDK client; offline via injected httpx2 MockTransport; contract test live-only |
+| S23 | 2026-10-05 | (next) | providers/google.py, providers/registry.py, tests/test_google.py, tests/fixtures/google/*.json, tests/contract/test_provider_contract.py | google-genai SDK; Gemini API + Vertex; raw parts kept for thought signatures |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -110,6 +111,8 @@ Next step: S23
 - S22: S22: Anthropic adapter tests inject an httpx2 client (SDK 1.x uses httpx2, so respx cannot mock it); fixtures are recorded SSE event lists.
 - S22: S22: Bedrock via base_url 'bedrock://<region>' (AnthropicBedrockMantle), Vertex via 'vertex://<project>/<region>'.
 - S22: S22: ChatRequest.json_schema is not sent to Claude; structured.py's prompt + parse path covers it.
+- S23: S23: Gemini assistant turns are replayed from the raw parts kept in Message.reasoning (keeps thought signatures); rebuilt from text/tool_calls when absent.
+- S23: S23: reasoning_effort maps to thinking_budget (1024/8192/24576) on Gemini 2.5 and thinking_level LOW/HIGH on later models; json_schema is sent only when no tools are given.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -118,3 +121,4 @@ Next step: S23
 - S08: `CommandResult` gained four optional fields that the shell and job tools need and the contract lacks: `cwd` (folder after a shell command), `pid`, `elapsed_s` and `total_lines` (job status and paging). `ports.JobNotFoundError` was added for unknown job ids. All contract fields are unchanged.
 - S14: `Ctx` gained one field beyond the contract, `state: SessionState` (default factory): runtime state shared by all agents of a session — the usage tally now, the agent registry and budgets later. All contract fields are unchanged.
 - S22: S22: live contract test (tests/contract) not run here: no API keys in this environment.
+- S23: S23: live contract test for Gemini not run here: no GEMINI_API_KEY.
