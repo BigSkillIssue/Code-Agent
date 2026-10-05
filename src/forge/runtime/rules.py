@@ -18,7 +18,7 @@ PATH_TOOLS = frozenset(
     {"read_file", "write_file", "edit_file", "apply_patch", "list_dir", "glob", "grep", "repo_map"}
 )
 WRITE_TOOLS = frozenset({"write_file", "edit_file", "apply_patch"})
-RULE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(?:\((.*)\))?\s*$", re.DOTALL)
+RULE = re.compile(r"^\s*([A-Za-z0-9_.*-]+)\s*(?:\((.*)\))?\s*$", re.DOTALL)
 
 
 class RuleError(ValueError):
@@ -68,7 +68,9 @@ def rule_matches(rule: Rule, tool: str, specifier: str, root: Path) -> bool:
 
 
 def applies_to(rule_tool: str, tool: str) -> bool:
-    """A read_file rule also covers the tools that write files."""
+    """A read_file rule also covers the tools that write files; `mcp__github__*` globs names."""
+    if "*" in rule_tool:
+        return glob_to_regex(rule_tool, any_char=True).fullmatch(tool) is not None
     return rule_tool == tool or (rule_tool == "read_file" and tool in WRITE_TOOLS)
 
 

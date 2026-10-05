@@ -1,0 +1,9 @@
+name = "large-tax"
+category = "large"
+repo = "repos/shop"
+prompt = "Add sales tax: a new tax.py with RATES = {'DE': 19, 'US': 0, 'FR': 20} (percent) and tax_for(cents, country) rounding half up; Cart.total_with_tax(country) returns the total plus tax."
+check = '''{python} -c "from cart import Cart; from models import Product; from tax import tax_for; c = Cart(); c.add(Product('book', 1000), 2); assert c.total_with_tax('DE') == 2380; assert c.total_with_tax('US') == 2000; assert tax_for(5, 'DE') == 1"'''
+
+[fake]
+edits = [{ path = "cart.py", old = "    def total(self) -> int:\n        \"\"\"Total price in cents.\"\"\"\n        return sum(item.product.price_cents * item.quantity for item in self.items)\n", new = "    def total(self) -> int:\n        \"\"\"Total price in cents.\"\"\"\n        return sum(item.product.price_cents * item.quantity for item in self.items)\n\n    def total_with_tax(self, country: str) -> int:\n        \"\"\"Total price in cents including the country's sales tax.\"\"\"\n        cents = self.total()\n        return cents + tax_for(cents, country)\n" }, { path = "cart.py", old = "from models import CartItem, Product\n", new = "from models import CartItem, Product\nfrom tax import tax_for\n" }]
+writes = [{ path = "tax.py", content = "\"\"\"Sales tax by country.\"\"\"\n\nRATES = {\"DE\": 19, \"US\": 0, \"FR\": 20}\n\n\ndef tax_for(cents: int, country: str) -> int:\n    \"\"\"Tax in cents, rounded half up.\"\"\"\n    return (cents * RATES[country] + 50) // 100\n" }]

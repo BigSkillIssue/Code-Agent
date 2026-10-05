@@ -10,6 +10,8 @@ from forge.hooks import Hooks
 from forge.local.local_executor import LocalExecutor
 from forge.local.memory_bus import MemoryBus
 from forge.local.sqlite_store import SqliteStore
+from forge.mcp_client import McpHub
+from forge.modelcall import publish_error
 from forge.ports import EventBus, Executor, Renderer, Session, Store
 from forge.providers.fake import FakeProvider
 from forge.providers.registry import register_provider
@@ -86,7 +88,17 @@ async def open_session(
         headless=headless,
     )
     ctx.state.team = AgentRegistry()
+    if cfg.mcp_servers:
+        await connect_mcp(ctx)
     return ctx
+
+
+async def connect_mcp(ctx: Ctx) -> None:
+    """Connect the configured MCP servers; a server that fails is reported and skipped."""
+    hub = McpHub(ctx.cfg, ctx.root)
+    for problem in await hub.connect():
+        await publish_error(ctx, problem)
+    ctx.state.mcp = hub
 
 
 def default_store() -> SqliteStore:
@@ -104,6 +116,8 @@ async def close_session(ctx: Ctx) -> None:
     """Stop background jobs and shells that belong to the session; remove unkept worktrees."""
     if ctx.state.team is not None:
         await ctx.state.team.close(ctx)
+    if ctx.state.mcp is not None:
+        await ctx.state.mcp.close()
     for port in (ctx.executor, ctx.store):
         close = getattr(port, "close", None)
         if close is not None:

@@ -1,0 +1,8 @@
+name = "large-remove-update"
+category = "large"
+repo = "repos/shop"
+prompt = "Let customers change the cart: Cart.remove(name) removes a product by name (KeyError if absent) and Cart.update_quantity(name, quantity) sets the quantity (ValueError if negative, removes the line at 0)."
+check = '''{python} -c "from cart import Cart; from models import Product; c = Cart(); c.add(Product('pen', 100), 1); c.add(Product('ink', 50), 2); c.update_quantity('ink', 3); assert c.total() == 250; c.update_quantity('pen', 0); assert c.total() == 150; c.remove('ink'); assert c.total() == 0"'''
+
+[fake]
+edits = [{ path = "cart.py", old = "    def total(self) -> int:\n        \"\"\"Total price in cents.\"\"\"\n        return sum(item.product.price_cents * item.quantity for item in self.items)\n", new = "    def total(self) -> int:\n        \"\"\"Total price in cents.\"\"\"\n        return sum(item.product.price_cents * item.quantity for item in self.items)\n\n    def remove(self, name: str) -> None:\n        \"\"\"Remove a product by name.\"\"\"\n        for item in self.items:\n            if item.product.name == name:\n                self.items.remove(item)\n                return\n        raise KeyError(name)\n\n    def update_quantity(self, name: str, quantity: int) -> None:\n        \"\"\"Set how many of a product; 0 removes it.\"\"\"\n        if quantity < 0:\n            raise ValueError(\"quantity must not be negative\")\n        if quantity == 0:\n            self.remove(name)\n            return\n        for item in self.items:\n            if item.product.name == name:\n                item.quantity = quantity\n                return\n        raise KeyError(name)\n" }]

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S36
+Next step: S37
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -40,7 +40,8 @@ Next step: S36
 | S32 | 2026-10-05 | 031fbbd | team.py, agent_files.py, agent.py, ctx.py, events.py, tools.py, tests/test_messaging.py, tests/test_agent_files.py | background agents (asyncio tasks), inboxes drained each turn, lead waits for running children, send_message/list_agents/stop_agent |
 | S33 | 2026-10-05 | 46ca63e | board.py, team.py, tools.py, ctx.py, ports.py, local/sqlite_store.py, local/memory_store.py, tests/test_board.py, tests/support.py | read_board/claim_task/update_task; atomic claims via BoardStore (SQLite conditional upsert); 50-round race on both stores |
 | S34 | 2026-10-05 | 63f9012 | runtime/worktree.py, team.py, checks.py, ctx.py, wiring.py, tests/test_worktree.py | isolation=worktree; 3-way merge via git merge-tree into the live tree (user's index untouched); board tasks reviewed before merge; conflicts go back to the owner |
-| S35 | 2026-10-05 | (next) | pipeline.py, team.py, agent.py, ctx.py, tools.py, prompts.py, cli.py, tests/test_budgets.py | size -> solo/subagents/team (--solo/--team win); shared cost budget checked before every turn; budget stop report; team mode runs board workers |
+| S35 | 2026-10-05 | ac9623a | pipeline.py, team.py, agent.py, ctx.py, tools.py, prompts.py, cli.py, tests/test_budgets.py | size -> solo/subagents/team (--solo/--team win); shared cost budget checked before every turn; budget stop report; team mode runs board workers |
+| S36 | 2026-10-05 | (next) | mcp_client.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, runtime/rules.py, evals.py, cli.py, tests/test_mcp.py, tests/fixtures/mcp_stub.py, evals/repos/shop/, evals/tasks/large_*.toml, tests/test_review.py | MCP over stdio/HTTP (mcp 2.x), mcp__<server>__<tool> tools per session, resources, deferred loading via tool_search; 5 large eval tasks; forge eval --compare |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -156,6 +157,9 @@ Next step: S36
 - S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
 - S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
+- S36: S36: MCP tools live in a per-session McpHub (ctx.state.mcp, McpTools protocol), not in the global REGISTRY; call_tool falls back to it. Each server connection runs in its own task; server stderr goes to .forge/mcp/<server>.log. Rules accept * in the tool name (mcp__github__*).
+- S36: S36: run_agent rebuilds the tool list every turn (tool_search adds tools mid-run). Deferred tools are listed in the system prompt via the DEFERRED_TOOLS prompt and the {deferred_tools} slot.
+- S36: S36: forge eval --compare solo,team runs every task per mode and exits 0 only if the last mode passes more tasks than the first.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -170,10 +174,16 @@ Next step: S36
 - S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
 - S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
+- S36: S36: MCP tools live in a per-session McpHub (ctx.state.mcp, McpTools protocol), not in the global REGISTRY; call_tool falls back to it. Each server connection runs in its own task; server stderr goes to .forge/mcp/<server>.log. Rules accept * in the tool name (mcp__github__*).
+- S36: S36: run_agent rebuilds the tool list every turn (tool_search adds tools mid-run). Deferred tools are listed in the system prompt via the DEFERRED_TOOLS prompt and the {deferred_tools} slot.
+- S36: S36: forge eval --compare solo,team runs every task per mode and exits 0 only if the last mode passes more tasks than the first.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
 - S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
+- S36: S36: MCP tools live in a per-session McpHub (ctx.state.mcp, McpTools protocol), not in the global REGISTRY; call_tool falls back to it. Each server connection runs in its own task; server stderr goes to .forge/mcp/<server>.log. Rules accept * in the tool name (mcp__github__*).
+- S36: S36: run_agent rebuilds the tool list every turn (tool_search adds tools mid-run). Deferred tools are listed in the system prompt via the DEFERRED_TOOLS prompt and the {deferred_tools} slot.
+- S36: S36: forge eval --compare solo,team runs every task per mode and exits 0 only if the last mode passes more tasks than the first.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -189,3 +199,4 @@ Next step: S36
 - S28: S28: Landlock cannot protect .git/.forge inside a writable root (allow-only rules); only Forge's own file tools enforce protected_path. sandbox_denied detection is a heuristic on error text.
 - S29: S29: Phase 2 gate also needs the live provider contract run (see S25); everything else in Phase 2 is verified offline.
 - S30: S30: sub-agent transcripts are kept in AgentRegistry (memory), not yet saved to the store under the agent id as docs/TOOLS.md says.
+- S36: S36: Phase 3 gate (team passes more large tasks than solo) needs live models; offline (--fake) both modes pass 5/5 by construction. Run: uv run forge eval --suite large --compare solo,team

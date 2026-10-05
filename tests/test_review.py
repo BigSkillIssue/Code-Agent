@@ -118,5 +118,20 @@ def test_forge_eval_fake_runs_offline(
     monkeypatch.chdir(REPO)
     code = main(["--fake", "eval"])
     out = capsys.readouterr().out
-    assert "passed 10/10" in out, out
+    assert "passed 15/15" in out, out
     assert code == 0
+
+
+def test_forge_eval_compare_modes_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name in list(os.environ):
+        if name.startswith("FORGE_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("FORGE_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(REPO)
+    code = main(["--fake", "eval", "--suite", "large", "--compare", "solo,team"])
+    out = capsys.readouterr().out
+    assert "solo: passed 5/5" in out and "team: passed 5/5" in out, out
+    assert "team does not pass more tasks than solo (5 vs 5)" in out
+    assert code == 1  # the scripted model solves everything either way; the gate needs live runs

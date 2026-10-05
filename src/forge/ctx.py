@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
@@ -11,6 +11,10 @@ from forge.ports import EventBus, Executor, Renderer, Session, Store
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
+
+if TYPE_CHECKING:
+    from forge.providers.base import ToolResult
+    from forge.tools import ToolDef
 
 
 @dataclass
@@ -51,6 +55,21 @@ class Team(Protocol):
     async def run_team(self, ctx: "Ctx", plan: Plan) -> None: ...
 
 
+class McpTools(Protocol):
+    """The session's MCP servers and their tools (implemented by mcp_client.McpHub)."""
+
+    deferred: bool
+
+    def tool(self, name: str) -> "ToolDef | None": ...
+    def visible_tools(self) -> "list[ToolDef]": ...
+    def deferred_listing(self) -> list[str]: ...
+    def servers(self) -> list[str]: ...
+    def search(self, query: str, limit: int) -> "list[ToolDef]": ...
+    async def list_resources(self, server: str | None) -> list[str]: ...
+    async def read_resource(self, ctx: "Ctx", server: str, uri: str) -> "ToolResult": ...
+    async def close(self) -> None: ...
+
+
 @dataclass
 class SessionState:
     """Runtime state shared by every agent of one session (never persisted)."""
@@ -68,6 +87,7 @@ class SessionState:
     team_mode: bool = False  # the board tools are offered only to teams
     mode: str = ""  # solo | subagents | team, chosen per task by the pipeline ("" = not chosen)
     mode_override: str | None = None  # --solo / --team
+    mcp: McpTools | None = None  # set by wiring when [mcp_servers] are configured
 
 
 @dataclass

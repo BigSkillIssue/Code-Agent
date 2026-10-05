@@ -1,0 +1,8 @@
+name = "large-receipt"
+category = "large"
+repo = "repos/shop"
+prompt = "Add receipts: a new receipt.py with render_receipt(cart) returning lines '<qty> x <name>  <line total>' (prices via pricing.format_price) followed by 'Total  <total>'."
+check = '''{python} -c "from cart import Cart; from models import Product; from receipt import render_receipt; c = Cart(); c.add(Product('pen', 150), 2); c.add(Product('ink', 99), 1); r = [line.replace(chr(36), 'D') for line in render_receipt(c)]; assert r == ['2 x pen  D3.00', '1 x ink  D0.99', 'Total  D3.99'], r"'''
+
+[fake]
+writes = [{ path = "receipt.py", content = "\"\"\"Receipts for a cart.\"\"\"\n\nfrom cart import Cart\nfrom pricing import format_price\n\n\ndef render_receipt(cart: Cart) -> list[str]:\n    \"\"\"One line per item, then the total.\"\"\"\n    lines = [\n        f\"{item.quantity} x {item.product.name}  {format_price(item.product.price_cents * item.quantity)}\"\n        for item in cart.items\n    ]\n    lines.append(f\"Total  {format_price(cart.total())}\")\n    return lines\n" }]

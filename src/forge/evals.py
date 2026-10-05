@@ -126,8 +126,10 @@ async def prepare_repo(source: Path, target: Path) -> None:
         await run_argv(["git", *args], target)
 
 
-async def run_eval(task: EvalTask, evals_dir: Path, cfg: ForgeConfig, *, fake: bool) -> EvalResult:
-    """Run one task in a fresh copy of its repo and judge it by its check command."""
+async def run_eval(
+    task: EvalTask, evals_dir: Path, cfg: ForgeConfig, *, fake: bool, mode: str | None = None
+) -> EvalResult:
+    """Run one task in a fresh copy of its repo (optionally forcing solo/team mode) and check it."""
     started = time.monotonic()
     with tempfile.TemporaryDirectory() as folder:
         root = Path(folder) / task.name
@@ -143,6 +145,7 @@ async def run_eval(task: EvalTask, evals_dir: Path, cfg: ForgeConfig, *, fake: b
             executor=LocalExecutor(root.resolve()),
             headless=True,
         )
+        ctx.state.mode_override = mode
         try:
             report = await run_task(task.prompt, ctx)
         finally:
@@ -163,6 +166,23 @@ def _check_argv(command: str) -> list[str]:
     if sys.platform == "win32":
         return [shell, "-NoProfile", "-NonInteractive", "-Command", command]
     return [shell, "-c", command]
+
+
+def compare_table(results: dict[str, list[EvalResult]]) -> str:
+    """Tasks as rows, modes as columns, then each mode's pass count, cost and time."""
+    modes = list(results)
+    names = [r.name for r in results[modes[0]]]
+    width = max([len(n) for n in names] + [4])
+    lines = ["task".ljust(width) + "".join(f"  {m:<9}" for m in modes)]
+    for index, name in enumerate(names):
+        marks = ["pass" if results[m][index].passed else "FAIL" for m in modes]
+        lines.append(name.ljust(width) + "".join(f"  {mark:<9}" for mark in marks))
+    for mode in modes:
+        passed = sum(r.passed for r in results[mode])
+        cost = sum(r.cost_usd for r in results[mode])
+        seconds = sum(r.seconds for r in results[mode])
+        lines.append(f"{mode}: passed {passed}/{len(names)}, cost ${cost:.4f}, time {seconds:.1f}s")
+    return "\n".join(lines)
 
 
 def results_table(results: list[EvalResult]) -> str:

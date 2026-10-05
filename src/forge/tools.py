@@ -10,6 +10,7 @@ Table of contents:
   AGENTS     spawn_agent, send_message, list_agents, stop_agent
   BOARD      read_board, claim_task, update_task
   MEMORY     remember, recall
+  MCP        list_mcp_resources, read_mcp_resource, tool_search (+ mcp__<server>__<tool>)
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -37,7 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from forge import prompts
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
-from forge.ctx import Ctx, Team
+from forge.ctx import Ctx, McpTools, Team
 from forge.events import PlanUpdated
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
@@ -216,6 +217,15 @@ def for_role(role: str, cfg: ForgeConfig) -> list[ToolDef]:
     return list(REGISTRY.values())
 
 
+def hidden_mcp_tool(ctx: Ctx, tool_def: ToolDef) -> bool:
+    """A deferred MCP tool may still be called by name (the model may know it from the list)."""
+    return (
+        tool_def.group == "mcp"
+        and tool_def.name.startswith("mcp__")
+        and (tool_def.read_only or ctx.role not in READ_ONLY_ROLES)
+    )
+
+
 def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     """The role's tools (an agent file may list them); sub-agents never get lead-only tools."""
     custom = ctx.state.custom_roles.get(role)
@@ -229,17 +239,42 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
         tools = [t for t in tools if t.name not in BOARD_TOOLS]
     if ctx.state.mode == "solo":
         tools = [t for t in tools if t.name not in AGENT_TOOLS]
-    return tools
+    return [*tools, *mcp_tools(ctx, role)] if ctx.state.mcp else drop_mcp(tools)
+
+
+def drop_mcp(tools: list[ToolDef]) -> list[ToolDef]:
+    """Without MCP servers the MCP tools are pointless."""
+    return [t for t in tools if t.group != "mcp"]
+
+
+def mcp_tools(ctx: Ctx, role: str) -> list[ToolDef]:
+    """The MCP servers' loaded tools this role may use (read-only roles: read-only tools)."""
+    hub = ctx.state.mcp
+    if hub is None:
+        return []
+    tools = hub.visible_tools()
+    custom = ctx.state.custom_roles.get(role)
+    if custom is not None and custom.tools is not None:
+        return [t for t in tools if t.name in custom.tools or "mcp" in custom.tools]
+    return [t for t in tools if t.read_only or role not in READ_ONLY_ROLES]
+
+
+def find_tool(ctx: Ctx, name: str) -> ToolDef | None:
+    """A built-in tool, or one of the session's MCP tools."""
+    found = REGISTRY.get(name)
+    if found is None and ctx.state.mcp is not None:
+        found = ctx.state.mcp.tool(name)
+    return found
 
 
 async def call_tool(ctx: Ctx, call: ToolCall) -> ToolResult:
     """validate -> permission -> pre_tool hooks -> run -> cap output -> post_tool hooks -> audit"""
-    tool_def = REGISTRY.get(call.name)
+    tool_def = find_tool(ctx, call.name)
     if tool_def is None:
         known = ", ".join(sorted(REGISTRY)) or "none"
         result = failure("invalid_args", f"unknown tool '{call.name}'", hint=f"tools: {known}")
         decision = "unknown"
-    elif tool_def not in agent_tools(ctx, ctx.role):
+    elif tool_def not in agent_tools(ctx, ctx.role) and not hidden_mcp_tool(ctx, tool_def):
         result = failure("unsupported", f"{call.name} is not available to the {ctx.role} role")
         decision = "refused"
     else:
@@ -1521,3 +1556,57 @@ async def recall(
         lines.append(f'{number}. session {session_id[:8]} ({day}) "{title}"')
         lines.append("   ..." + " ".join(text.split()) + "...")
     return "\n".join(lines)
+
+
+# =====================================================================================
+# MCP
+# =====================================================================================
+
+
+@tool(group="mcp", permission="auto", read_only=True)
+async def list_mcp_resources(
+    ctx: Ctx, server: Annotated[str | None, "Only this server; default all."] = None
+) -> str:
+    """List resources offered by connected MCP servers."""
+    lines = await mcp_of(ctx).list_resources(server)
+    return "\n".join(lines) if lines else "no MCP resources available"
+
+
+@tool(group="mcp", permission="auto", read_only=True)
+async def read_mcp_resource(
+    ctx: Ctx,
+    server: Annotated[str, "Server name."],
+    uri: Annotated[str, "Resource URI from list_mcp_resources."],
+) -> ToolResult:
+    """Read one resource from an MCP server."""
+    return await mcp_of(ctx).read_resource(ctx, server, uri)
+
+
+@tool(group="mcp", permission="auto", read_only=True)
+async def tool_search(
+    ctx: Ctx,
+    query: Annotated[str, "Words describing the tool you need, e.g. 'create github issue'."],
+    limit: Annotated[int, "Maximum tools to load (1-10)."] = 5,
+) -> str:
+    """Find and load MCP tools that are not yet in your tool list."""
+    require(query.strip() != "", "query must not be empty")
+    require(1 <= limit <= 10, "limit must be between 1 and 10")
+    hub = mcp_of(ctx)
+    if not hub.deferred:
+        raise ToolError("unsupported", "all tools are loaded", hint="all tools are already loaded")
+    found = hub.search(query, limit)
+    if not found:
+        servers = ", ".join(hub.servers())
+        return f'no deferred tools match "{query}"; available servers: {servers}'
+    lines = [f"loaded {len(found)} tools:"]
+    lines += [f"- {t.name}: {first_line(t.spec.description)}" for t in found]
+    return "\n".join(lines)
+
+
+def mcp_of(ctx: Ctx) -> McpTools:
+    """The session's MCP servers; unsupported when none are configured."""
+    if ctx.state.mcp is None:
+        raise ToolError(
+            "unsupported", "no MCP servers are connected", hint="add [mcp_servers.<name>]"
+        )
+    return ctx.state.mcp

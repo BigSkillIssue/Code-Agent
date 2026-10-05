@@ -1,0 +1,9 @@
+name = "large-stock"
+category = "large"
+repo = "repos/shop"
+prompt = "Track stock: Product gets stock: int = 0 (keep it the last field), a new errors.py defines OutOfStock(Exception), and Cart.add raises OutOfStock when the cart would hold more than the product's stock."
+check = '''{python} -c "from cart import Cart; from errors import OutOfStock; from models import Product; p = Product('pen', 100, stock=2); c = Cart(); c.add(p, 2); import unittest; unittest.TestCase().assertRaises(OutOfStock, c.add, p, 1)"'''
+
+[fake]
+edits = [{ path = "models.py", old = "    name: str\n    price_cents: int\n", new = "    name: str\n    price_cents: int\n    stock: int = 0\n" }, { path = "cart.py", old = "        \"\"\"Add a product (more of it if it is already in the cart).\"\"\"\n        for item in self.items:", new = "        \"\"\"Add a product (more of it if it is already in the cart).\"\"\"\n        held = sum(item.quantity for item in self.items if item.product == product)\n        if held + quantity > product.stock:\n            raise OutOfStock(f\"only {product.stock} of {product.name} in stock\")\n        for item in self.items:" }, { path = "cart.py", old = "from models import CartItem, Product\n", new = "from errors import OutOfStock\nfrom models import CartItem, Product\n" }]
+writes = [{ path = "errors.py", content = "\"\"\"Errors the shop raises.\"\"\"\n\n\nclass OutOfStock(Exception):\n    \"\"\"More of a product was requested than is in stock.\"\"\"\n" }]

@@ -55,15 +55,14 @@ async def run_agent(
     messages = [*(history or []), text_message("user", task)]
     _record(ctx, messages[-1])
     system = prompts.render(prompt_for(ctx, role), **prompt_slots(ctx))
-    tools = agent_tools(ctx, role)
     usage, text = Usage(), ""
-    specs = [t.spec for t in tools]
     team = ctx.state.team
     for _ in range(max_turns):
         if over_budget(ctx):
             return AgentResult(text=text, messages=messages, usage=usage, stopped="budget")
         if team is not None:
             messages += deliver(ctx, team.take_messages(ctx.agent_id))
+        specs = [t.spec for t in agent_tools(ctx, role)]  # tool_search can add tools
         messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
         try:
             reply, turn_usage = await model_turn(ctx, role, system, messages, specs)
@@ -100,6 +99,12 @@ def prompt_for(ctx: Ctx, role: str) -> str:
     return ROLE_PROMPTS.get(role, "coder")
 
 
+def deferred_tools_text(ctx: Ctx) -> str:
+    """The deferred MCP tools as name lines (empty when every tool is loaded)."""
+    listing = ctx.state.mcp.deferred_listing() if ctx.state.mcp is not None else []
+    return prompts.render("deferred_tools", tools="\n".join(listing)) if listing else ""
+
+
 def over_budget(ctx: Ctx) -> bool:
     """True once the whole session (every agent) has spent its cost budget."""
     return ctx.state.usage.cost_usd >= ctx.cfg.limits.max_cost_usd
@@ -118,6 +123,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "plan": checklist(ctx.session.plan) if ctx.session.plan else "(none)",
         "failure": ctx.state.failure or "(none)",
         "role": ctx.role,
+        "deferred_tools": deferred_tools_text(ctx),
         "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 

@@ -1,0 +1,8 @@
+name = "large-discount-codes"
+category = "large"
+repo = "repos/shop"
+prompt = "Add discount codes: pricing.py gets DISCOUNTS = {'SAVE10': 10, 'HALF': 50} (percent) and apply_discount(cents, code) that rounds down and raises KeyError for unknown codes; Cart.total(code=None) applies the code."
+check = '''{python} -c "from cart import Cart; from models import Product; from pricing import apply_discount; c = Cart(); c.add(Product('pen', 999), 1); assert c.total() == 999; assert c.total('SAVE10') == 899; assert c.total('HALF') == 499; assert apply_discount(100, 'HALF') == 50"'''
+
+[fake]
+edits = [{ path = "pricing.py", old = "def format_price(cents: int) -> str:", new = "DISCOUNTS = {\"SAVE10\": 10, \"HALF\": 50}\n\n\ndef apply_discount(cents: int, code: str) -> int:\n    \"\"\"Price after a discount code (percent off, rounded down).\"\"\"\n    percent = DISCOUNTS[code]\n    return cents * (100 - percent) // 100\n\n\ndef format_price(cents: int) -> str:" }, { path = "cart.py", old = "    def total(self) -> int:\n        \"\"\"Total price in cents.\"\"\"\n        return sum(item.product.price_cents * item.quantity for item in self.items)\n", new = "    def total(self, code: str | None = None) -> int:\n        \"\"\"Total price in cents, after the discount code if one is given.\"\"\"\n        cents = sum(item.product.price_cents * item.quantity for item in self.items)\n        return apply_discount(cents, code) if code else cents\n" }, { path = "cart.py", old = "from models import CartItem, Product\n", new = "from models import CartItem, Product\nfrom pricing import apply_discount\n" }]

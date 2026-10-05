@@ -59,6 +59,7 @@ KNOWN_SLOTS = frozenset(
         "query",
         "role",
         "agent_prompt",
+        "deferred_tools",
     }
 )
 
@@ -109,7 +110,7 @@ Environment:
 
 Project instructions (from FORGE.md, AGENTS.md and CLAUDE.md files; deeper files win, and the user's direct instructions win over all of them):
 {memory}
-"""
+{deferred_tools}"""
 
 # --------------------------------------------------------------------------- REFINER
 
@@ -261,6 +262,13 @@ Work through the team's task board until nothing is left for you:
 3. Do the task in your working directory, including its check.
 4. Call update_task with status done (Forge runs the task's check and merges your work) or failed with the reason. If the check fails, fix the problem and call update_task again.
 Stop when no task is ready, and reply with the tasks you completed and anything left open.
+"""
+
+DEFERRED_TOOLS = """\
+More tools are available but not loaded. To use one, call tool_search with words describing it; the matching tools are then added to your tool list.
+"""
+
+DEFERRED_TOOLS_TAIL = """{tools}
 """
 
 # --------------------------------------------------------------------------- STEP
@@ -458,6 +466,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "team_member": (TEAM_MEMBER, TEAM_MEMBER_TAIL + "\n" + ENVIRONMENT),
     "custom_agent": (TEAM_MEMBER, CUSTOM_AGENT_TAIL + "\n" + ENVIRONMENT),
     "team_task": (TEAM_TASK, ""),
+    "deferred_tools": (DEFERRED_TOOLS, DEFERRED_TOOLS_TAIL),
     "explore": (EXPLORE, "\n" + ENVIRONMENT),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),
