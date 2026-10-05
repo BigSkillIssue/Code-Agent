@@ -185,6 +185,8 @@ Next step: S37
 - S36: S36: run_agent rebuilds the tool list every turn (tool_search adds tools mid-run). Deferred tools are listed in the system prompt via the DEFERRED_TOOLS prompt and the {deferred_tools} slot.
 - S36: S36: forge eval --compare solo,team runs every task per mode and exits 0 only if the last mode passes more tasks than the first.
 
+- S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
+
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
 - S07: TOOLS.md asks read_file to downscale images to 1568 px; no image library is in the dependency list, so images are sent as they are (dimensions read from the file header) and refused above 5 MB. Adding Pillow would allow downscaling.

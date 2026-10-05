@@ -4,8 +4,9 @@ import re
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from forge.local.memory_store import excerpt, session_texts
@@ -33,6 +34,14 @@ SCHEMA = [
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
+def _fast_commits(dbapi_connection: Any, _record: Any) -> None:
+    """WAL with synchronous=NORMAL: safe against crashes of Forge, far fewer fsyncs per commit."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
+
 class SqliteStore:
     """A Store backed by one SQLite file; the full session is kept as JSON."""
 
@@ -40,6 +49,7 @@ class SqliteStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.engine: AsyncEngine = create_async_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
+        event.listen(self.engine.sync_engine, "connect", _fast_commits)
         self._ready = False
 
     async def _setup(self) -> None:
