@@ -1,6 +1,6 @@
 [project]
 name = "forge"
-version = "0.1.0"
+version = "1.0.0"
 description = "Forge: a provider-agnostic coding agent that refines, plans, executes and verifies every task."
 requires-python = ">=3.12"
 license = { text = "MIT" }

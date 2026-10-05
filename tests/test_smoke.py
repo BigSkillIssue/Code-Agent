@@ -10,14 +10,14 @@ from forge.cli import main
 
 
 def test_import_exposes_version() -> None:
-    assert forge.__version__ == "0.1.0"
+    assert forge.__version__ == "1.0.0"
 
 
 def test_version_flag_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == "forge 0.1.0"
+    assert capsys.readouterr().out.strip() == "forge 1.0.0"
 
 
 def test_module_entry_point_prints_version() -> None:
@@ -28,4 +28,4 @@ def test_module_entry_point_prints_version() -> None:
         check=False,
     )
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "forge 0.1.0"
+    assert proc.stdout.strip() == "forge 1.0.0"

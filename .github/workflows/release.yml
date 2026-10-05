@@ -1,0 +1,108 @@
+name: Release
+
+# A tag `v*` builds the wheel and one binary per OS, smoke-tests each in an empty
+# git folder, and publishes a GitHub release. Run it by hand to build and test without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Build wheel and sdist
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+
+  smoke-wheel:
+    needs: wheel
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist
+      - name: Install the wheel as a tool
+        run: |
+          uv tool install dist/*.whl
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+      - name: Smoke test
+        run: |
+          mkdir "$RUNNER_TEMP/clean" && cd "$RUNNER_TEMP/clean" && git init -q
+          forge --version
+          forge run --json --yes "say hi" --fake
+
+  binary:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: forge-linux-x64
+          - os: macos-latest
+            asset: forge-macos-arm64
+          - os: windows-latest
+            asset: forge-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build the binary
+        run: |
+          uv sync --no-dev
+          uv run --no-dev --with pyinstaller pyinstaller --noconfirm packaging/pyinstaller.spec
+          echo "$PWD/dist" >> "$GITHUB_PATH"
+      - name: Smoke test
+        run: |
+          mkdir "$RUNNER_TEMP/clean" && cd "$RUNNER_TEMP/clean" && git init -q
+          forge --version
+          forge run --json --yes "say hi" --fake
+      - name: Name the asset
+        run: |
+          if [ -f dist/forge.exe ]; then mv dist/forge.exe "dist/${{ matrix.asset }}"; else mv dist/forge "dist/${{ matrix.asset }}"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [smoke-wheel, binary]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="## $version" '$0 ~ "^## " { on = index($0, v) == 1; next } on' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" assets/* --title "Forge $version" --notes-file notes.md

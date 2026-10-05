@@ -25,8 +25,10 @@ uv tool install git+https://github.com/BigSkillIssue/Code-Agent   # or: pipx ins
 forge --version
 ```
 
-From a checkout: `uv sync`, then `uv run forge ...`. Python 3.12+ and `git` are required;
-`rg` (ripgrep) is used when present.
+Single-file binaries for Linux, macOS and Windows are attached to each
+[GitHub release](https://github.com/BigSkillIssue/Code-Agent/releases). From a checkout:
+`uv sync`, then `uv run forge ...`. Python 3.12+ and `git` are required; `rg` (ripgrep) is
+used when present.
 
 ## First task
 
