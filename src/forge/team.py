@@ -9,17 +9,28 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Literal
 
 from forge import board
 from forge.agent import AgentResult, run_agent
 from forge.agent_files import use_agent_file
+from forge.checks import review_diff, save_plan
 from forge.ctx import Ctx
 from forge.events import AgentFinished, AgentMessage
 from forge.ports import JobNotFoundError
 from forge.providers.base import Message, Usage
 from forge.runtime.errors import ToolError
 from forge.runtime.ledger import ReadLedger
+from forge.runtime.worktree import (
+    Worktree,
+    WorktreeError,
+    apply_merge,
+    create_worktree,
+    prepare_merge,
+    publish_main,
+    remove_worktree,
+)
 
 BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher")
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
@@ -50,6 +61,8 @@ class AgentInfo:
     task_handle: "asyncio.Task[None] | None" = None
     messages: list[Message] = field(default_factory=list)  # the agent's own transcript
     jobs: list[str] = field(default_factory=list)  # background jobs it started
+    tree: Worktree | None = None  # isolation="worktree"
+    keep_worktree: bool = False  # keep it at session end (conflicts, stop_agent)
     started: float = field(default_factory=time.time)
 
 
@@ -61,6 +74,8 @@ class AgentRegistry:
             "main": AgentInfo("main", None, "coder", "running", None, "")
         }
         self._count = 0
+        self.main_root: Path | None = None  # the lead's project root (merge target)
+        self.merge_lock = asyncio.Lock()  # merges happen one by one
 
     def find(self, key: str) -> AgentInfo | None:
         """An agent by id or name."""
@@ -93,10 +108,11 @@ class AgentRegistry:
         """Start a sub-agent for `task`: wait for its report, or run it in the background."""
         await use_agent_file(ctx, role)
         self.check_spawn(ctx, role, task, max_turns, name)
-        if isolation != "none":
-            raise ToolError("unsupported", "worktree agents are not available yet")
         info = self.add(role, task, name, ctx.agent_id)
+        self.main_root = self.main_root or ctx.root
         child = child_ctx(ctx, info)
+        if isolation == "worktree":
+            child = await self.isolate(ctx, info, child)
         if background:
             info.task_handle = asyncio.create_task(self.run_background(ctx, child, info, max_turns))
             started = f"started agent {info.id} ({role}) in background"
@@ -107,8 +123,9 @@ class AgentRegistry:
             info.status = "cancelled"
             raise
         self.finish(info, result)
+        merged = await self.merge_finished(ctx, info)
         await ctx.hooks.run("subagent_stop", {"agent_id": info.id, "status": info.status}, ctx)
-        return report(info, result)
+        return report(info, result) + merged
 
     async def run_background(self, ctx: Ctx, child: Ctx, info: AgentInfo, max_turns: int) -> None:
         """Run a background agent, then post its report to the parent's inbox."""
@@ -121,7 +138,7 @@ class AgentRegistry:
             info.status, text = "failed", f"{type(exc).__name__}: {exc}"
         else:
             self.finish(info, result)
-            text = result.text.strip()
+            text = result.text.strip() + await self.merge_finished(child, info)
         head = f"[agent {info.id} ({info.role}) finished: {info.status}]"
         self.post(info.parent_id or "main", f"{head}\n{text or '(no report)'}")
         await ctx.bus.publish(
@@ -247,14 +264,36 @@ class AgentRegistry:
         return await board.claim(ctx, task_id)
 
     async def update_task(self, ctx: Ctx, task_id: str, status: str, result: str) -> str:
-        """update_task: report progress or the result; the lead is told."""
-        lead = "main"
+        """update_task; a done task from a worktree agent is merged before the lead hears of it."""
+        pending: list[str] = []
+        try:
+            text = await board.update(ctx, task_id, status, result, pending.append)
+        except ToolError:
+            self.tell_lead(ctx, pending)  # e.g. "failed after the last attempt"
+            raise
+        info = self.agents.get(ctx.agent_id)
+        if status == "done" and info is not None and info.tree is not None:
+            text += "; " + await self.merge_task(ctx, info, task_id)  # raises: lead not told
+        self.tell_lead(ctx, pending)
+        return text
 
-        def notify(text: str) -> None:
-            if ctx.agent_id != lead:
-                self.post(lead, text)
+    def tell_lead(self, ctx: Ctx, messages: list[str]) -> None:
+        """Post task notices to the lead (unless the lead itself made the change)."""
+        for message in messages if ctx.agent_id != "main" else []:
+            self.post("main", message)
 
-        return await board.update(ctx, task_id, status, result, notify)
+    async def merge_task(self, ctx: Ctx, info: AgentInfo, task_id: str) -> str:
+        """Merge a finished board task (reviewed); on failure the task goes back to its owner."""
+        plan = board.plan_of(ctx)
+        step = plan.step(task_id)
+        assert step is not None
+        criterion = f"the change completes task {task_id} ({step.title}) and breaks nothing"
+        ok, note = await self.merge_work(ctx, info, criterion)
+        if not ok:
+            step.status = "doing"
+            await save_plan(ctx)
+            raise ToolError("check_failed", f"{task_id} is not merged", body=note)
+        return note
 
     def overview(self, ctx: Ctx) -> str:
         """list_agents: one row per agent."""
@@ -290,11 +329,78 @@ class AgentRegistry:
         stopped = [job for job in info.jobs if await stop_job(ctx, job)]
         released = await board.release_owned(ctx, info.id)
         text = f"stopped {info.id} ({info.role}) after {info.turns} turns"
+        if info.tree is not None and self.main_root is not None:
+            info.keep_worktree = keep_worktree
+            if keep_worktree:
+                text += f"; worktree kept at {relative(self.main_root, info.tree.path)}"
+            else:
+                await remove_worktree(self.main_root, info.tree)
+                info.tree = None
         if stopped:
             text += f"; stopped jobs {', '.join(stopped)}"
         if released:
             text += f"; released task {', '.join(released)}"
         return text
+
+    # ------------------------------------------------------------------ worktrees
+
+    async def isolate(self, ctx: Ctx, info: AgentInfo, child: Ctx) -> Ctx:
+        """Give the child its own git worktree as root and working directory."""
+        try:
+            info.tree = await create_worktree(ctx.root, ctx.session.id, info.id)
+        except WorktreeError as err:
+            info.status = "failed"
+            raise ToolError("unsupported", f"cannot create a worktree: {err}") from err
+        info.worktree = relative(ctx.root, info.tree.path)
+        return replace(child, root=info.tree.path, cwd=info.tree.path)
+
+    async def merge_finished(self, ctx: Ctx, info: AgentInfo) -> str:
+        """After a worktree agent ends: merge its work (a line for the report), or say why not."""
+        if info.tree is None:
+            return ""
+        if info.status not in ("done", "stopped"):
+            info.keep_worktree = True
+            return f"\nnot merged ({info.status}); worktree kept at {info.worktree}"
+        return "\n" + (await self.merge_work(ctx, info, None))[1]
+
+    async def merge_work(
+        self, ctx: Ctx, info: AgentInfo, criterion: str | None
+    ) -> tuple[bool, str]:
+        """Three-way merge of the agent's worktree into the main tree, one merge at a time."""
+        assert info.tree is not None and self.main_root is not None
+        root, tree = self.main_root, info.tree
+        async with self.merge_lock:
+            try:
+                prepared = await prepare_merge(
+                    root, tree, f"{info.id} ({info.role}): {info.task[:60]}"
+                )
+            except WorktreeError as err:
+                info.keep_worktree = True
+                return False, f"not merged: {err}"
+            if not prepared.ok:
+                info.keep_worktree = True
+                branch = f"forge/{ctx.session.id}/main"
+                await publish_main(root, prepared.current, branch)
+                return False, (
+                    f"not merged: merge conflict in {', '.join(prepared.conflicts)}; "
+                    f"worktree kept at {info.worktree}. To resolve it, run `git merge {branch}` "
+                    "in the worktree, "
+                    "fix the conflicts, and finish again"
+                )
+            if criterion is not None:
+                verdict = await review_diff(ctx, criterion, prepared.diff)
+                if not verdict.passed:
+                    return False, f"not merged: the reviewer rejected the merge: {verdict.output}"
+            files = await apply_merge(root, tree, prepared)
+        listed = f" ({', '.join(files[:10])})" if files else ""
+        return True, f"merged into the main tree: {len(files)} files{listed}"
+
+    async def close(self, ctx: Ctx) -> None:
+        """At session end: remove the worktrees that are not kept."""
+        for info in self.agents.values():
+            if info.tree is not None and not info.keep_worktree and self.main_root is not None:
+                await remove_worktree(self.main_root, info.tree)
+                info.tree = None
 
 
 async def stop_job(ctx: Ctx, job_id: str) -> bool:
@@ -304,6 +410,11 @@ async def stop_job(ctx: Ctx, job_id: str) -> bool:
     except JobNotFoundError:
         return False
     return True
+
+
+def relative(root: Path, path: Path) -> str:
+    """A path relative to the project root, with forward slashes."""
+    return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 
 def first_user_text(ctx: Ctx) -> str:

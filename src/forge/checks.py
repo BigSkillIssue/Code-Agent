@@ -76,8 +76,13 @@ async def command_check(ctx: Ctx, check: str) -> CheckResult:
 
 async def review_check(ctx: Ctx, step: Step, criterion: str) -> CheckResult:
     """Ask the reviewer role whether the diff since the step began meets the criterion."""
-    diff = (await diff_since(ctx.root, checkpoint_ref(ctx, step)))[:MAX_DIFF_CHARS]
-    system = prompts.render("reviewer", criterion=criterion, diff=diff)
+    diff = await diff_since(ctx.root, checkpoint_ref(ctx, step))
+    return await review_diff(ctx, criterion, diff)
+
+
+async def review_diff(ctx: Ctx, criterion: str, diff: str) -> CheckResult:
+    """Ask the reviewer role whether a diff meets the criterion."""
+    system = prompts.render("reviewer", criterion=criterion, diff=diff[:MAX_DIFF_CHARS])
     try:
         reply, _ = await complete(
             ctx, "reviewer", system, [text_message("user", prompts.render("review_task"))]

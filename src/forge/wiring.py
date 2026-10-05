@@ -101,7 +101,9 @@ async def show_events(events: AsyncIterator[Event], renderer: Renderer) -> None:
 
 
 async def close_session(ctx: Ctx) -> None:
-    """Stop background jobs and shells that belong to the session."""
+    """Stop background jobs and shells that belong to the session; remove unkept worktrees."""
+    if ctx.state.team is not None:
+        await ctx.state.team.close(ctx)
     for port in (ctx.executor, ctx.store):
         close = getattr(port, "close", None)
         if close is not None:

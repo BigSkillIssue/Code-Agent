@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S34
+Next step: S35
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -38,7 +38,8 @@ Next step: S34
 | S30 | 2026-10-05 | 45dde81 | team.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, tests/support.py, tests/test_subagents.py | foreground spawn_agent; child Ctx with own id/role/ledger; lead-only tools removed and enforced in call_tool; TEAM_LEAD/TEAM_MEMBER/EXPLORE prompts |
 | S31 | 2026-10-05 | a323462 | team.py, ctx.py, agent.py, tools.py, prompts.py, tests/test_agent_files.py, tests/fixtures/agents/ | agent files (.forge/agents, ~/.forge/agents; project wins); custom role gets its model chain, tool list and prompt |
 | S32 | 2026-10-05 | 031fbbd | team.py, agent_files.py, agent.py, ctx.py, events.py, tools.py, tests/test_messaging.py, tests/test_agent_files.py | background agents (asyncio tasks), inboxes drained each turn, lead waits for running children, send_message/list_agents/stop_agent |
-| S33 | 2026-10-05 | (next) | board.py, team.py, tools.py, ctx.py, ports.py, local/sqlite_store.py, local/memory_store.py, tests/test_board.py, tests/support.py | read_board/claim_task/update_task; atomic claims via BoardStore (SQLite conditional upsert); 50-round race on both stores |
+| S33 | 2026-10-05 | 46ca63e | board.py, team.py, tools.py, ctx.py, ports.py, local/sqlite_store.py, local/memory_store.py, tests/test_board.py, tests/support.py | read_board/claim_task/update_task; atomic claims via BoardStore (SQLite conditional upsert); 50-round race on both stores |
+| S34 | 2026-10-05 | (next) | runtime/worktree.py, team.py, checks.py, ctx.py, wiring.py, tests/test_worktree.py | isolation=worktree; 3-way merge via git merge-tree into the live tree (user's index untouched); board tasks reviewed before merge; conflicts go back to the owner |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -150,6 +151,8 @@ Next step: S34
 - S32: S32: the main agent is a registry entry too (inbox, turns, usage); run_agent records every turn via team.record_turn.
 - S33: S33: owners live behind a new BoardStore port (claim/release/owners), implemented by MemoryStore and SqliteStore; the board logic lives in board.py (team.py delegates) to keep team.py small.
 - S33: S33: board tools are offered only when ctx.state.team_mode is true (S35 sets it); stop_agent gives an agent's unfinished tasks back to the board.
+- S34: S34: worktrees start from a snapshot commit of the live tree (uncommitted work included); merges use git merge-tree --write-tree (needs git 2.38+) against a fresh snapshot and write only changed files, so the user's branch, HEAD and index never change. .forge/ is added to .git/info/exclude.
+- S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -160,6 +163,8 @@ Next step: S34
 - S32: S32: the main agent is a registry entry too (inbox, turns, usage); run_agent records every turn via team.record_turn.
 - S33: S33: owners live behind a new BoardStore port (claim/release/owners), implemented by MemoryStore and SqliteStore; the board logic lives in board.py (team.py delegates) to keep team.py small.
 - S33: S33: board tools are offered only when ctx.state.team_mode is true (S35 sets it); stop_agent gives an agent's unfinished tasks back to the board.
+- S34: S34: worktrees start from a snapshot commit of the live tree (uncommitted work included); merges use git merge-tree --write-tree (needs git 2.38+) against a fresh snapshot and write only changed files, so the user's branch, HEAD and index never change. .forge/ is added to .git/info/exclude.
+- S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
