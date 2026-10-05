@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from forge import prompts
 from forge.ctx import Ctx
 from forge.events import ErrorEvent, ModelDelta, ModelDone, ToolFinished, ToolStarted
+from forge.memory import load_memory, render_memory
 from forge.providers.base import (
     ChatRequest,
     Message,
@@ -82,7 +83,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "os": f"{platform.system()} {platform.release()}",
         "shell": " and ".join(shells) or "none",
         "date": datetime.date.today().isoformat(),
-        "memory": "(none)",
+        "memory": render_memory(load_memory(ctx.root, ctx.cwd), ctx.root),
     }
 
 
