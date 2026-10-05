@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 from forge import toml_writer
+from forge.toml_writer import dumps
 
 log = logging.getLogger(__name__)
 
@@ -189,6 +190,23 @@ def is_trusted(project_root: Path) -> bool:
     projects = data.get("projects", [])
     wanted = str(project_root.resolve())
     return any(str(Path(p).resolve()) == wanted for p in projects if isinstance(p, str))
+
+
+def set_trusted(project_root: Path, trusted: bool = True) -> Path:
+    """Add (or remove) the project in ~/.forge/trusted.toml; returns that file's path."""
+    path = forge_home() / "trusted.toml"
+    data = _read_toml(path)
+    wanted = str(project_root.resolve())
+    projects = [
+        p
+        for p in data.get("projects", [])
+        if isinstance(p, str) and str(Path(p).resolve()) != wanted
+    ]
+    if trusted:
+        projects.append(wanted)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dumps({**data, "projects": sorted(projects)}), encoding="utf-8")
+    return path
 
 
 def load_config(

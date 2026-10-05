@@ -8,7 +8,14 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from forge import __version__
-from forge.config import ConfigError, ForgeConfig, find_project_root, load_config, render_effective
+from forge.config import (
+    ConfigError,
+    ForgeConfig,
+    find_project_root,
+    load_config,
+    render_effective,
+    set_trusted,
+)
 from forge.evals import (
     EvalResult,
     EvalTask,
@@ -30,6 +37,7 @@ commands:
   forge "<prompt>"     work on a task
   forge run --json     work on a task headless: JSON events, exit 0/1/2 (done/failed/needs input)
   forge config check   validate and print the effective configuration
+  forge trust          let this project's config set providers, MCP servers and hooks
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
   forge eval           run the benchmark tasks in evals/tasks (--fake: offline)
@@ -86,9 +94,25 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
     """Find the project root and load its configuration (with --fake applied)."""
     root = find_project_root(options.cwd or Path.cwd())
     cfg = load_config(root, profile=options.profile)
+    for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
+        print(f"warning: {warning}", file=sys.stderr)
     if options.fake is not None:
         use_fake_provider(cfg, Path(options.fake) if options.fake else None, root)
     return root, cfg
+
+
+def cmd_trust(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge trust [--remove]`: allow (or stop allowing) the project's risky settings."""
+    parser = argparse.ArgumentParser(prog="forge trust")
+    parser.add_argument("--remove", action="store_true", help="stop trusting this project")
+    args = parser.parse_args(rest)
+    root = find_project_root(options.cwd or Path.cwd())
+    path = set_trusted(root, not args.remove)
+    verb = "no longer trusted" if args.remove else "trusted"
+    print(f"{root} is {verb} (recorded in {path})")
+    if not args.remove:
+        print("its .forge/config.toml may now set providers, MCP servers and hooks")
+    return 0
 
 
 def cmd_config(options: argparse.Namespace, rest: list[str]) -> int:
@@ -101,8 +125,6 @@ def cmd_config(options: argparse.Namespace, rest: list[str]) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    for warning in cfg.warnings:
-        print(f"warning: {warning}", file=sys.stderr)
     print(render_effective(cfg), end="")
     return 0
 
@@ -337,6 +359,7 @@ async def drain_events(shower: "asyncio.Task[None]") -> None:
 
 COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "run": cmd_run,
+    "trust": cmd_trust,
     "eval": cmd_eval,
     "config": cmd_config,
     "sessions": cmd_sessions,
