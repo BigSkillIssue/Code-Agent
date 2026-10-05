@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S15
+Next step: S16
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -18,7 +18,8 @@ Next step: S15
 | S11 | 2026-10-05 | 3af6d99 | src/forge/prompts.py, src/forge/agent.py, tests/test_prompts.py, tests/test_architecture.py | BASE, SAFETY, TOOL_RULES, REFINER, PLANNER, REPLANNER, CODER, STEP, REVIEWER, FINAL_REVIEW, COMPRESSOR, TOOL_FALLBACK; OVERRIDES per model family; render() checks slots |
 | S12 | 2026-10-05 | cdacf36 | src/forge/memory.py, src/forge/agent.py, tests/test_memory.py | ~/.forge/FORGE.md, then FORGE.md/AGENTS.md/CLAUDE.md per folder root→cwd, 32 KB cap, rendered as <memory> blocks into the {memory} slot |
 | S13 | 2026-10-05 | ca820c6 | src/forge/plan.py, tests/test_plan.py | next_ready_step, ready_steps, validate_graph (duplicates, unknown deps, self-deps, cycles, missing checks); checklist() |
-| S14 | 2026-10-05 | (next) | src/forge/pipeline.py, src/forge/context.py, src/forge/structured.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_refine.py, tests/fixtures/refine/cases.json | context.gather (tree depth 3, git status, memory, last summary); refine() with json_schema, JSON-block fallback, one retry via FIX_JSON prompt |
+| S14 | 2026-10-05 | f2b0084 | src/forge/pipeline.py, src/forge/context.py, src/forge/structured.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_refine.py, tests/fixtures/refine/cases.json | context.gather (tree depth 3, git status, memory, last summary); refine() with json_schema, JSON-block fallback, one retry via FIX_JSON prompt |
+| S15 | 2026-10-05 | (next) | src/forge/tools.py, src/forge/questions.py, src/forge/pipeline.py, src/forge/prompts.py, tests/test_clarify.py | ask_user tool (main agent only, validation per kind, headless defaults); clarify(): ask, merge answers via MERGE_ANSWERS, max rounds, /go |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -76,6 +77,9 @@ Next step: S15
 - S13: plan.py also offers `Plan.step(id)` and `checklist(plan)` (the `[x] s1 Title` view used by prompts, renderers and tools).
 - S14: `structured.py` reads a JSON object from raw text, a ```json fence or prose, and validates it into a Pydantic model.
 - S14: `agent.complete()` is the tool-free model call (refine, review, compress) using the role's fallback chain.
+- S15: `questions.py` holds the shared ask/headless-default logic for both ask_user and clarify; a renderer returning no answers means the user dismissed the questions.
+- S15: headless clarify closes questions with defaults as assumptions without another refiner call; leftover questions after the round limit are closed the same way.
+- S15: before a spec exists, headless answers are kept in `ctx.state.notes`.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

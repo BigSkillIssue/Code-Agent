@@ -5,6 +5,7 @@ Table of contents:
   FILES      read_file, write_file, edit_file, list_dir
   SEARCH     glob, grep
   SHELL      bash, powershell, job_output, job_stop
+  PLAN       ask_user
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -29,9 +30,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
+from forge.plan import Question
 from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec
 from forge.providers.registry import resolve_role
+from forge.questions import ask
 from forge.runtime.edit import adapt_newlines, edit_summary, replace_text
 from forge.runtime.errors import ToolError, failure
 from forge.runtime.files import (
@@ -809,3 +812,76 @@ async def _job_call(call: Awaitable[CommandResult]) -> CommandResult:
         raise ToolError(
             "not_found", f"no background job {exc.args[0]}", hint=f"known jobs: {known}"
         ) from exc
+
+
+# =====================================================================================
+# PLAN AND INTERACTION
+# =====================================================================================
+
+
+class QuestionIn(BaseModel):
+    """A question as the model writes it (validated into plan.Question)."""
+
+    text: str = Field(max_length=300)
+    kind: Literal["choice", "multi", "text", "confirm"]
+    options: list[str] = []  # 2-6 for choice/multi, each <= 80 chars, unique
+    default: str | None = (
+        None  # choice: one option; multi: options joined by ", "; confirm: "yes"/"no"
+    )
+    why: str = Field(max_length=120)
+
+
+@tool(group="plan", permission="auto", read_only=True)
+async def ask_user(
+    ctx: Ctx,
+    questions: Annotated[list[QuestionIn], "1-4 questions, most important first."],
+) -> str:
+    """Ask the user questions whose answers change the result. Never ask what you can find in the repo."""
+    if ctx.agent_id != "main":
+        raise ToolError(
+            "unsupported",
+            "only the lead agent may ask the user",
+            hint="report the question to the lead with send_message",
+        )
+    require(1 <= len(questions) <= 4, "ask 1 to 4 questions")
+    for number, question in enumerate(questions, start=1):
+        check_question(number, question)
+    asked = [Question(**q.model_dump()) for q in questions]
+    answers = await ask(ctx, asked)
+    if answers is None:
+        raise ToolError(
+            "cancelled",
+            "user dismissed the questions",
+            hint="continue with your best judgment and state your assumptions",
+        )
+    lines = []
+    suffix = " (default, headless)" if ctx.headless else ""
+    for number, (asked_q, answer) in enumerate(zip(asked, answers, strict=True), start=1):
+        lines += [f"{number}. {asked_q.text}", f"   answer: {answer or '(empty)'}{suffix}"]
+    return "\n".join(lines)
+
+
+def check_question(number: int, question: QuestionIn) -> None:
+    """Options must fit the kind, and the default must be a valid answer."""
+    where = f"question {number}"
+    options = question.options
+    if question.kind in ("choice", "multi"):
+        require(2 <= len(options) <= 6, f"{where}: {question.kind} needs 2 to 6 options")
+        require(len(set(options)) == len(options), f"{where}: options must be unique")
+        require(
+            all(len(o) <= 80 for o in options), f"{where}: options are limited to 80 characters"
+        )
+    else:
+        require(not options, f"{where}: only choice and multi questions have options")
+    default = question.default
+    if default is None:
+        return
+    if question.kind == "choice":
+        require(default in options, f"{where}: the default must be one of the options")
+    elif question.kind == "multi":
+        require(
+            all(p.strip() in options for p in default.split(",")),
+            f"{where}: every default must be an option",
+        )
+    elif question.kind == "confirm":
+        require(default in ("yes", "no"), f"{where}: a confirm default is 'yes' or 'no'")

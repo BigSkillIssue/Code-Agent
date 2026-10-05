@@ -6,8 +6,9 @@ from forge import prompts
 from forge.agent import complete
 from forge.context import gather
 from forge.ctx import Ctx
-from forge.plan import TaskSpec
+from forge.plan import Question, TaskSpec
 from forge.providers.base import Message, text_message
+from forge.questions import ask, assumption, default_answer
 from forge.structured import StructuredError, parse_as
 
 
@@ -43,3 +44,52 @@ async def ask_for_spec(
                 text_message("user", prompts.render("fix_json", failure=problem)),
             ]
     raise PipelineError(f"the refiner gave no valid task specification: {problem}")
+
+
+GO = "/go"
+
+
+async def clarify(spec: TaskSpec, ctx: Ctx) -> TaskSpec:
+    """Ask the spec's open questions, merge the answers, repeat (max rounds, or until /go)."""
+    for _ in range(ctx.cfg.limits.max_clarify_rounds):
+        questions = spec.open_questions[:4]
+        if not questions:
+            break
+        answers = await ask(ctx, questions)
+        if answers is None or ctx.headless:
+            return assume_rest(spec, questions, answers)
+        if GO in answers:
+            return assume_rest(
+                spec,
+                questions,
+                [
+                    a if a != GO else default_answer(q)
+                    for q, a in zip(questions, answers, strict=True)
+                ],
+            )
+        spec = await merge_answers(ctx, spec, questions, answers)
+    if spec.open_questions:
+        spec = assume_rest(spec, spec.open_questions, None)
+    return spec
+
+
+def assume_rest(spec: TaskSpec, questions: list[Question], answers: list[str] | None) -> TaskSpec:
+    """Close the questions with these answers (or defaults), recorded as assumptions."""
+    picked = answers or [default_answer(q) for q in questions]
+    notes = [assumption(q, a) for q, a in zip(questions, picked, strict=True)]
+    known = set(spec.assumptions)
+    added = [n for n in notes if n not in known]
+    return spec.model_copy(
+        update={"assumptions": [*spec.assumptions, *added], "open_questions": []}
+    )
+
+
+async def merge_answers(
+    ctx: Ctx, spec: TaskSpec, questions: list[Question], answers: list[str]
+) -> TaskSpec:
+    """Let the refiner fold the answers into the spec and look for remaining gaps."""
+    schema = TaskSpec.model_json_schema()
+    system = prompts.render("refiner", schema=json.dumps(schema), context=await gather(ctx))
+    lines = "\n".join(f"- {q.text} -> {a}" for q, a in zip(questions, answers, strict=True))
+    note = prompts.render("merge_answers", spec=spec.model_dump_json(indent=2), context=lines)
+    return await ask_for_spec(ctx, system, [text_message("user", note)], schema)

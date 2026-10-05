@@ -14,6 +14,7 @@ Table of contents:
   COMPRESSOR     summarize old context into a structured note
   TOOL_FALLBACK  how to call tools in JSON for models without native tools
   FIX_JSON       ask again after an answer that was not valid JSON
+  MERGE_ANSWERS  fold the user's answers into the task specification
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -302,6 +303,20 @@ Problem: {failure}
 Reply again with only the corrected JSON object, in a ```json block.
 """
 
+# --------------------------------------------------------------------------- MERGE_ANSWERS
+
+MERGE_ANSWERS = """\
+The user answered your open questions. Merge the answers into the specification: update goal, requirements, constraints and acceptance criteria where they change, remove the answered questions, and ask only about gaps that remain (none is fine). Reply with the complete updated specification as JSON in a ```json block.
+"""
+
+MERGE_ANSWERS_TAIL = """
+Current specification:
+{spec}
+
+Answers:
+{context}
+"""
+
 # --------------------------------------------------------------------------- OVERRIDES
 
 # Small additions per model family, appended after a prompt's static text. Never forks.
@@ -332,6 +347,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "compressor": (COMPRESSOR, COMPRESSOR_TAIL),
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
     "fix_json": (FIX_JSON, FIX_JSON_TAIL),
+    "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
 }
 
 
