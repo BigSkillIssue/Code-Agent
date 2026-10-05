@@ -18,6 +18,7 @@ from forge.wiring import close_session, default_store, open_session, show_events
 
 EPILOG = """\
 commands:
+  forge                open the terminal UI
   forge "<prompt>"     work on a task
   forge config check   validate and print the effective configuration
   forge sessions       list this project's sessions
@@ -244,5 +245,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"unknown options: {' '.join(unknown)}")
     if rest:
         return cmd_prompt(options, " ".join(rest))
-    parser.print_help()
-    return 0
+    return cmd_tui(options)
+
+
+def cmd_tui(options: argparse.Namespace) -> int:
+    """`forge` without a prompt: open the terminal UI."""
+    from forge.tui import run_tui  # Textual loads only when the UI is used
+
+    try:
+        root, cfg = load(options)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return run_tui(root, cfg)

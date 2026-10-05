@@ -1,8 +1,23 @@
-"""Slash commands typed by the user (/undo, /compact, /context); more arrive with S39."""
+"""Slash commands typed by the user (/help lists them); custom commands arrive with S39."""
+
+from typing import Any
 
 from forge.ctx import Ctx
+from forge.plan import checklist
 from forge.runtime.checkpoint import CheckpointError, restore
 from forge.runtime.files import display_path, journal_dir, undo_last_change
+
+HELP = {
+    "/plan": "show the plan with step statuses",
+    "/compact [hard]": "summarize the context now (hard: reset it)",
+    "/context": "tokens used by the last request, by category",
+    "/undo": "roll back the last step or file change",
+    "/mode [MODE]": "show or set the sandbox mode or approval policy",
+    "/jobs": "background jobs and their status",
+    "/help": "this list",
+}
+SANDBOX_MODES = ("read-only", "workspace-write", "full-access")
+APPROVAL_POLICIES = ("on-request", "always", "never")
 
 
 async def run_command(ctx: Ctx, text: str) -> str:
@@ -14,6 +29,14 @@ async def run_command(ctx: Ctx, text: str) -> str:
         return request_compaction(ctx, hard=args.strip() == "hard")
     if name == "/context":
         return context_report(ctx)
+    if name == "/plan":
+        return checklist(ctx.session.plan) if ctx.session.plan else "no plan yet"
+    if name == "/mode":
+        return set_mode(ctx, args.strip())
+    if name == "/jobs":
+        return jobs_report(ctx)
+    if name == "/help":
+        return "\n".join(f"{command:<16}{text}" for command, text in HELP.items())
     return f"unknown command {name}"
 
 
@@ -56,4 +79,28 @@ def context_report(ctx: Ctx) -> str:
     lines += [f"  {name:<13}{tokens:>9,}" for name, tokens in usage.items()]
     limits = ctx.cfg.limits
     lines.append(f"summary at {limits.compact_at:.0%}, reset at {limits.reset_at:.0%}")
+    return "\n".join(lines)
+
+
+def set_mode(ctx: Ctx, mode: str) -> str:
+    """Show or change the sandbox mode or the approval policy for this session."""
+    cfg = ctx.cfg
+    if mode in SANDBOX_MODES:
+        cfg.sandbox.mode = mode  # type: ignore[assignment]
+    elif mode in APPROVAL_POLICIES:
+        cfg.approval.policy = mode  # type: ignore[assignment]
+    elif mode:
+        return f"unknown mode {mode}; use one of {', '.join(SANDBOX_MODES + APPROVAL_POLICIES)}"
+    return f"sandbox: {cfg.sandbox.mode}, approval: {cfg.approval.policy}"
+
+
+def jobs_report(ctx: Ctx) -> str:
+    """One line per background job of this session's executor."""
+    jobs: dict[str, Any] = getattr(ctx.executor, "jobs", {})
+    if not jobs:
+        return "no background jobs"
+    lines = []
+    for job in jobs.values():
+        state = "running" if job.ended is None else f"exit {job.exit_code}"
+        lines.append(f"{job.id}  {state:<9} {job.elapsed():.0f}s  pid {job.proc.pid}")
     return "\n".join(lines)

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S29
+Next step: S30
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -33,7 +33,8 @@ Next step: S29
 | S26a | 2026-10-05 | fc87adc | tools.py, runtime/patch.py, tests/test_patch.py, tests/test_memory_tools.py | apply_patch (atomic, 3-level matching), remember, recall; S26 split: S26b = repo_map, web_fetch, web_search |
 | S26b | 2026-10-05 | e86c777 | tools.py, prompts.py, ctx.py, runtime/repomap.py, runtime/web.py, providers/anthropic.py, tests/test_repomap.py, tests/test_web.py, tests/test_anthropic.py | repo_map (tree-sitter tags + constants, ranked, cached), web_fetch (local targets refused, same-host redirects, 15 min cache), web_search (native Claude, brave, tavily, searxng) |
 | S27 | 2026-10-05 | 56b3c42 | compress.py, agent.py, commands.py, ctx.py, prompts.py, tools.py, tests/test_compress.py | trim / summarize / reset; plan, spec, unresolved errors and touched files are copied by code; /compact [hard], /context |
-| S28 | 2026-10-05 | (next) | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
+| S28 | 2026-10-05 | 3e4f00c | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
+| S29 | 2026-10-05 | (next) | tui.py, local/tui_renderer.py, commands.py, cli.py, tests/test_tui.py | Textual app: stream pane, live plan, question picker with Other, approval dialog with diff preview; /plan /compact /context /undo /mode /jobs /help; 'forge' alone opens it |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -136,6 +137,7 @@ Next step: S29
 - S28: S28: read-only mode lets commands write only to Forge's scratch folder (<tmp>/forge-scratch) and /dev; workspace-write adds the writable roots and the temp folders.
 - S28: S28: on approval policy on-request, bash/powershell run without asking when an OS sandbox is active, else ask; a command flagged sandbox_denied is offered for one rerun without the sandbox (never: reported as sandbox_denied).
 - S28: S28: persistent shells are pooled per sandbox (Launch.key), since a sandbox cannot be lifted from a running process.
+- S29: S29: the TUI keeps one session (ctx) for its lifetime; each prompt runs run_task on it. /jobs reads the executor's jobs by duck typing (the Executor port has no listing method).
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -149,3 +151,4 @@ Next step: S29
 - S26b: S26b: native web search for OpenAI/Gemini providers not implemented (they fall back to unsupported unless an HTTP backend is configured).
 - S28: S28: Windows has no OS sandbox yet (restricted token + job object not implemented); there, commands rely on approvals (on-request asks for every non-read-only command) and Forge's path checks. Sandbox tests skip on Windows.
 - S28: S28: Landlock cannot protect .git/.forge inside a writable root (allow-only rules); only Forge's own file tools enforce protected_path. sandbox_denied detection is a heuristic on error text.
+- S29: S29: Phase 2 gate also needs the live provider contract run (see S25); everything else in Phase 2 is verified offline.

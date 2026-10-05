@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.9",
     "rich>=13.7",
     "sqlalchemy[asyncio]>=2.0",
+    "textual>=8.2.8",
     "tree-sitter>=0.26.0",
     "tree-sitter-language-pack>=1.21.0",
 ]
