@@ -4,6 +4,7 @@ from typing import cast
 
 from forge.config import ForgeConfig, ProviderConfig
 from forge.providers.base import Provider, ProviderError
+from forge.providers.catalog import PRESETS, canonical_model
 from forge.providers.openai_compat import OpenAICompatProvider
 
 
@@ -16,7 +17,7 @@ def get_provider(name: str, cfg: ForgeConfig) -> Provider:
     """The provider called `name`, built from `[providers.<name>]` once per config."""
     if name in cfg.instances:
         return cast(Provider, cfg.instances[name])
-    config = cfg.providers.get(name)
+    config = cfg.providers.get(name) or PRESETS.get(name)
     if config is None:
         raise ProviderError(
             "bad_request", f"unknown provider '{name}'; add [providers.{name}] to forge.toml"
@@ -43,5 +44,5 @@ def resolve_role(role: str, cfg: ForgeConfig) -> list[tuple[Provider, str]]:
             raise ProviderError(
                 "bad_request", f"role '{role}': '{entry}' must look like 'provider/model'"
             )
-        resolved.append((get_provider(provider_name, cfg), model))
+        resolved.append((get_provider(provider_name, cfg), canonical_model(model)))
     return resolved
