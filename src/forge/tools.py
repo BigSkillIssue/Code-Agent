@@ -7,7 +7,7 @@ Table of contents:
   SHELL      bash, powershell, job_output, job_stop
   WEB        web_fetch, web_search
   PLAN       ask_user, submit_plan, update_plan, finish_step
-  AGENTS     spawn_agent
+  AGENTS     spawn_agent, send_message, list_agents, stop_agent
   MEMORY     remember, recall
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from forge import prompts
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
-from forge.ctx import Ctx
+from forge.ctx import Ctx, Team
 from forge.events import PlanUpdated
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
@@ -829,6 +829,8 @@ async def run_shell(
     cmd = Command(script=command, shell=kind, cwd=str(ctx.cwd), timeout_s=timeout_s)
     result = await ctx.executor.run(cmd, sandbox_policy(ctx), background=background)
     if background:
+        if ctx.state.team is not None and result.job_id:
+            ctx.state.team.note_job(ctx.agent_id, result.job_id)
         label = description or command.strip().splitlines()[0][:60]
         return job_started(result, label)
     if result.sandbox_denied:
@@ -1367,9 +1369,7 @@ async def spawn_agent(
     name: Annotated[str | None, "Optional name for messaging, e.g. 'api-tests'."] = None,
 ) -> str:
     """Start a sub-agent with its own context. It returns only its final report."""
-    if ctx.state.team is None:
-        raise ToolError("unsupported", "sub-agents are not available in this session")
-    return await ctx.state.team.spawn(
+    return await team_of(ctx).spawn(
         ctx,
         role,
         task,
@@ -1378,6 +1378,40 @@ async def spawn_agent(
         max_turns=max_turns,
         name=name,
     )
+
+
+@tool(group="agents", permission="auto", read_only=True)
+async def send_message(
+    ctx: Ctx,
+    to: Annotated[str, "Agent id or name, or 'main' for the lead."],
+    text: Annotated[str, "The message, max 10,000 chars."],
+    summary: Annotated[str, "Optional one-line preview, max 100 chars."] = "",
+) -> str:
+    """Send a message to another running agent."""
+    return await team_of(ctx).send(ctx, to, text, summary)
+
+
+@tool(group="agents", permission="auto", read_only=True)
+async def list_agents(ctx: Ctx) -> str:
+    """List all agents in this session with status and usage."""
+    return team_of(ctx).overview(ctx)
+
+
+@tool(group="agents", permission="auto", read_only=False)
+async def stop_agent(
+    ctx: Ctx,
+    agent_id: Annotated[str, "Agent id or name."],
+    keep_worktree: Annotated[bool, "Keep its worktree for inspection."] = True,
+) -> str:
+    """Cancel a running agent and its background jobs."""
+    return await team_of(ctx).stop(ctx, agent_id, keep_worktree)
+
+
+def team_of(ctx: Ctx) -> Team:
+    """The session's agents; unsupported when the session has none."""
+    if ctx.state.team is None:
+        raise ToolError("unsupported", "agents are not available in this session")
+    return ctx.state.team
 
 
 # =====================================================================================

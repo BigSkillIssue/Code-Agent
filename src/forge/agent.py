@@ -58,17 +58,26 @@ async def run_agent(
     tools = agent_tools(ctx, role)
     usage, text = Usage(), ""
     specs = [t.spec for t in tools]
+    team = ctx.state.team
     for _ in range(max_turns):
+        if team is not None:
+            messages += deliver(ctx, team.take_messages(ctx.agent_id))
         messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
         try:
             reply, turn_usage = await model_turn(ctx, role, system, messages, specs)
         except ProviderError as err:
             return AgentResult(text=str(err), messages=messages, usage=usage, stopped="error")
         usage += turn_usage
+        if team is not None:
+            team.record_turn(ctx.agent_id, turn_usage)
         messages.append(reply)
         _record(ctx, reply)
         text = reply.text() or text
         if not reply.tool_calls:
+            if team is not None and team.has_running_children(ctx.agent_id):
+                # Reports of background agents are still due; wait and let the model use them.
+                messages += deliver(ctx, await team.wait_for_message(ctx.agent_id))
+                continue
             return AgentResult(text=text, messages=messages, usage=usage, stopped="done")
         if usage.cost_usd > ctx.cfg.limits.max_cost_usd:
             return AgentResult(text=text, messages=messages, usage=usage, stopped="budget")
@@ -123,6 +132,14 @@ async def run_one_tool(ctx: Ctx, call: ToolCall) -> ToolResult:
         ToolFinished(session_id=ctx.session.id, agent_id=ctx.agent_id, ts=now(), result=result)
     )
     return result
+
+
+def deliver(ctx: Ctx, texts: list[str]) -> list[Message]:
+    """Inbox messages as user messages (recorded in the transcript)."""
+    delivered = [text_message("user", text) for text in texts]
+    for message in delivered:
+        _record(ctx, message)
+    return delivered
 
 
 def _record(ctx: Ctx, message: Message) -> None:

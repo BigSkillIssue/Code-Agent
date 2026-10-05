@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 from forge.agent import run_agent
+from forge.agent_files import AgentFileError, load_agents, parse_agent_file
 from forge.config import ForgeConfig
 from forge.providers.fake import FakeProvider, FakeToolCall, FakeTurn
 from forge.providers.registry import register_provider
-from forge.team import AgentFileError, load_agents, parse_agent_file
 from support import make_ctx
 
 FIXTURES = Path(__file__).parent / "fixtures" / "agents"

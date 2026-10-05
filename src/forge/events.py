@@ -91,6 +91,24 @@ class ErrorEvent(Event):
     message: str
 
 
+class AgentMessage(Event):
+    """A message between agents (send_message); agent_id is the sender."""
+
+    kind: Literal["agent_message"] = "agent_message"
+    to: str
+    summary: str
+    text: str
+
+
+class AgentFinished(Event):
+    """A background sub-agent ended; its report went to the parent's inbox."""
+
+    kind: Literal["agent_finished"] = "agent_finished"
+    role: str
+    status: str
+    report: str
+
+
 EVENT_TYPES: tuple[type[Event], ...] = (
     ModelDelta,
     ModelDone,
@@ -102,6 +120,8 @@ EVENT_TYPES: tuple[type[Event], ...] = (
     Compacted,
     SessionDone,
     ErrorEvent,
+    AgentMessage,
+    AgentFinished,
 )
 
 AnyEvent = Annotated[
@@ -114,7 +134,9 @@ AnyEvent = Annotated[
     | StepDone
     | Compacted
     | SessionDone
-    | ErrorEvent,
+    | ErrorEvent
+    | AgentMessage
+    | AgentFinished,
     Field(discriminator="kind"),
 ]
 _EVENT_ADAPTER: TypeAdapter[AnyEvent] = TypeAdapter(AnyEvent)

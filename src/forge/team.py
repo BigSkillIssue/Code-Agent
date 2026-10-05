@@ -9,16 +9,16 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field, replace
-from pathlib import Path
 from typing import Literal
 
 from forge.agent import AgentResult, run_agent
-from forge.config import forge_home
-from forge.ctx import Ctx, CustomRole
+from forge.agent_files import use_agent_file
+from forge.ctx import Ctx
+from forge.events import AgentFinished, AgentMessage
+from forge.ports import JobNotFoundError
 from forge.providers.base import Message, Usage
 from forge.runtime.errors import ToolError
 from forge.runtime.ledger import ReadLedger
-from forge.tools import REGISTRY, TOOL_GROUPS
 
 BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher")
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
@@ -48,6 +48,7 @@ class AgentInfo:
     inbox: "asyncio.Queue[str]" = field(default_factory=asyncio.Queue)
     task_handle: "asyncio.Task[None] | None" = None
     messages: list[Message] = field(default_factory=list)  # the agent's own transcript
+    jobs: list[str] = field(default_factory=list)  # background jobs it started
     started: float = field(default_factory=time.time)
 
 
@@ -55,7 +56,9 @@ class AgentRegistry:
     """All agents of one session; `main` is the lead."""
 
     def __init__(self) -> None:
-        self.agents: dict[str, AgentInfo] = {}
+        self.agents: dict[str, AgentInfo] = {
+            "main": AgentInfo("main", None, "coder", "running", None, "")
+        }
         self._count = 0
 
     def find(self, key: str) -> AgentInfo | None:
@@ -66,7 +69,7 @@ class AgentRegistry:
 
     def running(self) -> int:
         """How many sub-agents are running now."""
-        return sum(1 for a in self.agents.values() if a.status == "running")
+        return sum(1 for a in self.agents.values() if a.status == "running" and a.id != "main")
 
     def add(self, role: str, task: str, name: str | None, parent_id: str) -> AgentInfo:
         """Register a new running agent with the next id (a1, a2, ...)."""
@@ -86,13 +89,17 @@ class AgentRegistry:
         max_turns: int,
         name: str | None,
     ) -> str:
-        """Start a sub-agent for `task` and return its report (foreground)."""
+        """Start a sub-agent for `task`: wait for its report, or run it in the background."""
         await use_agent_file(ctx, role)
         self.check_spawn(ctx, role, task, max_turns, name)
-        if background or isolation != "none":
-            raise ToolError("unsupported", "background and worktree agents are not available yet")
+        if isolation != "none":
+            raise ToolError("unsupported", "worktree agents are not available yet")
         info = self.add(role, task, name, ctx.agent_id)
         child = child_ctx(ctx, info)
+        if background:
+            info.task_handle = asyncio.create_task(self.run_background(ctx, child, info, max_turns))
+            started = f"started agent {info.id} ({role}) in background"
+            return f"{started}; you will receive its report as a message"
         try:
             result = await run_agent(child, task, role=role, max_turns=max_turns)
         except asyncio.CancelledError:
@@ -101,6 +108,32 @@ class AgentRegistry:
         self.finish(info, result)
         await ctx.hooks.run("subagent_stop", {"agent_id": info.id, "status": info.status}, ctx)
         return report(info, result)
+
+    async def run_background(self, ctx: Ctx, child: Ctx, info: AgentInfo, max_turns: int) -> None:
+        """Run a background agent, then post its report to the parent's inbox."""
+        try:
+            result = await run_agent(child, info.task, role=info.role, max_turns=max_turns)
+        except asyncio.CancelledError:
+            info.status = "cancelled"
+            return
+        except Exception as exc:  # a crashing sub-agent must not take the lead down with it
+            info.status, text = "failed", f"{type(exc).__name__}: {exc}"
+        else:
+            self.finish(info, result)
+            text = result.text.strip()
+        head = f"[agent {info.id} ({info.role}) finished: {info.status}]"
+        self.post(info.parent_id or "main", f"{head}\n{text or '(no report)'}")
+        await ctx.bus.publish(
+            AgentFinished(
+                session_id=ctx.session.id,
+                agent_id=info.id,
+                ts=time.time(),
+                role=info.role,
+                status=info.status,
+                report=text,
+            )
+        )
+        await ctx.hooks.run("subagent_stop", {"agent_id": info.id, "status": info.status}, ctx)
 
     def check_spawn(self, ctx: Ctx, role: str, task: str, max_turns: int, name: str | None) -> None:
         """The spawn rules: lead only, known role, valid inputs, limits."""
@@ -134,6 +167,127 @@ class AgentRegistry:
         info.messages = result.messages
         info.turns = sum(1 for m in result.messages if m.role == "assistant")
 
+    # ------------------------------------------------------------------ messages
+
+    def post(self, agent_id: str, text: str) -> None:
+        """Put a message into an agent's inbox."""
+        self.agents[agent_id].inbox.put_nowait(text)
+
+    async def send(self, ctx: Ctx, to: str, text: str, summary: str) -> str:
+        """send_message: deliver `text` to a running agent's inbox."""
+        if not text.strip() or len(text) > 10_000 or len(summary) > 100:
+            raise ToolError(
+                "invalid_args", "text must be 1-10,000 and summary at most 100 characters"
+            )
+        target = self.find(to)
+        if target is None:
+            raise ToolError(
+                "not_found", f"no agent '{to}'", hint="agents: " + ", ".join(self.agents)
+            )
+        if target.id == ctx.agent_id:
+            raise ToolError("invalid_args", "you cannot send a message to yourself")
+        if target.status != "running":
+            raise ToolError(
+                "not_found",
+                f"agent {target.id} is not running",
+                hint=f"agent {target.id} has finished",
+            )
+        self.post(target.id, f"[message from {ctx.agent_id} ({ctx.role})]: {text}")
+        await ctx.bus.publish(
+            AgentMessage(
+                session_id=ctx.session.id,
+                agent_id=ctx.agent_id,
+                ts=time.time(),
+                to=target.id,
+                summary=summary or text[:100],
+                text=text,
+            )
+        )
+        return f"delivered to {target.id} ({target.role})"
+
+    def take_messages(self, agent_id: str) -> list[str]:
+        """Every message waiting in an agent's inbox."""
+        info = self.agents.get(agent_id)
+        texts: list[str] = []
+        while info is not None and not info.inbox.empty():
+            texts.append(info.inbox.get_nowait())
+        return texts
+
+    async def wait_for_message(self, agent_id: str) -> list[str]:
+        """Wait for the next message, then return it with any others already waiting."""
+        first = await self.agents[agent_id].inbox.get()
+        return [first, *self.take_messages(agent_id)]
+
+    def has_running_children(self, agent_id: str) -> bool:
+        """True while a sub-agent this agent started is still running."""
+        return any(a.parent_id == agent_id and a.status == "running" for a in self.agents.values())
+
+    def record_turn(self, agent_id: str, usage: Usage) -> None:
+        """Count one model turn of an agent."""
+        info = self.agents.get(agent_id)
+        if info is not None:
+            info.turns += 1
+            info.usage += usage
+
+    def note_job(self, agent_id: str, job_id: str) -> None:
+        """Remember a background job, so stopping the agent stops the job too."""
+        info = self.agents.get(agent_id)
+        if info is not None:
+            info.jobs.append(job_id)
+
+    # ------------------------------------------------------------------ list and stop
+
+    def overview(self, ctx: Ctx) -> str:
+        """list_agents: one row per agent."""
+        main = self.agents["main"]
+        if not main.task:
+            main.task = ctx.session.spec.goal if ctx.session.spec else first_user_text(ctx)
+        rows = [f"{'id':<6}{'name':<11}{'role':<10}{'status':<10}{'turns':<7}{'tokens':<8}task"]
+        for info in self.agents.values():
+            tokens = f"{(info.usage.input_tokens + info.usage.output_tokens) / 1000:.1f}k"
+            rows.append(
+                f"{info.id:<6}{info.name or '-':<11}{info.role:<10}{info.status:<10}"
+                f"{info.turns:<7}{tokens:<8}{' '.join(info.task.split())[:50]}"
+            )
+        return "\n".join(rows)
+
+    async def stop(self, ctx: Ctx, agent: str, keep_worktree: bool) -> str:
+        """stop_agent: cancel a running agent and stop its background jobs."""
+        if ctx.agent_id != "main":
+            raise ToolError("unsupported", "only the lead agent can stop agents")
+        info = self.find(agent)
+        if info is None or info.id == "main":
+            raise ToolError("not_found", f"no sub-agent '{agent}'")
+        if info.status != "running":
+            raise ToolError(
+                "invalid_args",
+                f"{info.id} is not running",
+                hint=f"it ended with status {info.status}",
+            )
+        if info.task_handle is not None:
+            info.task_handle.cancel()
+            await asyncio.wait({info.task_handle}, timeout=1.0)
+        info.status = "cancelled"
+        stopped = [job for job in info.jobs if await stop_job(ctx, job)]
+        text = f"stopped {info.id} ({info.role}) after {info.turns} turns"
+        if stopped:
+            text += f"; stopped jobs {', '.join(stopped)}"
+        return text
+
+
+async def stop_job(ctx: Ctx, job_id: str) -> bool:
+    """Stop one background job; False if it no longer exists."""
+    try:
+        await ctx.executor.job_stop(job_id)
+    except JobNotFoundError:
+        return False
+    return True
+
+
+def first_user_text(ctx: Ctx) -> str:
+    """The first user message of the session (the task, before a spec exists)."""
+    return next((m.text() for m in ctx.session.messages if m.role == "user"), "")
+
 
 def child_ctx(ctx: Ctx, info: AgentInfo) -> Ctx:
     """The sub-agent's context: own id, role and read ledger; everything else shared."""
@@ -156,110 +310,3 @@ def report(info: AgentInfo, result: AgentResult) -> str:
             )
         )
     return f"{head}\n--- report ---\n{result.text.strip() or '(no report)'}"
-
-
-# ----------------------------------------------------------------------------- agent files
-
-AGENT_KEYS = frozenset({"name", "model", "tools", "description"})
-
-
-class AgentFileError(ValueError):
-    """An agent file that cannot be used; the message names the file."""
-
-
-@dataclass
-class AgentDef:
-    """A custom role from `.forge/agents/<name>.md` or `~/.forge/agents/<name>.md`."""
-
-    name: str
-    models: list[str]  # fallback chain; empty = the role's configured or default models
-    tools: list[str] | None  # tool or group names; None = the coder's tools
-    description: str
-    prompt: str
-    path: Path
-
-
-def agent_dirs(root: Path) -> list[Path]:
-    """User folder first, project folder last (so project files win on a name clash)."""
-    return [forge_home() / "agents", root / ".forge" / "agents"]
-
-
-def load_agents(root: Path) -> dict[str, AgentDef]:
-    """Every agent file of the user and the project, by name."""
-    agents: dict[str, AgentDef] = {}
-    for folder in agent_dirs(root):
-        for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
-            agent = parse_agent_file(path)
-            agents[agent.name] = agent
-    return agents
-
-
-def parse_agent_file(path: Path) -> AgentDef:
-    """Front matter between `---` lines (name, model, tools, description), then the prompt."""
-    text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
-    if not text.startswith("---\n") or "\n---" not in text[3:]:
-        raise AgentFileError(f"{path}: must start with front matter between '---' lines")
-    head, _, body = text[4:].partition("\n---")
-    fields = parse_front_matter(head, path)
-    name = fields.get("name") or path.stem
-    if not isinstance(name, str) or not NAME.match(name):
-        raise AgentFileError(f"{path}: name must match [a-z0-9-]{{1,32}}, got {name!r}")
-    prompt = body.partition("\n")[2].strip()
-    if not prompt:
-        raise AgentFileError(f"{path}: the prompt (text after the front matter) is empty")
-    return AgentDef(
-        name=name,
-        models=as_list(fields.get("model")),
-        tools=as_list(fields["tools"]) if "tools" in fields else None,
-        description=str(fields.get("description") or ""),
-        prompt=prompt,
-        path=path,
-    )
-
-
-def parse_front_matter(head: str, path: Path) -> dict[str, str | list[str]]:
-    """`key: value` lines; lists as `[a, b]`, `a, b` or following `- item` lines."""
-    fields: dict[str, str | list[str]] = {}
-    key = ""
-    for number, line in enumerate(head.splitlines(), start=2):
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if line.lstrip().startswith("- ") and key:
-            current = fields.get(key)
-            fields[key] = [
-                *(current if isinstance(current, list) else []),
-                line.strip()[2:].strip(),
-            ]
-            continue
-        key, colon, value = line.partition(":")
-        key = key.strip()
-        if not colon or key not in AGENT_KEYS:
-            raise AgentFileError(
-                f"{path}: line {number}: expected 'key: value' with key "
-                f"{', '.join(sorted(AGENT_KEYS))}"
-            )
-        fields[key] = value.strip().strip("[]").strip()
-    return fields
-
-
-def as_list(value: str | list[str] | None) -> list[str]:
-    """A comma-separated value or list, without blanks or quotes."""
-    items = value if isinstance(value, list) else (value or "").split(",")
-    return [i.strip().strip("'\"") for i in items if i.strip()]
-
-
-async def use_agent_file(ctx: Ctx, role: str) -> None:
-    """Install the agent file named `role` (if any) into the session: models, tools, prompt."""
-    try:
-        agents = await asyncio.to_thread(load_agents, ctx.root)
-    except (AgentFileError, OSError, UnicodeDecodeError) as err:
-        raise ToolError("invalid_args", f"bad agent file: {err}") from err
-    agent = agents.get(role)
-    if agent is None:
-        return
-    unknown = [t for t in agent.tools or [] if t not in REGISTRY and t not in TOOL_GROUPS]
-    if unknown:
-        raise ToolError("invalid_args", f"{agent.path}: unknown tools {', '.join(unknown)}")
-    if agent.models:
-        ctx.cfg.roles[agent.name] = agent.models
-    ctx.state.custom_roles[agent.name] = CustomRole(agent.prompt, agent.tools, agent.description)

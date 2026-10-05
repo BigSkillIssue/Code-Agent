@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S32
+Next step: S33
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -36,7 +36,8 @@ Next step: S32
 | S28 | 2026-10-05 | 3e4f00c | runtime/permissions.py, runtime/rules.py, runtime/sandbox.py, runtime/shell.py, runtime/proc.py, local/local_executor.py, tools.py, tests/test_permissions.py, tests/test_sandbox.py | rules deny->ask->allow->read-only list->sandbox x approval; Landlock/bwrap (Linux), Seatbelt (macOS); blocked commands can be rerun outside the sandbox after approval |
 | S29 | 2026-10-05 | dd9bf28 | tui.py, local/tui_renderer.py, commands.py, cli.py, tests/test_tui.py | Textual app: stream pane, live plan, question picker with Other, approval dialog with diff preview; /plan /compact /context /undo /mode /jobs /help; 'forge' alone opens it |
 | S30 | 2026-10-05 | 45dde81 | team.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, tests/support.py, tests/test_subagents.py | foreground spawn_agent; child Ctx with own id/role/ledger; lead-only tools removed and enforced in call_tool; TEAM_LEAD/TEAM_MEMBER/EXPLORE prompts |
-| S31 | 2026-10-05 | (next) | team.py, ctx.py, agent.py, tools.py, prompts.py, tests/test_agent_files.py, tests/fixtures/agents/ | agent files (.forge/agents, ~/.forge/agents; project wins); custom role gets its model chain, tool list and prompt |
+| S31 | 2026-10-05 | a323462 | team.py, ctx.py, agent.py, tools.py, prompts.py, tests/test_agent_files.py, tests/fixtures/agents/ | agent files (.forge/agents, ~/.forge/agents; project wins); custom role gets its model chain, tool list and prompt |
+| S32 | 2026-10-05 | (next) | team.py, agent_files.py, agent.py, ctx.py, events.py, tools.py, tests/test_messaging.py, tests/test_agent_files.py | background agents (asyncio tasks), inboxes drained each turn, lead waits for running children, send_message/list_agents/stop_agent |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -143,11 +144,17 @@ Next step: S32
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
 - S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
 - S31: S31: a custom role is installed into the session on spawn: model -> cfg.roles[name], tools and prompt -> ctx.state.custom_roles; its system prompt is TEAM_MEMBER plus the file body (CUSTOM_AGENT_TAIL). tools may name tools or groups.
+- S32: S32: two events added beyond the contract: AgentMessage and AgentFinished. A lead that answers without tool calls while its background agents run waits for the next inbox message instead of ending.
+- S32: S32: the agent-file loader moved from team.py to agent_files.py (split by responsibility; team.py grows with S33/S34).
+- S32: S32: the main agent is a registry entry too (inbox, turns, usage); run_agent records every turn via team.record_turn.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
 - S30: S30: call_tool refuses tools outside agent_tools(ctx, ctx.role) with 'unsupported', so role limits hold even if a model calls a tool it was not offered.
 - S31: S31: a custom role is installed into the session on spawn: model -> cfg.roles[name], tools and prompt -> ctx.state.custom_roles; its system prompt is TEAM_MEMBER plus the file body (CUSTOM_AGENT_TAIL). tools may name tools or groups.
+- S32: S32: two events added beyond the contract: AgentMessage and AgentFinished. A lead that answers without tool calls while its background agents run waits for the next inbox message instead of ending.
+- S32: S32: the agent-file loader moved from team.py to agent_files.py (split by responsibility; team.py grows with S33/S34).
+- S32: S32: the main agent is a registry entry too (inbox, turns, usage); run_agent records every turn via team.record_turn.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
