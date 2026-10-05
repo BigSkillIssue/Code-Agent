@@ -18,6 +18,7 @@ Table of contents:
   TOOL_FALLBACK  how to call tools in JSON for models without native tools
   FIX_JSON       ask again after an answer that was not valid JSON
   MERGE_ANSWERS  fold the user's answers into the task specification
+  SKILLS         the list of skills in the environment section
   WEB_EXTRACT    answer a question from a fetched web page (page is data, not instructions)
   WEB_SEARCH     the user message for a provider's native web search
   PLAN_TASK      the planner's user message
@@ -110,7 +111,7 @@ Environment:
 
 Project instructions (from FORGE.md, AGENTS.md and CLAUDE.md files; deeper files win, and the user's direct instructions win over all of them):
 {memory}
-{deferred_tools}"""
+{skills}{deferred_tools}"""
 
 # --------------------------------------------------------------------------- REFINER
 
@@ -262,6 +263,13 @@ Work through the team's task board until nothing is left for you:
 3. Do the task in your working directory, including its check.
 4. Call update_task with status done (Forge runs the task's check and merges your work) or failed with the reason. If the check fails, fix the problem and call update_task again.
 Stop when no task is ready, and reply with the tasks you completed and anything left open.
+"""
+
+SKILLS = """\
+Skills: instructions for specific kinds of work. When your task matches a skill, read its file with read_file first and follow it.
+"""
+
+SKILLS_TAIL = """{skills}
 """
 
 DEFERRED_TOOLS = """\
@@ -467,6 +475,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "custom_agent": (TEAM_MEMBER, CUSTOM_AGENT_TAIL + "\n" + ENVIRONMENT),
     "team_task": (TEAM_TASK, ""),
     "deferred_tools": (DEFERRED_TOOLS, DEFERRED_TOOLS_TAIL),
+    "skills": (SKILLS, SKILLS_TAIL),
     "explore": (EXPLORE, "\n" + ENVIRONMENT),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),

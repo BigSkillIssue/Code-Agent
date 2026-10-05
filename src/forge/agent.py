@@ -24,6 +24,7 @@ from forge.providers.base import (
     text_message,
 )
 from forge.runtime.shell import find_shell
+from forge.skills import skills_listing
 from forge.tools import REGISTRY, agent_tools, call_tool
 
 __all__ = ["AgentResult", "complete", "over_budget", "publish_error", "run_agent"]
@@ -99,6 +100,12 @@ def prompt_for(ctx: Ctx, role: str) -> str:
     return ROLE_PROMPTS.get(role, "coder")
 
 
+def skills_text(ctx: Ctx) -> str:
+    """The skills list for the system prompt (empty when there are none)."""
+    listing = skills_listing(ctx.root)
+    return prompts.render("skills", skills="\n".join(listing)) if listing else ""
+
+
 def deferred_tools_text(ctx: Ctx) -> str:
     """The deferred MCP tools as name lines (empty when every tool is loaded)."""
     listing = ctx.state.mcp.deferred_listing() if ctx.state.mcp is not None else []
@@ -124,6 +131,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "failure": ctx.state.failure or "(none)",
         "role": ctx.role,
         "deferred_tools": deferred_tools_text(ctx),
+        "skills": skills_text(ctx),
         "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 
