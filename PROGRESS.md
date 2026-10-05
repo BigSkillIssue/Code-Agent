@@ -166,6 +166,8 @@ Next step: S35
 - S34: S34: worktrees start from a snapshot commit of the live tree (uncommitted work included); merges use git merge-tree --write-tree (needs git 2.38+) against a fresh snapshot and write only changed files, so the user's branch, HEAD and index never change. .forge/ is added to .git/info/exclude.
 - S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
 
+- S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
+
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
 - S07: TOOLS.md asks read_file to downscale images to 1568 px; no image library is in the dependency list, so images are sent as they are (dimensions read from the file header) and refused above 5 MB. Adding Pillow would allow downscaling.

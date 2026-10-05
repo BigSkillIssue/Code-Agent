@@ -94,11 +94,14 @@ def _quote_powershell(text: str) -> str:
 
 
 def wrap_bash(command: str, cwd: Path, nonce: str, err: Path) -> str:
-    """The text sent to bash for one command (heredoc, so the command is taken literally)."""
+    """The text sent to bash for one command: read literally from stdin up to a NUL byte.
+
+    No here-document, because bash 3.2 (macOS) writes those to /tmp, which a read-only
+    sandbox forbids; a command can never contain a NUL byte itself.
+    """
     return (
-        f"IFS= read -r -d '' __FORGE_CMD <<'__FORGE_END_{nonce}__'\n"
-        f"{command}\n"
-        f"__FORGE_END_{nonce}__\n"
+        "IFS= read -r -d '' __FORGE_CMD\n"
+        f"{command}\n\0"
         f'cd -- {_quote_bash(cwd.as_posix())} && {{ eval "$__FORGE_CMD"; }} '
         f"</dev/null 2>{_quote_bash(err.as_posix())}\n"
         f'printf \'\\n__FORGE_{nonce}__ %d %s\\n\' "$?" "$PWD"\n'
