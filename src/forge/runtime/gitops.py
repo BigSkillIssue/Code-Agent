@@ -43,4 +43,5 @@ async def changed_files(root: Path, ref: str | None = None) -> list[str]:
         ["git", "diff", "--name-only", base] if has_base else ["git", "diff", "--name-only"], root
     )
     untracked = await run_argv(["git", "ls-files", "--others", "--exclude-standard"], root)
-    return sorted(set(names.stdout.split()) | set(untracked.stdout.split()))
+    found = set(names.stdout.split()) | set(untracked.stdout.split())
+    return sorted(p for p in found if not p.startswith(".forge/"))  # Forge's own files
