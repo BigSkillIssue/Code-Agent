@@ -12,15 +12,17 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from forge import board
+from forge import board, prompts
 from forge.agent import AgentResult, run_agent
 from forge.agent_files import use_agent_file
 from forge.checks import review_diff, save_plan
 from forge.ctx import Ctx
 from forge.events import AgentFinished, AgentMessage
+from forge.plan import Plan
 from forge.ports import JobNotFoundError
 from forge.providers.base import Message, Usage
 from forge.runtime.errors import ToolError
+from forge.runtime.gitops import is_repo
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.worktree import (
     Worktree,
@@ -341,6 +343,29 @@ class AgentRegistry:
         if released:
             text += f"; released task {', '.join(released)}"
         return text
+
+    # ------------------------------------------------------------------ team mode
+
+    async def run_team(self, ctx: Ctx, plan: Plan) -> None:
+        """Team mode: background workers take tasks from the board until none is ready."""
+        ctx.state.team_mode = True
+        isolation = "worktree" if await is_repo(ctx.root) else "none"
+        limits = ctx.cfg.limits
+        workers = max(1, min(limits.max_parallel_agents - self.running(), len(plan.ready_steps())))
+        turns = min(200, limits.max_turns_per_step * len(plan.steps))
+        for number in range(1, workers + 1):
+            await self.spawn(
+                ctx,
+                "coder",
+                prompts.render("team_task"),
+                background=True,
+                isolation=isolation,
+                max_turns=turns,
+                name=f"worker-{number}",
+            )
+        handles = [a.task_handle for a in self.agents.values() if a.task_handle is not None]
+        await asyncio.gather(*handles, return_exceptions=True)
+        self.take_messages("main")  # the workers' reports are already reflected in the plan
 
     # ------------------------------------------------------------------ worktrees
 

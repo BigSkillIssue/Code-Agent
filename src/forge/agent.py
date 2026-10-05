@@ -26,7 +26,7 @@ from forge.providers.base import (
 from forge.runtime.shell import find_shell
 from forge.tools import REGISTRY, agent_tools, call_tool
 
-__all__ = ["AgentResult", "complete", "publish_error", "run_agent"]
+__all__ = ["AgentResult", "complete", "over_budget", "publish_error", "run_agent"]
 
 ROLE_PROMPTS = {"coder": "coder", "planner": "planner", "replanner": "replanner"}
 
@@ -60,6 +60,8 @@ async def run_agent(
     specs = [t.spec for t in tools]
     team = ctx.state.team
     for _ in range(max_turns):
+        if over_budget(ctx):
+            return AgentResult(text=text, messages=messages, usage=usage, stopped="budget")
         if team is not None:
             messages += deliver(ctx, team.take_messages(ctx.agent_id))
         messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
@@ -79,7 +81,7 @@ async def run_agent(
                 messages += deliver(ctx, await team.wait_for_message(ctx.agent_id))
                 continue
             return AgentResult(text=text, messages=messages, usage=usage, stopped="done")
-        if usage.cost_usd > ctx.cfg.limits.max_cost_usd:
+        if over_budget(ctx):
             return AgentResult(text=text, messages=messages, usage=usage, stopped="budget")
         for result in await run_tool_calls(ctx, reply.tool_calls):
             messages.append(Message(role="tool", tool_result=result))
@@ -93,7 +95,14 @@ def prompt_for(ctx: Ctx, role: str) -> str:
         return "custom_agent"
     if ctx.agent_id != "main":
         return "explore" if role == "explore" else "team_member"
+    if role == "coder" and ctx.state.mode in ("subagents", "team"):
+        return "team_lead"
     return ROLE_PROMPTS.get(role, "coder")
+
+
+def over_budget(ctx: Ctx) -> bool:
+    """True once the whole session (every agent) has spent its cost budget."""
+    return ctx.state.usage.cost_usd >= ctx.cfg.limits.max_cost_usd
 
 
 def prompt_slots(ctx: Ctx) -> dict[str, str]:

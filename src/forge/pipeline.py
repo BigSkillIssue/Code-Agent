@@ -2,11 +2,12 @@
 
 import json
 from dataclasses import replace
+from typing import Literal
 
 from pydantic import BaseModel
 
 from forge import prompts
-from forge.agent import run_agent
+from forge.agent import over_budget, run_agent
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
@@ -146,11 +147,33 @@ async def make_plan(spec: TaskSpec, ctx: Ctx) -> Plan:
 MAX_REPLANS = 3
 
 
+Mode = Literal["solo", "subagents", "team"]
+MODE_BY_SIZE: dict[str, Mode] = {
+    "trivial": "solo",
+    "small": "solo",
+    "medium": "subagents",
+    "large": "team",
+}
+
+
+def choose_mode(spec: TaskSpec, override: str | None) -> Mode:
+    """--solo / --team win; otherwise the task's size decides."""
+    if override in ("solo", "subagents", "team"):
+        return override  # type: ignore[return-value]
+    return MODE_BY_SIZE[spec.size]
+
+
 async def execute(plan: Plan, ctx: Ctx) -> Plan:
-    """Run the plan one ready step at a time; a step that keeps failing triggers a replan."""
+    """Run the plan one ready step at a time; a step that keeps failing triggers a replan.
+
+    In team mode, background workers first take tasks from the board; what they leave
+    is then done here one step at a time. Execution stops once the budget is spent.
+    """
     ctx.session.plan = plan
+    if ctx.state.mode == "team" and ctx.state.team is not None and not over_budget(ctx):
+        await ctx.state.team.run_team(ctx, plan)
     replans = 0
-    while (step := ctx.session.plan.next_ready_step()) is not None:
+    while not over_budget(ctx) and (step := ctx.session.plan.next_ready_step()) is not None:
         await run_step(ctx, step)
         if step.status == "failed" and replans < MAX_REPLANS:
             replans += 1
@@ -277,12 +300,13 @@ async def run_task(prompt: str, ctx: Ctx) -> Report:
     try:
         spec = await refine(prompt, ctx)
         ctx.session.spec = spec
+        ctx.state.mode = choose_mode(spec, ctx.state.mode_override)
         if spec.size == "trivial":
             report = await run_trivial(prompt, spec, ctx)
         else:
             spec = await clarify(spec, ctx)
             plan = await execute(await make_plan(spec, ctx), ctx)
-            report = await final_review(plan, ctx)
+            report = await budget_report(ctx) if over_budget(ctx) else await final_review(plan, ctx)
     except PlanRejected:
         report = stopped_report(ctx, "You rejected the plan, so nothing was changed.")
     except PipelineError as err:
@@ -301,6 +325,24 @@ async def run_trivial(prompt: str, spec: TaskSpec, ctx: Ctx) -> Report:
         summary=result.text,
         files_changed=await changed_files(ctx.root),
         assumptions=assumptions_of(ctx, spec),
+        manual_checks=[],
+        usage=ctx.state.usage,
+    )
+
+
+async def budget_report(ctx: Ctx) -> Report:
+    """The report when the session's cost budget ran out before the plan was finished."""
+    plan = ctx.session.plan
+    left = [s for s in plan.steps if s.status not in ("done", "skipped")] if plan else []
+    limit = ctx.cfg.limits.max_cost_usd
+    summary = f"Stopped: the cost budget of ${limit:.2f} was used up."
+    if left:
+        summary += " Not finished: " + ", ".join(f"{s.id} {s.title}" for s in left) + "."
+    return Report(
+        ok=False,
+        summary=summary + " Run `forge resume` with a higher limits.max_cost_usd to continue.",
+        files_changed=await changed_files(ctx.root),
+        assumptions=assumptions_of(ctx, ctx.session.spec),
         manual_checks=[],
         usage=ctx.state.usage,
     )

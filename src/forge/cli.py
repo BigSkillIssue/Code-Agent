@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-y", "--yes", action="store_true", help="approve every tool call and use default answers"
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--solo", action="store_const", const="solo", dest="mode", help="one agent")
+    mode.add_argument(
+        "--team", action="store_const", const="team", dest="mode", help="a team on a task board"
+    )
     parser.add_argument(
         "--fake",
         metavar="SCRIPT.json",
@@ -100,13 +105,16 @@ def cmd_prompt(options: argparse.Namespace, prompt: str) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    return asyncio.run(run_prompt(root, cfg, prompt, auto_approve=options.yes))
+    return asyncio.run(run_prompt(root, cfg, prompt, auto_approve=options.yes, mode=options.mode))
 
 
-async def run_prompt(root: Path, cfg: ForgeConfig, prompt: str, *, auto_approve: bool) -> int:
+async def run_prompt(
+    root: Path, cfg: ForgeConfig, prompt: str, *, auto_approve: bool, mode: str | None = None
+) -> int:
     """Run one task in a fresh session; exit code 0 when the agent finished."""
     renderer = RichRenderer(auto_approve=auto_approve)
     ctx = await open_session(root, cfg, renderer)
+    ctx.state.mode_override = mode
     shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
     try:
         report = await run_task(prompt, ctx)

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S35
+Next step: S36
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -39,7 +39,8 @@ Next step: S35
 | S31 | 2026-10-05 | a323462 | team.py, ctx.py, agent.py, tools.py, prompts.py, tests/test_agent_files.py, tests/fixtures/agents/ | agent files (.forge/agents, ~/.forge/agents; project wins); custom role gets its model chain, tool list and prompt |
 | S32 | 2026-10-05 | 031fbbd | team.py, agent_files.py, agent.py, ctx.py, events.py, tools.py, tests/test_messaging.py, tests/test_agent_files.py | background agents (asyncio tasks), inboxes drained each turn, lead waits for running children, send_message/list_agents/stop_agent |
 | S33 | 2026-10-05 | 46ca63e | board.py, team.py, tools.py, ctx.py, ports.py, local/sqlite_store.py, local/memory_store.py, tests/test_board.py, tests/support.py | read_board/claim_task/update_task; atomic claims via BoardStore (SQLite conditional upsert); 50-round race on both stores |
-| S34 | 2026-10-05 | (next) | runtime/worktree.py, team.py, checks.py, ctx.py, wiring.py, tests/test_worktree.py | isolation=worktree; 3-way merge via git merge-tree into the live tree (user's index untouched); board tasks reviewed before merge; conflicts go back to the owner |
+| S34 | 2026-10-05 | 63f9012 | runtime/worktree.py, team.py, checks.py, ctx.py, wiring.py, tests/test_worktree.py | isolation=worktree; 3-way merge via git merge-tree into the live tree (user's index untouched); board tasks reviewed before merge; conflicts go back to the owner |
+| S35 | 2026-10-05 | (next) | pipeline.py, team.py, agent.py, ctx.py, tools.py, prompts.py, cli.py, tests/test_budgets.py | size -> solo/subagents/team (--solo/--team win); shared cost budget checked before every turn; budget stop report; team mode runs board workers |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -153,6 +154,8 @@ Next step: S35
 - S33: S33: board tools are offered only when ctx.state.team_mode is true (S35 sets it); stop_agent gives an agent's unfinished tasks back to the board.
 - S34: S34: worktrees start from a snapshot commit of the live tree (uncommitted work included); merges use git merge-tree --write-tree (needs git 2.38+) against a fresh snapshot and write only changed files, so the user's branch, HEAD and index never change. .forge/ is added to .git/info/exclude.
 - S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
+- S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
+- S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -165,8 +168,12 @@ Next step: S35
 - S33: S33: board tools are offered only when ctx.state.team_mode is true (S35 sets it); stop_agent gives an agent's unfinished tasks back to the board.
 - S34: S34: worktrees start from a snapshot commit of the live tree (uncommitted work included); merges use git merge-tree --write-tree (needs git 2.38+) against a fresh snapshot and write only changed files, so the user's branch, HEAD and index never change. .forge/ is added to .git/info/exclude.
 - S34: S34: board tasks (update_task done) are merged and reviewed (reviewer on the merge diff) before the lead is told; a conflict sets the task back to doing and tells the owner to run git merge forge/<session>/main in its worktree. Worktrees of merged agents are removed at session end (close_session); conflicts and stop_agent(keep_worktree) keep them.
+- S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
+- S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
+- S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
+- S35: S35: the budget is the session total (ctx.state.usage, shared by every agent); every agent stops before a new turn once it is spent, execute stops between steps, and run_task returns a 'Stopped: the cost budget ... was used up' report.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

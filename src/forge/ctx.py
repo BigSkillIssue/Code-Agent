@@ -6,6 +6,7 @@ from typing import Protocol
 
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
+from forge.plan import Plan
 from forge.ports import EventBus, Executor, Renderer, Session, Store
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
@@ -47,6 +48,7 @@ class Team(Protocol):
     async def claim_task(self, ctx: "Ctx", task_id: str) -> str: ...
     async def update_task(self, ctx: "Ctx", task_id: str, status: str, result: str) -> str: ...
     async def close(self, ctx: "Ctx") -> None: ...
+    async def run_team(self, ctx: "Ctx", plan: Plan) -> None: ...
 
 
 @dataclass
@@ -64,6 +66,8 @@ class SessionState:
     team: Team | None = None  # set by wiring; None means sub-agents are unavailable
     custom_roles: dict[str, CustomRole] = field(default_factory=dict)  # from agent files
     team_mode: bool = False  # the board tools are offered only to teams
+    mode: str = ""  # solo | subagents | team, chosen per task by the pipeline ("" = not chosen)
+    mode_override: str | None = None  # --solo / --team
 
 
 @dataclass

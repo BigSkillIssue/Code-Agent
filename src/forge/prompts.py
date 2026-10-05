@@ -254,6 +254,15 @@ Reply with a short report: the answer, the exact locations (path:line) that supp
 """
 )
 
+TEAM_TASK = """\
+Work through the team's task board until nothing is left for you:
+1. Call read_board and pick a ready task.
+2. Call claim_task for it. If another agent was faster, pick another ready task.
+3. Do the task in your working directory, including its check.
+4. Call update_task with status done (Forge runs the task's check and merges your work) or failed with the reason. If the check fails, fix the problem and call update_task again.
+Stop when no task is ready, and reply with the tasks you completed and anything left open.
+"""
+
 # --------------------------------------------------------------------------- STEP
 
 STEP = """\
@@ -448,6 +457,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "team_lead": (TEAM_LEAD, "\n" + ENVIRONMENT),
     "team_member": (TEAM_MEMBER, TEAM_MEMBER_TAIL + "\n" + ENVIRONMENT),
     "custom_agent": (TEAM_MEMBER, CUSTOM_AGENT_TAIL + "\n" + ENVIRONMENT),
+    "team_task": (TEAM_TASK, ""),
     "explore": (EXPLORE, "\n" + ENVIRONMENT),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),

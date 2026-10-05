@@ -89,6 +89,7 @@ OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
 LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan"})
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
+AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TOOL_GROUPS = frozenset({"files", "search", "shell", "web", "plan", "agents", "memory", "mcp"})
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
 
@@ -226,6 +227,8 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
         tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
     if not ctx.state.team_mode:
         tools = [t for t in tools if t.name not in BOARD_TOOLS]
+    if ctx.state.mode == "solo":
+        tools = [t for t in tools if t.name not in AGENT_TOOLS]
     return tools
 
 
