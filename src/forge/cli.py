@@ -18,15 +18,17 @@ from forge.evals import (
     run_eval,
 )
 from forge.events import SessionDone
+from forge.local.json_renderer import JsonRenderer, NeedsInput
 from forge.local.rich_renderer import RichRenderer
-from forge.pipeline import PipelineError, report_text, resume, run_task
-from forge.ports import SessionNotFoundError
+from forge.pipeline import PipelineError, Report, report_text, resume, run_task
+from forge.ports import Renderer, SessionNotFoundError
 from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
 
 EPILOG = """\
 commands:
   forge                open the terminal UI
   forge "<prompt>"     work on a task
+  forge run --json     work on a task headless: JSON events, exit 0/1/2 (done/failed/needs input)
   forge config check   validate and print the effective configuration
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
@@ -261,7 +263,80 @@ async def run_evals(
     return results
 
 
+EXIT_DONE, EXIT_FAILED, EXIT_NEEDS_INPUT = 0, 1, 2
+
+
+def cmd_run(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge run [--json] [--no-defaults] "<prompt>"`: headless, for scripts and CI."""
+    parser = argparse.ArgumentParser(prog="forge run")
+    parser.add_argument("--json", action="store_true", help="print one event per line as JSON")
+    parser.add_argument(
+        "--no-defaults", action="store_true", help="exit with code 2 instead of assuming answers"
+    )
+    parser.add_argument("prompt", nargs="+")
+    args = parser.parse_args(rest)
+    try:
+        root, cfg = load(options)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+    prompt = " ".join(args.prompt)
+    return asyncio.run(
+        run_headless(
+            root, cfg, prompt, json_lines=args.json, yes=options.yes, defaults=not args.no_defaults
+        )
+    )
+
+
+async def run_headless(
+    root: Path, cfg: ForgeConfig, prompt: str, *, json_lines: bool, yes: bool, defaults: bool
+) -> int:
+    """Run one task without prompts; 0 done, 1 failed, 2 needs input."""
+    task: asyncio.Task[Report] | None = None
+
+    def stop_for_input() -> None:
+        if task is not None:
+            task.cancel()
+
+    if json_lines:
+        renderer: Renderer = JsonRenderer(
+            auto_approve=yes, use_defaults=defaults, on_needs_input=stop_for_input
+        )
+    else:
+        renderer = RichRenderer(auto_approve=True) if yes else RichRenderer()
+    ctx = await open_session(root, cfg, renderer, headless=defaults)
+    shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
+    try:
+        task = asyncio.create_task(run_task(prompt, ctx))
+        try:
+            report = await task
+        except (asyncio.CancelledError, NeedsInput):  # NeedsInput: asked by the pipeline itself
+            await ctx.bus.publish(
+                SessionDone(
+                    session_id=ctx.session.id, ts=time.time(), ok=False, report="needs input"
+                )
+            )
+            return EXIT_NEEDS_INPUT
+        await ctx.bus.publish(
+            SessionDone(
+                session_id=ctx.session.id, ts=time.time(), ok=report.ok, report=report_text(report)
+            )
+        )
+        return EXIT_DONE if report.ok else EXIT_FAILED
+    finally:
+        await asyncio.sleep(0)  # let the last events reach the renderer
+        await drain_events(shower)
+        await close_session(ctx)
+
+
+async def drain_events(shower: "asyncio.Task[None]") -> None:
+    """Give the event printer a moment to print what is queued, then stop it."""
+    await asyncio.sleep(0.05)
+    shower.cancel()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
+    "run": cmd_run,
     "eval": cmd_eval,
     "config": cmd_config,
     "sessions": cmd_sessions,
