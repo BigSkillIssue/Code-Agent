@@ -5,7 +5,7 @@ Table of contents:
   FILES      read_file, write_file, edit_file, list_dir
   SEARCH     glob, grep
   SHELL      bash, powershell, job_output, job_stop
-  PLAN       ask_user, submit_plan
+  PLAN       ask_user, submit_plan, update_plan, finish_step
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -26,13 +26,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypeVar, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
+from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
 from forge.events import PlanUpdated
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
-from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
+from forge.ports import Command, CommandResult, JobNotFoundError
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec
 from forge.providers.registry import resolve_role
 from forge.questions import ask
@@ -675,14 +676,6 @@ async def job_stop(ctx: Ctx, job_id: Annotated[str, "Job id, e.g. 'j3'."]) -> st
     return "\n".join(out)
 
 
-def sandbox_policy(ctx: Ctx) -> SandboxPolicy:
-    """The session's sandbox settings as the Executor port expects them."""
-    roots = [str(p) for p in writable_roots(ctx.root, ctx.cfg)]
-    return SandboxPolicy(
-        mode=ctx.cfg.sandbox.mode, writable_roots=roots, network=ctx.cfg.sandbox.network
-    )
-
-
 async def run_shell(
     ctx: Ctx, kind: ShellKind, command: str, timeout_s: int, background: bool, description: str
 ) -> str:
@@ -947,7 +940,8 @@ def build_plan(ctx: Ctx, spec: TaskSpec, steps: list[StepIn]) -> Plan:
         if old and ctx.role == "replanner"
         else []
     )
-    first = max((int(s.id[1:]) for s in kept if s.id[1:].isdigit()), default=0) + 1
+    numbered = old.steps if old and ctx.role == "replanner" else []  # new ids never reuse old ones
+    first = max((int(s.id[1:]) for s in numbered if s.id[1:].isdigit()), default=0) + 1
     ids = [f"s{first + i}" for i in range(len(steps))]
     new_steps = [
         Step(
@@ -987,3 +981,107 @@ def plan_summary(plan: Plan) -> str:
     lines = [f"plan approved: {len(plan.steps)} steps (version {plan.version})"]
     lines += [f"{a.ljust(left)}  {b.ljust(middle)}  -> check: {c}" for a, b, c in rows]
     return "\n".join(lines)
+
+
+class StepUpdate(BaseModel):
+    """A status change for one step."""
+
+    step_id: str
+    status: Literal["todo", "doing", "failed", "skipped"]  # "done" is not allowed here
+    note: str = ""
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _no_done(cls, value: object) -> object:
+        if value == "done":
+            raise ValueError(
+                "'done' is not allowed here; use finish_step, which runs the step's check"
+            )
+        return value
+
+
+ALLOWED_TRANSITIONS = {
+    ("todo", "doing"),
+    ("todo", "skipped"),
+    ("doing", "todo"),
+    ("doing", "failed"),
+    ("doing", "skipped"),
+    ("failed", "todo"),
+}
+
+
+@tool(group="plan", permission="auto", read_only=True)
+async def update_plan(
+    ctx: Ctx,
+    updates: Annotated[list[StepUpdate], "Status changes, 1-30."],
+    explanation: Annotated[str, "Short reason, max 200 chars."] = "",
+) -> str:
+    """Change step statuses. Use finish_step to mark a step done."""
+    plan = ctx.session.plan
+    if plan is None:
+        raise ToolError("invalid_args", "there is no plan yet")
+    require(1 <= len(updates) <= 30, "send 1 to 30 updates")
+    require(len(explanation) <= 200, "explanation is limited to 200 characters")
+    statuses = {s.id: s.status for s in plan.steps}
+    for update in updates:
+        if update.step_id not in statuses:
+            raise ToolError("invalid_args", f"there is no step {update.step_id}")
+        change = (statuses[update.step_id], update.status)
+        if change not in ALLOWED_TRANSITIONS:
+            raise ToolError(
+                "invalid_args", f"{update.step_id} cannot go from {change[0]} to {change[1]}"
+            )
+        require(
+            update.status != "skipped" or bool(update.note.strip()),
+            f"skipping {update.step_id} needs a note",
+        )
+        statuses[update.step_id] = update.status
+    require(sum(1 for v in statuses.values() if v == "doing") <= 1, "at most one step can be doing")
+    for update in updates:
+        step = plan.steps[[s.id for s in plan.steps].index(update.step_id)]
+        step.status = update.status
+        if update.note:
+            step.notes = update.note
+    await save_plan(ctx)
+    return f"plan updated (version {plan.version})\n{checklist(plan)}"
+
+
+@tool(group="plan", permission="auto", read_only=False)
+async def finish_step(
+    ctx: Ctx,
+    step_id: Annotated[str, "The step you completed, e.g. 's3'."],
+    summary: Annotated[str, "What you changed, max 2000 chars."],
+    evidence: Annotated[str, "Commands you ran and their results, max 4000 chars."] = "",
+) -> str:
+    """Report a step as complete; Forge runs its check and only then marks it done."""
+    plan = ctx.session.plan
+    step = plan.step(step_id) if plan else None
+    if plan is None or step is None:
+        raise ToolError("invalid_args", f"there is no step {step_id}")
+    if step.status != "doing":
+        raise ToolError("invalid_args", f"{step_id} is {step.status}, not doing")
+    result = await settle_step(ctx, step, summary[:2000])
+    if result.passed:
+        upcoming = plan.next_ready_step()
+        after = f"next step: {upcoming.id} {upcoming.title}" if upcoming else "no steps are waiting"
+        return f"step {step_id} done: check passed ({result.label})\n{after}"
+    body = "--- check output ---\n" + (result.output or "(no output)")
+    limit = ctx.cfg.limits.max_step_attempts
+    if result.timed_out:
+        raise ToolError("timeout", f"step {step_id} check took longer than 600s", body=body)
+    if step_failed(step):  # settle_step changed the status
+        raise ToolError(
+            "limit_reached",
+            f"step {step_id} check failed {limit} times; the step is marked failed",
+            body=body,
+        )
+    raise ToolError(
+        "check_failed",
+        f"step {step_id} check failed (attempt {step.attempts} of {limit})",
+        body=body,
+    )
+
+
+def step_failed(step: Step) -> bool:
+    """True once a step has used up its attempts."""
+    return step.status == "failed"

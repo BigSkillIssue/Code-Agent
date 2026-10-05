@@ -4,10 +4,13 @@ import json
 from dataclasses import replace
 
 from forge import prompts
-from forge.agent import complete, run_agent
+from forge.agent import run_agent
+from forge.checks import CheckResult, save_plan, settle_step
+from forge.checks import verify_step as run_check
 from forge.context import gather
 from forge.ctx import Ctx
-from forge.plan import Plan, Question, TaskSpec
+from forge.modelcall import complete
+from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.providers.base import Message, text_message
 from forge.questions import ask, assumption, default_answer
 from forge.structured import StructuredError, parse_as
@@ -114,4 +117,70 @@ async def make_plan(spec: TaskSpec, ctx: Ctx) -> Plan:
         raise PlanRejected("the user rejected the plan")
     if ctx.session.plan is None:
         raise PipelineError("the planner did not submit a valid plan")
+    return ctx.session.plan
+
+
+MAX_REPLANS = 3
+
+
+async def execute(plan: Plan, ctx: Ctx) -> Plan:
+    """Run the plan one ready step at a time; a step that keeps failing triggers a replan."""
+    ctx.session.plan = plan
+    replans = 0
+    while (step := ctx.session.plan.next_ready_step()) is not None:
+        await run_step(ctx, step)
+        if step.status == "failed" and replans < MAX_REPLANS:
+            replans += 1
+            await replan(ctx.session.plan, step, ctx)
+    return ctx.session.plan
+
+
+async def run_step(ctx: Ctx, step: Step) -> None:
+    """Work on one step until its check passes or its attempts run out."""
+    step.status = "doing"
+    await save_plan(ctx)
+    await before_step(ctx, step)
+    worker = replace(ctx, role=step.role)
+    while step.status == "doing":
+        assert ctx.session.plan is not None
+        task = prompts.render("step", step=step_brief(step), plan=checklist(ctx.session.plan))
+        result = await run_agent(
+            worker, task, role=step.role, max_turns=ctx.cfg.limits.max_turns_per_step
+        )
+        if step.status == "doing":
+            # The agent stopped without a passing finish_step: check the work ourselves.
+            await settle_step(ctx, step, result.text)
+
+
+async def before_step(ctx: Ctx, step: Step) -> None:
+    """Hook point before a step starts (checkpoints are taken here from S18)."""
+
+
+def step_brief(step: Step) -> str:
+    """The step as the STEP prompt shows it, including the last failure if there was one."""
+    lines = [f"Step {step.id}: {step.title}", step.detail]
+    if step.files:
+        lines.append("Files: " + ", ".join(step.files))
+    lines.append(f"Check: {step.check}")
+    if step.attempts:
+        lines.append(f"Previous attempt {step.attempts}: {step.notes}")
+    return "\n".join(lines)
+
+
+async def verify_step(ctx: Ctx, step: Step) -> CheckResult:
+    """Run a step's check (shell command, or `review:` criterion judged by the reviewer)."""
+    return await run_check(ctx, step)
+
+
+async def replan(plan: Plan, step: Step, ctx: Ctx) -> Plan:
+    """Let the replanner replace the steps that are not done, given why `step` failed."""
+    ctx.state.failure = (
+        f"Step {step.id} ({step.title}) failed after {step.attempts} attempts.\n{step.notes}"
+    )
+    replanner = replace(ctx, role="replanner")
+    await run_agent(
+        replanner, prompts.render("replan_task"), role="replanner", max_turns=PLANNER_TURNS
+    )
+    ctx.state.failure = ""
+    assert ctx.session.plan is not None
     return ctx.session.plan

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S17
+Next step: S18
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -20,7 +20,8 @@ Next step: S17
 | S13 | 2026-10-05 | ca820c6 | src/forge/plan.py, tests/test_plan.py | next_ready_step, ready_steps, validate_graph (duplicates, unknown deps, self-deps, cycles, missing checks); checklist() |
 | S14 | 2026-10-05 | f2b0084 | src/forge/pipeline.py, src/forge/context.py, src/forge/structured.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_refine.py, tests/fixtures/refine/cases.json | context.gather (tree depth 3, git status, memory, last summary); refine() with json_schema, JSON-block fallback, one retry via FIX_JSON prompt |
 | S15 | 2026-10-05 | 679b07f | src/forge/tools.py, src/forge/questions.py, src/forge/pipeline.py, src/forge/prompts.py, tests/test_clarify.py | ask_user tool (main agent only, validation per kind, headless defaults); clarify(): ask, merge answers via MERGE_ANSWERS, max rounds, /go |
-| S16 | 2026-10-05 | (next) | src/forge/tools.py, src/forge/pipeline.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_make_plan.py | submit_plan (graph + role + path validation, approval, versioning, replan keeps done steps); make_plan runs the planner role with read-only tools |
+| S16 | 2026-10-05 | 1ffa07f | src/forge/tools.py, src/forge/pipeline.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_make_plan.py | submit_plan (graph + role + path validation, approval, versioning, replan keeps done steps); make_plan runs the planner role with read-only tools |
+| S17 | 2026-10-05 | (next) | src/forge/tools.py, src/forge/pipeline.py, src/forge/checks.py, src/forge/modelcall.py, src/forge/agent.py, src/forge/runtime/gitops.py, src/forge/plan.py, src/forge/prompts.py, src/forge/ctx.py, tests/test_execute.py | update_plan (transitions, done refused), finish_step → verify → done/check_failed/limit_reached; execute runs steps via run_agent with the STEP prompt, settles steps the agent did not finish, replans after max attempts |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -84,6 +85,10 @@ Next step: S17
 - S16: the planner's system prompt gets the spec through the {spec} slot, filled from `ctx.session.spec`; the agent loop fills spec/plan/failure slots from the session.
 - S16: rejecting a plan with feedback makes the planner revise it; rejecting without feedback ends planning with `PlanRejected`.
 - S16: when the role is `replanner`, submit_plan keeps the done/skipped steps and numbers the new ones after them.
+- S17: model calls moved from agent.py to `modelcall.py` (below tools), so `checks.py` can ask the reviewer without tools importing the agent loop upward; agent.py re-exports `complete`.
+- S17: `checks.py` owns verification (`verify_step`, `settle_step`, `sandbox_policy`); `pipeline.verify_step` delegates to it, as the step card names it in pipeline.py.
+- S17: check commands run with bash on POSIX and PowerShell on Windows, from the project root, timeout 600 s.
+- S17: a replan keeps done/skipped steps; new step ids continue after the highest old id; at most 3 replans per execution.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

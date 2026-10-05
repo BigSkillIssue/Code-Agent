@@ -16,6 +16,7 @@ Table of contents:
   FIX_JSON       ask again after an answer that was not valid JSON
   MERGE_ANSWERS  fold the user's answers into the task specification
   PLAN_TASK      the planner's user message
+  REVIEW_TASK    the reviewer's user message
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -328,6 +329,10 @@ REPLAN_TASK = """\
 The step described under "What failed" could not be completed. Find out why, then submit the revised remaining steps with submit_plan.
 """
 
+REVIEW_TASK = """\
+Review the change against the criterion and reply with the JSON verdict.
+"""
+
 # --------------------------------------------------------------------------- OVERRIDES
 
 # Small additions per model family, appended after a prompt's static text. Never forks.
@@ -361,6 +366,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
     "plan_task": (PLAN_TASK, ""),
     "replan_task": (REPLAN_TASK, ""),
+    "review_task": (REVIEW_TASK, ""),
 }
 
 
