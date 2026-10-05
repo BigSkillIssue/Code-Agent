@@ -8,11 +8,12 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
-from forge.commands import run_command
+from forge.commands import handle_command
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
 from forge.local.tui_renderer import TuiRenderer
-from forge.pipeline import PipelineError, report_text, run_task
+from forge.pipeline import PipelineError, report_text, resume, run_task
+from forge.plan import checklist
 from forge.ports import EventBus, Executor, Store
 from forge.providers.base import ProviderError
 from forge.wiring import close_session, open_session, show_events
@@ -80,12 +81,35 @@ class ForgeApp(App[None]):
             return
         if text.startswith("/"):
             self.renderer.write(text, style="bold")
-            self.renderer.write(await run_command(self.ctx, text))
+            result = await handle_command(self.ctx, text)
+            if result.text:
+                self.renderer.write(result.text)
+            if result.prompt is not None or result.resume:
+                self.start(result.prompt, resume=result.resume)
         elif self.busy:
             self.renderer.write("still working on the last task", style="yellow")
         else:
-            self.busy = True
-            self.run_worker(self.run_prompt(text), group="task")
+            self.start(text)
+
+    def start(self, prompt: str | None, *, resume: bool = False) -> None:
+        """Start a task (or continue the plan) unless one is running."""
+        if self.busy:
+            self.renderer.write("still working on the last task", style="yellow")
+            return
+        self.busy = True
+        work = self.continue_plan() if resume else self.run_prompt(prompt or "")
+        self.run_worker(work, group="task")
+
+    async def continue_plan(self) -> None:
+        """/go: run the rest of the plan."""
+        assert self.ctx is not None
+        try:
+            plan = await resume(self.ctx)
+            self.renderer.write(checklist(plan), style="bold")
+        except (PipelineError, ProviderError) as exc:
+            self.renderer.write(f"error: {exc}", style="bold red")
+        finally:
+            self.busy = False
 
     async def run_prompt(self, text: str) -> None:
         """Work on one task and show the report."""

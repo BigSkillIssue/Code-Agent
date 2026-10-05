@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S39
+Next step: S40
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -43,7 +43,8 @@ Next step: S39
 | S35 | 2026-10-05 | ac9623a | pipeline.py, team.py, agent.py, ctx.py, tools.py, prompts.py, cli.py, tests/test_budgets.py | size -> solo/subagents/team (--solo/--team win); shared cost budget checked before every turn; budget stop report; team mode runs board workers |
 | S36 | 2026-10-05 | e046a9b | mcp_client.py, tools.py, agent.py, ctx.py, prompts.py, wiring.py, runtime/rules.py, evals.py, cli.py, tests/test_mcp.py, tests/fixtures/mcp_stub.py, evals/repos/shop/, evals/tasks/large_*.toml, tests/test_review.py | MCP over stdio/HTTP (mcp 2.x), mcp__<server>__<tool> tools per session, resources, deferred loading via tool_search; 5 large eval tasks; forge eval --compare |
 | S37 | 2026-10-05 | 49427e7 | hooks.py, runtime/hook_runner.py, wiring.py, pipeline.py, tests/test_hooks.py | shell hooks (JSON on stdin, {placeholders}, exit 2 blocks, 30s timeout) + @hook Python hooks; all 8 events wired |
-| S38 | 2026-10-05 | (next) | skills.py, prompts.py, agent.py, tests/test_skills.py, tests/fixtures/skills/ | SKILL.md discovery (project wins over user); name + description in the prompt via SKILLS; agents read skills with read_file |
+| S38 | 2026-10-05 | 6ebf5f6 | skills.py, prompts.py, agent.py, tests/test_skills.py, tests/fixtures/skills/ | SKILL.md discovery (project wins over user); name + description in the prompt via SKILLS; agents read skills with read_file |
+| S39 | 2026-10-05 | (next) | commands.py, tui.py, tests/test_commands.py | built-ins incl. /go /agents /init; custom .forge/commands/*.md with $ARGUMENTS; /init detects pytest/npm/cargo/go/make commands and the layout |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -165,6 +166,7 @@ Next step: S39
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
 - S37: S37: session_start runs in open_session; prompt_submit runs first in run_task and may stop the task; stop runs after the report is saved.
 - S38: S38: a skill without front matter uses its folder name and first heading/line as description; unreadable skills are skipped.
+- S39: S39: handle_command returns SlashResult (text, a prompt to run as a task, or resume); run_command stays the text-only form. Custom commands: project overrides user; arguments are appended when a template has no $ARGUMENTS.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -185,6 +187,7 @@ Next step: S39
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
 - S37: S37: session_start runs in open_session; prompt_submit runs first in run_task and may stop the task; stop runs after the report is saved.
 - S38: S38: a skill without front matter uses its folder name and first heading/line as description; unreadable skills are skipped.
+- S39: S39: handle_command returns SlashResult (text, a prompt to run as a task, or resume); run_command stays the text-only form. Custom commands: project overrides user; arguments are appended when a template has no $ARGUMENTS.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -195,11 +198,13 @@ Next step: S39
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
 - S37: S37: session_start runs in open_session; prompt_submit runs first in run_task and may stop the task; stop runs after the report is saved.
 - S38: S38: a skill without front matter uses its folder name and first heading/line as description; unreadable skills are skipped.
+- S39: S39: handle_command returns SlashResult (text, a prompt to run as a task, or resume); run_command stays the text-only form. Custom commands: project overrides user; arguments are appended when a template has no $ARGUMENTS.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
 - S37: S37: session_start runs in open_session; prompt_submit runs first in run_task and may stop the task; stop runs after the report is saved.
 - S38: S38: a skill without front matter uses its folder name and first heading/line as description; unreadable skills are skipped.
+- S39: S39: handle_command returns SlashResult (text, a prompt to run as a task, or resume); run_command stays the text-only form. Custom commands: project overrides user; arguments are appended when a template has no $ARGUMENTS.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
