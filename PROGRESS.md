@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S43
+Next step: S44
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -47,7 +47,8 @@ Next step: S43
 | S39 | 2026-10-05 | 4b986d1 | commands.py, tui.py, tests/test_commands.py | built-ins incl. /go /agents /init; custom .forge/commands/*.md with $ARGUMENTS; /init detects pytest/npm/cargo/go/make commands and the layout |
 | S40 | 2026-10-05 | 9405b08 | cli.py, local/json_renderer.py, tests/e2e/test_headless.py | forge run --json/--yes/--no-defaults: contract events as JSON lines, SessionDone last, exit 0/1/2 |
 | S41 | 2026-10-05 | 37ee4e4 | api.py, __init__.py, runtime/gitops.py, examples/embed.py, tests/test_api.py | Forge(config, renderer, store, executor, root=, approve=); run() -> Report; stream() -> events ending with SessionDone; examples/embed.py --fake fixes examples/buggy in a temp copy |
-| S42 | 2026-10-05 | (next) | config.py, cli.py, tests/test_trust.py | forge trust [--remove] writes ~/.forge/trusted.toml; every command prints config warnings; profiles via -p |
+| S42 | 2026-10-05 | 203200f | config.py, cli.py, tests/test_trust.py | forge trust [--remove] writes ~/.forge/trusted.toml; every command prints config warnings; profiles via -p |
+| S43 | 2026-10-05 | (next) | local/json_store.py, local/memory_store.py, tests/conformance/, examples/plugin_demo/ | conformance suites for Store/BoardStore (Memory, Sqlite, Json), EventBus, Executor, Renderer; JsonStore needs no core change; plugin_demo adds a hook + MCP tool via config only. Phase 4 gate: pipeline.py and agent.py unchanged in this commit. |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -174,6 +175,7 @@ Next step: S43
 - S41: S41: without a renderer the API runs headless with AutoRenderer (approve=True, like forge run --yes) or a refusing renderer (approve=False). forge.Forge is exported lazily (module __getattr__) so the CLI does not import the pipeline at startup.
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
+- S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -199,6 +201,7 @@ Next step: S43
 - S41: S41: without a renderer the API runs headless with AutoRenderer (approve=True, like forge run --yes) or a refusing renderer (approve=False). forge.Forge is exported lazily (module __getattr__) so the CLI does not import the pipeline at startup.
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
+- S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -214,6 +217,7 @@ Next step: S43
 - S41: S41: without a renderer the API runs headless with AutoRenderer (approve=True, like forge run --yes) or a refusing renderer (approve=False). forge.Forge is exported lazily (module __getattr__) so the CLI does not import the pipeline at startup.
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
+- S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -224,6 +228,7 @@ Next step: S43
 - S41: S41: without a renderer the API runs headless with AutoRenderer (approve=True, like forge run --yes) or a refusing renderer (approve=False). forge.Forge is exported lazily (module __getattr__) so the CLI does not import the pipeline at startup.
 - S41: S41: changed_files never lists Forge's own .forge/ files.
 - S42: S42: config warnings (e.g. ignored untrusted [providers]/[hooks]/[mcp_servers]) are printed to stderr by every CLI command, not only config check.
+- S43: S43: the search ranking moved into memory_store.rank_sessions, shared by MemoryStore and JsonStore. The renderer suite covers the non-interactive renderers (Auto, Json, Rich with auto-approve); the TUI renderer is covered by its pilot tests.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

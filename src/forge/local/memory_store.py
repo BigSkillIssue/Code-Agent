@@ -3,6 +3,7 @@
 import re
 import time
 import uuid
+from collections.abc import Iterable
 
 from forge.ports import Session, SessionNotFoundError
 
@@ -57,19 +58,26 @@ class MemoryStore:
 
     async def search(self, project_root: str, query: str, limit: int = 5) -> list[tuple[str, str]]:
         """Sessions whose texts contain every query word, best match first."""
-        words = [w.lower() for w in re.findall(r"\w+", query)]
-        if not words:
-            return []
-        scored: list[tuple[int, float, str, str]] = []
-        for session in self._sessions.values():
-            if session.project_root != project_root:
-                continue
-            hits = [t for t in session_texts(session) if all(w in t.lower() for w in words)]
-            if hits:
-                score = sum(t.lower().count(w) for t in hits for w in words)
-                scored.append((score, session.created_at, session.id, excerpt(hits[0], words[0])))
-        scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
-        return [(sid, text) for _, _, sid, text in scored[:limit]]
+        return rank_sessions(self._sessions.values(), project_root, query, limit)
+
+
+def rank_sessions(
+    sessions: Iterable[Session], project_root: str, query: str, limit: int
+) -> list[tuple[str, str]]:
+    """(id, excerpt) of a project's sessions containing every query word, most matches first."""
+    words = [w.lower() for w in re.findall(r"\w+", query)]
+    if not words:
+        return []
+    scored: list[tuple[int, float, str, str]] = []
+    for session in sessions:
+        if session.project_root != project_root:
+            continue
+        hits = [t for t in session_texts(session) if all(w in t.lower() for w in words)]
+        if hits:
+            score = sum(t.lower().count(w) for t in hits for w in words)
+            scored.append((score, session.created_at, session.id, excerpt(hits[0], words[0])))
+    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    return [(sid, text) for _, _, sid, text in scored[:limit]]
 
 
 def session_texts(session: Session) -> list[str]:
