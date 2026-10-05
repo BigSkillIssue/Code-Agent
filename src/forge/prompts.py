@@ -13,6 +13,7 @@ Table of contents:
   FINAL_REVIEW   check the whole diff against the acceptance criteria -> report
   COMPRESSOR     summarize old context into a structured note
   TOOL_FALLBACK  how to call tools in JSON for models without native tools
+  FIX_JSON       ask again after an answer that was not valid JSON
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -290,6 +291,17 @@ Available tools (name, description and JSON Schema of the arguments):
 {tools}
 """
 
+# --------------------------------------------------------------------------- FIX_JSON
+
+FIX_JSON = """\
+Your previous answer could not be used.
+"""
+
+FIX_JSON_TAIL = """
+Problem: {failure}
+Reply again with only the corrected JSON object, in a ```json block.
+"""
+
 # --------------------------------------------------------------------------- OVERRIDES
 
 # Small additions per model family, appended after a prompt's static text. Never forks.
@@ -319,6 +331,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "final_review": (FINAL_REVIEW, FINAL_REVIEW_TAIL),
     "compressor": (COMPRESSOR, COMPRESSOR_TAIL),
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
+    "fix_json": (FIX_JSON, FIX_JSON_TAIL),
 }
 
 

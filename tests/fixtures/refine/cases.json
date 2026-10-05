@@ -1,0 +1,52 @@
+[
+  {
+    "prompt": "Fix the typo 'recieve' in README.md",
+    "response": "```json\n{\n  \"goal\": \"README.md spells 'receive' correctly\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"README.md spells 'receive' correctly\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"grep -c recieve README.md returns 0\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"trivial\"\n}\n```",
+    "size": "trivial"
+  },
+  {
+    "prompt": "Add a --verbose flag to the CLI",
+    "response": "{\n  \"goal\": \"forge --verbose prints debug logs\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"forge --verbose prints debug logs\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"pytest tests/test_cli.py passes\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"small\"\n}",
+    "size": "small"
+  },
+  {
+    "prompt": "Rename the function get_usr to get_user everywhere",
+    "response": "Here is the specification:\n{\n  \"goal\": \"get_user replaces get_usr\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"get_user replaces get_usr\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"grep -r get_usr src returns nothing\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"small\"\n}\nLet me know.",
+    "size": "small"
+  },
+  {
+    "prompt": "Add JWT authentication to the API",
+    "response": "```json\n{\n  \"goal\": \"API endpoints require a valid JWT\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"API endpoints require a valid JWT\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"pytest tests/test_auth.py passes\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [\n    {\n      \"text\": \"Which library should sign tokens?\",\n      \"kind\": \"choice\",\n      \"options\": [\n        \"PyJWT\",\n        \"python-jose\"\n      ],\n      \"default\": \"PyJWT\",\n      \"why\": \"changes dependencies\"\n    }\n  ],\n  \"size\": \"large\"\n}\n```",
+    "size": "large"
+  },
+  {
+    "prompt": "Make the build faster",
+    "response": "{\n  \"goal\": \"CI build time drops below 5 minutes\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"CI build time drops below 5 minutes\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"CI run finishes in under 5 minutes\"\n  ],\n  \"assumptions\": [\n    \"the slow part is dependency installation\"\n  ],\n  \"open_questions\": [],\n  \"size\": \"medium\"\n}",
+    "size": "medium"
+  },
+  {
+    "prompt": "Write tests for utils/dates.py",
+    "response": "```json\n{\n  \"goal\": \"dates.py has unit tests\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"dates.py has unit tests\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"pytest tests/test_dates.py passes\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"small\"\n}\n```",
+    "size": "small"
+  },
+  {
+    "prompt": "Upgrade to Python 3.13",
+    "response": "{\n  \"goal\": \"the project runs on Python 3.13\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"the project runs on Python 3.13\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"uv run --python 3.13 pytest passes\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"medium\"\n}",
+    "size": "medium"
+  },
+  {
+    "prompt": "Add a dark mode to the settings page",
+    "response": "```json\n{\n  \"goal\": \"users can switch to a dark theme\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"users can switch to a dark theme\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"review: settings page offers dark mode\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [\n    {\n      \"text\": \"Should dark mode follow the OS setting?\",\n      \"kind\": \"confirm\",\n      \"default\": \"yes\",\n      \"why\": \"decides the default theme\"\n    }\n  ],\n  \"size\": \"medium\"\n}\n```",
+    "size": "medium"
+  },
+  {
+    "prompt": "Delete the unused module legacy/old.py",
+    "response": "{\n  \"goal\": \"legacy/old.py is removed and nothing imports it\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"legacy/old.py is removed and nothing imports it\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"python -c 'import app' succeeds\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"trivial\"\n}",
+    "size": "trivial"
+  },
+  {
+    "prompt": "Split the 900-line service.py into smaller modules",
+    "response": "```json\n{\n  \"goal\": \"service.py is split into modules under 300 lines\",\n  \"context\": \"See the repository.\",\n  \"requirements\": [\n    \"service.py is split into modules under 300 lines\"\n  ],\n  \"constraints\": [],\n  \"acceptance_criteria\": [\n    \"pytest passes\",\n    \"no file in services/ exceeds 300 lines\"\n  ],\n  \"assumptions\": [],\n  \"open_questions\": [],\n  \"size\": \"large\"\n}\n```",
+    "size": "large"
+  }
+]

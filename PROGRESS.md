@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S14
+Next step: S15
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -17,7 +17,8 @@ Next step: S14
 | S10 | 2026-10-05 | d0570c8 | src/forge/cli.py, src/forge/wiring.py, src/forge/local/rich_renderer.py, examples/buggy/, tests/e2e/test_fix_bug.py, tests/fixtures/fake/hello.json, tests/fixtures/fake/fix_buggy.json | Phase 0 gate passed: `forge --fake fix_buggy.json --yes` fixes examples/buggy end to end; Rich renderer streams text, tool calls, approvals |
 | S11 | 2026-10-05 | 3af6d99 | src/forge/prompts.py, src/forge/agent.py, tests/test_prompts.py, tests/test_architecture.py | BASE, SAFETY, TOOL_RULES, REFINER, PLANNER, REPLANNER, CODER, STEP, REVIEWER, FINAL_REVIEW, COMPRESSOR, TOOL_FALLBACK; OVERRIDES per model family; render() checks slots |
 | S12 | 2026-10-05 | cdacf36 | src/forge/memory.py, src/forge/agent.py, tests/test_memory.py | ~/.forge/FORGE.md, then FORGE.md/AGENTS.md/CLAUDE.md per folder root→cwd, 32 KB cap, rendered as <memory> blocks into the {memory} slot |
-| S13 | 2026-10-05 | (next) | src/forge/plan.py, tests/test_plan.py | next_ready_step, ready_steps, validate_graph (duplicates, unknown deps, self-deps, cycles, missing checks); checklist() |
+| S13 | 2026-10-05 | ca820c6 | src/forge/plan.py, tests/test_plan.py | next_ready_step, ready_steps, validate_graph (duplicates, unknown deps, self-deps, cycles, missing checks); checklist() |
+| S14 | 2026-10-05 | (next) | src/forge/pipeline.py, src/forge/context.py, src/forge/structured.py, src/forge/agent.py, src/forge/ctx.py, src/forge/prompts.py, tests/test_refine.py, tests/fixtures/refine/cases.json | context.gather (tree depth 3, git status, memory, last summary); refine() with json_schema, JSON-block fallback, one retry via FIX_JSON prompt |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -73,9 +74,12 @@ Next step: S14
 - S11: render() takes a keyword-only `model` to pick OVERRIDES by family (gemini, local models).
 - S12: the agent loop renders memory into every system prompt; a cwd outside the root only loads root-level files.
 - S13: plan.py also offers `Plan.step(id)` and `checklist(plan)` (the `[x] s1 Title` view used by prompts, renderers and tools).
+- S14: `structured.py` reads a JSON object from raw text, a ```json fence or prose, and validates it into a Pydantic model.
+- S14: `agent.complete()` is the tool-free model call (refine, review, compress) using the role's fallback chain.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
 - S07: TOOLS.md asks read_file to downscale images to 1568 px; no image library is in the dependency list, so images are sent as they are (dimensions read from the file header) and refused above 5 MB. Adding Pillow would allow downscaling.
 - S07: TOOLS.md says reads outside the project need approval; that is a permission rule and is implemented with the full permission engine in S28.
 - S08: `CommandResult` gained four optional fields that the shell and job tools need and the contract lacks: `cwd` (folder after a shell command), `pid`, `elapsed_s` and `total_lines` (job status and paging). `ports.JobNotFoundError` was added for unknown job ids. All contract fields are unchanged.
+- S14: `Ctx` gained one field beyond the contract, `state: SessionState` (default factory): runtime state shared by all agents of a session — the usage tally now, the agent registry and budgets later. All contract fields are unchanged.
