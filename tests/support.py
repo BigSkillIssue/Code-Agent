@@ -1,5 +1,6 @@
 """Test helpers shared by many test modules (fixtures live in conftest.py)."""
 
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -109,3 +110,13 @@ def make_ctx(
         headless=headless,
         **fields,
     )
+
+
+async def drain(subscription: Any, wait_s: float = 0.05) -> list[Event]:
+    """Every event already queued on a bus subscription (waits briefly for stragglers)."""
+    events: list[Event] = []
+    while True:
+        try:
+            events.append(await asyncio.wait_for(anext(subscription), wait_s))
+        except TimeoutError:
+            return events
