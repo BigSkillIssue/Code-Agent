@@ -90,6 +90,7 @@ async def open_session(
     ctx.state.team = AgentRegistry()
     if cfg.mcp_servers:
         await connect_mcp(ctx)
+    await ctx.hooks.run("session_start", {"session_id": session.id, "cwd": str(root)}, ctx)
     return ctx
 
 

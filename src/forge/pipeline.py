@@ -297,6 +297,9 @@ def assumptions_of(ctx: Ctx, spec: TaskSpec | None) -> list[str]:
 async def run_task(prompt: str, ctx: Ctx) -> Report:
     """The whole pipeline: refine, clarify, plan, execute, final review."""
     ctx.session.status = "active"
+    submitted = await ctx.hooks.run("prompt_submit", {"prompt": prompt}, ctx)
+    if submitted.block:
+        return stopped_report(ctx, f"A prompt_submit hook stopped this task: {submitted.message}")
     try:
         spec = await refine(prompt, ctx)
         ctx.session.spec = spec
@@ -314,6 +317,7 @@ async def run_task(prompt: str, ctx: Ctx) -> Report:
     ctx.session.status = "done" if report.ok else "failed"
     ctx.session.summary = report.summary
     await ctx.store.save_session(ctx.session)
+    await ctx.hooks.run("stop", {"ok": report.ok, "summary": report.summary}, ctx)
     return report
 
 
