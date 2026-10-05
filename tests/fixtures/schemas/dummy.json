@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "description": "File to read.",
+      "type": "string"
+    },
+    "count": {
+      "default": 3,
+      "description": "How many lines.",
+      "type": "integer"
+    },
+    "mode": {
+      "default": "fast",
+      "description": "Speed.",
+      "enum": ["fast", "slow"],
+      "type": "string"
+    },
+    "tags": {
+      "anyOf": [
+        {"items": {"type": "string"}, "type": "array"},
+        {"type": "null"}
+      ],
+      "default": null,
+      "description": "Optional tags."
+    },
+    "flag": {
+      "default": false,
+      "type": "boolean"
+    }
+  },
+  "required": ["path"],
+  "type": "object"
+}

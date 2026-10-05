@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from forge.config import ForgeConfig
+from forge.hooks import Hooks
 from forge.ports import EventBus, Executor, Renderer, Session, Store
+from forge.runtime.permissions import Permissions
 
 
 @dataclass
@@ -21,8 +23,8 @@ class Ctx:
     executor: Executor
     renderer: Renderer
     ledger: Any  # ReadLedger once runtime/ledger.py exists (S07)
-    permissions: Any  # Permissions once runtime/permissions.py exists (S06)
-    hooks: Any  # Hooks once hooks.py exists (S06)
+    permissions: Permissions
+    hooks: Hooks
     agent_id: str = "main"
     role: str = "coder"
     headless: bool = False
