@@ -4,6 +4,7 @@ Table of contents:
   FRAMEWORK  ToolDef, REGISTRY, tool(), make_tool_def(), for_role(), call_tool()
   FILES      read_file, write_file, edit_file, list_dir
   SEARCH     glob, grep
+  SHELL      bash, powershell, job_output, job_stop
 
 Each tool is a plain async function `fn(ctx, **args)` with a decorator. The decorator
 reads the signature and docstring and generates the JSON schema, so a tool is written
@@ -16,6 +17,7 @@ import inspect
 import json
 import logging
 import re
+import shlex
 import time
 import typing
 from collections.abc import Awaitable, Callable
@@ -27,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
+from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec
 from forge.providers.registry import resolve_role
 from forge.runtime.edit import adapt_newlines, edit_summary, replace_text
@@ -40,6 +43,7 @@ from forge.runtime.files import (
     display_path,
     encode_text,
     is_binary,
+    is_within,
     read_bytes,
     resolve_path,
     split_lines,
@@ -49,6 +53,7 @@ from forge.runtime.ignore import expand_braces, glob_regex, matches_glob, projec
 from forge.runtime.ledger import sha256_of
 from forge.runtime.readers import IMAGE_TYPES, read_image, read_notebook, read_pdf, read_text
 from forge.runtime.search import GrepQuery, format_hits, search
+from forge.runtime.shell import ShellKind, find_shell
 from forge.runtime.tree import build_tree, render_tree
 
 log = logging.getLogger(__name__)
@@ -583,3 +588,224 @@ async def grep(
     query = GrepQuery(pattern, base, glob, type, mode, context, case_insensitive, multiline)
     hits = await search(query, ctx.root)
     return format_hits(hits, query, ctx.root, offset=offset, head_limit=head_limit)
+
+
+# =====================================================================================
+# SHELL
+# =====================================================================================
+
+MAX_SHELL_TIMEOUT_S = 600
+BENIGN_EXIT1 = frozenset(
+    {"grep", "rg", "egrep", "fgrep", "find", "diff", "test", "[", "git-diff", "git-grep"}
+)
+POWERSHELL_BENIGN_EXIT1 = frozenset({"findstr", "where.exe", "fc.exe", "git-diff", "git-grep"})
+
+
+@tool(group="shell", permission="ask", read_only=False, specifier_arg="command")
+async def bash(
+    ctx: Ctx,
+    command: Annotated[str, "The bash command to run. Multi-line scripts allowed."],
+    timeout_s: Annotated[
+        int, "Seconds before the command moves to the background (max 600)."
+    ] = 120,
+    background: Annotated[bool, "Start as a background job and return immediately."] = False,
+    description: Annotated[str, "Up to 80 chars shown to the user, e.g. 'Run unit tests'."] = "",
+) -> str:
+    """Run a command in the session's persistent bash shell and return exit code, stdout and stderr."""
+    return await run_shell(ctx, "bash", command, timeout_s, background, description)
+
+
+@tool(group="shell", permission="ask", read_only=False, specifier_arg="command")
+async def powershell(
+    ctx: Ctx,
+    command: Annotated[str, "The PowerShell command or script to run."],
+    timeout_s: Annotated[
+        int, "Seconds before the command moves to the background (max 600)."
+    ] = 120,
+    background: Annotated[bool, "Start as a background job and return immediately."] = False,
+    description: Annotated[str, "Up to 80 chars shown to the user."] = "",
+) -> str:
+    """Run a command in the session's persistent PowerShell and return exit code, stdout and stderr."""
+    return await run_shell(ctx, "powershell", command, timeout_s, background, description)
+
+
+@tool(group="shell", permission="auto", read_only=True)
+async def job_output(
+    ctx: Ctx,
+    job_id: Annotated[str, "Job id, e.g. 'j3'."],
+    since_line: Annotated[int, "First line to return (0-based)."] = 0,
+    wait_s: Annotated[float, "Wait up to this long for new output or exit (max 30)."] = 0,
+    max_lines: Annotated[int, "Maximum lines to return (max 2000)."] = 400,
+) -> str:
+    """Read output of a background job and report whether it is still running."""
+    require(re.fullmatch(r"j\d+", job_id) is not None, "job_id must look like 'j3'")
+    require(since_line >= 0, "since_line must be 0 or more")
+    require(0 <= wait_s <= 30, "wait_s must be between 0 and 30")
+    require(1 <= max_lines <= 2000, "max_lines must be between 1 and 2000")
+    result = await _job_call(ctx.executor.job_output(job_id, since_line))
+    deadline = time.monotonic() + wait_s
+    while not result.stdout and result.exit_code is None and time.monotonic() < deadline:
+        await asyncio.sleep(0.25)
+        result = await _job_call(ctx.executor.job_output(job_id, since_line))
+    lines = result.stdout.split("\n")[:max_lines] if result.stdout else []
+    out = [job_status(job_id, result)]
+    if lines:
+        last = since_line + len(lines)
+        out.append(
+            f"lines {since_line + 1}-{last} of {result.total_lines}; next since_line: {last}"
+        )
+    out += ["--- output ---", *(lines or ["(no new output)"])]
+    return "\n".join(out)
+
+
+@tool(group="shell", permission="auto", read_only=False)
+async def job_stop(ctx: Ctx, job_id: Annotated[str, "Job id, e.g. 'j3'."]) -> str:
+    """Stop a background job and its child processes."""
+    require(re.fullmatch(r"j\d+", job_id) is not None, "job_id must look like 'j3'")
+    result = await _job_call(ctx.executor.job_stop(job_id))
+    if result.stderr == "already exited":
+        return f"job {job_id} had already exited with code {result.exit_code}"
+    out = [f"job {job_id} stopped ({result.stderr}, after {result.elapsed_s or 0:.1f}s)"]
+    if result.stdout:
+        out += [f"--- last {min(20, len(result.stdout.splitlines()))} lines ---", result.stdout]
+    return "\n".join(out)
+
+
+def sandbox_policy(ctx: Ctx) -> SandboxPolicy:
+    """The session's sandbox settings as the Executor port expects them."""
+    roots = [str(p) for p in writable_roots(ctx.root, ctx.cfg)]
+    return SandboxPolicy(
+        mode=ctx.cfg.sandbox.mode, writable_roots=roots, network=ctx.cfg.sandbox.network
+    )
+
+
+async def run_shell(
+    ctx: Ctx, kind: ShellKind, command: str, timeout_s: int, background: bool, description: str
+) -> str:
+    """Shared body of the bash and powershell tools."""
+    require(
+        command.strip() != "" and len(command) <= 100_000,
+        "command must be 1-100,000 characters, not only whitespace",
+    )
+    require(1 <= timeout_s <= MAX_SHELL_TIMEOUT_S, "timeout_s must be between 1 and 600")
+    require(
+        len(description) <= 80 and "\n" not in description,
+        "description must be one line of at most 80 characters",
+    )
+    if find_shell(kind) is None:
+        hint = (
+            "install Git for Windows (Git Bash)"
+            if kind == "bash"
+            else "install PowerShell 7 (pwsh)"
+        )
+        raise ToolError("unsupported", f"{kind} is not available on this machine", hint=hint)
+    started = time.monotonic()
+    cmd = Command(script=command, shell=kind, cwd=str(ctx.cwd), timeout_s=timeout_s)
+    result = await ctx.executor.run(cmd, sandbox_policy(ctx), background=background)
+    if background:
+        label = description or command.strip().splitlines()[0][:60]
+        return job_started(result, label)
+    if result.sandbox_denied:
+        raise ToolError(
+            "sandbox_denied",
+            "the sandbox blocked this command",
+            hint="the sandbox blocked network or path access; ask the user or use another approach",
+            body=result.stderr,
+        )
+    if result.timed_out:
+        if result.job_id is None:
+            raise ToolError(
+                "timeout",
+                f"the command was stopped after {timeout_s}s",
+                hint="sleep commands are not moved to the background",
+            )
+        return timed_out(result, timeout_s)
+    body = shell_body(ctx, result, time.monotonic() - started)
+    if shell_succeeded(kind, command, result.exit_code):
+        return body
+    raise ToolError("exit_nonzero", f"exit code {result.exit_code}", body=body)
+
+
+def shell_body(ctx: Ctx, result: CommandResult, duration_s: float) -> str:
+    """`exit_code`, `duration`, changed `cwd`, then the non-empty output sections."""
+    lines = [f"exit_code: {result.exit_code}", f"duration: {duration_s:.1f}s"]
+    note = ""
+    if result.cwd:
+        new_cwd = Path(result.cwd).resolve()
+        if not is_within(new_cwd, ctx.root):
+            note = f"note: cwd reset to {display_path(ctx.root, ctx.cwd)}"
+        elif new_cwd != ctx.cwd:
+            ctx.cwd = new_cwd
+            lines.append(f"cwd: {display_path(ctx.root, new_cwd)}")
+    if result.stdout.strip():
+        lines += ["--- stdout ---", result.stdout.rstrip("\n")]
+    if result.stderr.strip():
+        lines += ["--- stderr ---", result.stderr.rstrip("\n")]
+    if note:
+        lines.append(note)
+    return "\n".join(lines)
+
+
+def shell_succeeded(kind: ShellKind, command: str, exit_code: int | None) -> bool:
+    """Exit 0, or a failure code that is normal for the program (grep finding nothing)."""
+    if exit_code == 0:
+        return True
+    program = first_program(command)
+    if kind == "powershell" and program == "robocopy":
+        return exit_code is not None and exit_code < 8
+    benign = BENIGN_EXIT1 if kind == "bash" else POWERSHELL_BENIGN_EXIT1
+    return exit_code == 1 and program in benign
+
+
+def first_program(command: str) -> str:
+    """The program a command line starts with, e.g. `grep` or `git-diff`."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
+        tokens.pop(0)  # leading VAR=value assignments
+    if not tokens:
+        return ""
+    name = re.split(r"[\\/]", tokens[0])[-1].lower()
+    return f"git-{tokens[1]}" if name == "git" and len(tokens) > 1 else name
+
+
+def job_started(result: CommandResult, label: str) -> str:
+    """The reply when a background job starts."""
+    job = result.job_id
+    return (
+        f"started job {job} (pid {result.pid}): {label}\n"
+        f"log: .forge/jobs/{job}.log\n"
+        f'read output with job_output("{job}"); stop with job_stop("{job}")'
+    )
+
+
+def timed_out(result: CommandResult, timeout_s: int) -> str:
+    """The reply when a command outlived its timeout and moved to the background."""
+    job = result.job_id
+    out = [
+        f"timeout: still running after {timeout_s}s, moved to background as job {job}",
+        f'read output with job_output("{job}"); stop with job_stop("{job}")',
+    ]
+    if result.stdout.strip():
+        out += ["--- stdout so far ---", result.stdout.rstrip("\n")]
+    return "\n".join(out)
+
+
+def job_status(job_id: str, result: CommandResult) -> str:
+    """`job j3: running (pid 41233, 52.3s)` or `job j3: exited with code 0 after 61.0s`."""
+    elapsed = result.elapsed_s or 0.0
+    if result.exit_code is None:
+        return f"job {job_id}: running (pid {result.pid}, {elapsed:.1f}s)"
+    return f"job {job_id}: exited with code {result.exit_code} after {elapsed:.1f}s"
+
+
+async def _job_call(call: Awaitable[CommandResult]) -> CommandResult:
+    try:
+        return await call
+    except JobNotFoundError as exc:
+        known = ", ".join(exc.known) or "none"
+        raise ToolError(
+            "not_found", f"no background job {exc.args[0]}", hint=f"known jobs: {known}"
+        ) from exc

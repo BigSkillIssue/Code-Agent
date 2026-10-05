@@ -17,6 +17,14 @@ class SessionNotFoundError(LookupError):
     """No session with that id exists in the store."""
 
 
+class JobNotFoundError(LookupError):
+    """No background job with that id exists; `known` lists the ids that do."""
+
+    def __init__(self, job_id: str, known: list[str]) -> None:
+        super().__init__(job_id)
+        self.known = known
+
+
 class Session(BaseModel):
     """One task from prompt to report; saved after every step so it can resume."""
 
@@ -69,6 +77,11 @@ class CommandResult(BaseModel):
     timed_out: bool = False
     sandbox_denied: bool = False  # failed because the sandbox blocked it
     job_id: str | None = None
+    # Beyond the contract (see PROGRESS.md, open issues): what the shell and job tools report.
+    cwd: str | None = None  # working directory after a persistent-shell command
+    pid: int | None = None  # process id of a background job
+    elapsed_s: float | None = None  # how long a job has been running (or ran)
+    total_lines: int | None = None  # lines in a job's log, for job_output paging
 
 
 class SandboxPolicy(BaseModel):
