@@ -1,5 +1,6 @@
 """Tests for the persistent shells, background jobs and the shell tools."""
 
+import codecs
 import os
 import shutil
 import subprocess
@@ -14,7 +15,7 @@ import pytest
 from forge.ctx import Ctx
 from forge.local.local_executor import LocalExecutor
 from forge.providers.base import ToolCall, ToolResult
-from forge.runtime.shell import find_shell
+from forge.runtime.shell import clean_output, find_shell
 from forge.tools import call_tool, first_program, shell_succeeded
 from support import make_ctx
 
@@ -241,6 +242,7 @@ async def test_powershell_unknown_command_fails(sh: Ctx) -> None:
     assert result.code == "exit_nonzero" and "no-such-command-xyz" in result.text
 
 
+@no_pwsh
 @pytest.mark.skipif(sys.platform != "win32", reason="robocopy is Windows-only")
 async def test_robocopy_exit_one_is_ok(sh: Ctx) -> None:
     (sh.root / "a").mkdir()
@@ -256,3 +258,9 @@ def test_shell_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert find_shell("bash") is None
     monkeypatch.setenv("FORGE_BASH", sys.executable)  # any existing executable path
     assert find_shell("bash") == shutil.which(sys.executable)
+
+
+def test_utf16_stderr_is_decoded() -> None:
+    raw = codecs.BOM_UTF16_LE + "bad thing\r\n".encode("utf-16-le")
+    assert clean_output(raw) == "bad thing\n"
+    assert clean_output(codecs.BOM_UTF8 + b"ok") == "ok"

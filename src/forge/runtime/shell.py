@@ -6,6 +6,7 @@ goes to a temp file, and a unique sentinel line reports its exit code and new fo
 
 import asyncio
 import base64
+import codecs
 import os
 import re
 import secrets
@@ -22,6 +23,12 @@ from forge.runtime.sandbox import Launch, scratch_dir
 ShellKind = Literal["bash", "powershell"]
 
 GIT_BASH = Path("C:/Program Files/Git/bin/bash.exe")
+BOMS = [
+    (codecs.BOM_UTF8, "utf-8"),
+    (codecs.BOM_UTF16_LE, "utf-16-le"),
+    (codecs.BOM_UTF16_BE, "utf-16-be"),
+]
+
 POWERSHELL_INIT = (
     "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); "
     "$OutputEncoding = [Text.UTF8Encoding]::new($false); "
@@ -134,7 +141,15 @@ def wrap_powershell(command: str, cwd: Path, nonce: str, err: Path) -> str:
 
 def clean_output(raw: bytes) -> str:
     """Decode, drop terminal escape codes and use `\\n` line endings."""
-    return _ANSI.sub("", raw.decode("utf-8", "replace")).replace("\r\n", "\n")
+    return _ANSI.sub("", decode_output(raw)).replace("\r\n", "\n")
+
+
+def decode_output(raw: bytes) -> str:
+    """Decode command output; Windows PowerShell 5.1 redirects stderr as UTF-16 with a BOM."""
+    for bom, encoding in BOMS:
+        if raw.startswith(bom):
+            return raw[len(bom) :].decode(encoding, "replace")
+    return raw.decode("utf-8", "replace")
 
 
 def native_path(kind: ShellKind, reported: str) -> str:
