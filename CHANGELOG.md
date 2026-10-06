@@ -2,6 +2,26 @@
 
 All notable changes to Forge. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+Phase 6 (S49-S56), after v1.0:
+
+- **Research agent:** the `research` tool hands web questions to a researcher sub-agent that
+  answers with sources (also in solo mode); the coder and lead prompts prefer it for anything
+  beyond a single fact. `web.fallback_backend` covers models without their own search.
+- **Browser agent:** `research(browser=true)` starts a browser sub-agent that opens pages,
+  clicks, types and scrolls, and sees a screenshot after every action (Playwright; run
+  `forge browser install` once, or use an installed Chrome with `[browser] channel`). Local and
+  private addresses are blocked.
+- **Live tool output:** shell commands show their output while they run (`tool_output` events).
+- **Early tool start:** safe reads start while the model is still writing its reply.
+- **Monitor tool:** `monitor` runs a command in the background and sends each new (filtered)
+  output line to the agent as a message; the agent waits for them.
+- **Todo list:** `todo_write` keeps the agent's checklist, shown live in the TUI.
+- **Background tasks:** `/tasks` and `ctrl+t` list jobs, agents and monitors, with output and stop.
+- **MCP management:** `forge mcp add/add-json/list/get/remove` and `/mcp` (add, remove,
+  reconnect without a restart).
+
 ## 1.0.0 - 2026-10-05
 
 The first release: everything planned in `docs/STEPS.md` (S01-S48).
