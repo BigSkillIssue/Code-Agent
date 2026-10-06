@@ -20,7 +20,7 @@ ADAPTERS = [
     ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
     ("openai-responses", "gpt-5-mini", "OPENAI_API_KEY"),
     ("gemini", "gemini-2.5-flash", "GEMINI_API_KEY"),
-    ("openrouter", "anthropic/claude-haiku-4.5", "OPENROUTER_API_KEY"),
+    ("openrouter", "meta-llama/llama-3.3-70b-instruct:free", "OPENROUTER_API_KEY"),
     ("groq", "llama-3.3-70b-versatile", "GROQ_API_KEY"),
     ("deepseek", "deepseek-chat", "DEEPSEEK_API_KEY"),
     ("mistral", "mistral-small-latest", "MISTRAL_API_KEY"),

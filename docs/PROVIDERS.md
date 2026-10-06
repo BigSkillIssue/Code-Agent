@@ -199,3 +199,27 @@ max_output = 65536
 cost_in = 0.40
 cost_out = 1.60
 ```
+
+## Free tiers for testing
+
+These providers have free tiers (limits change; check each provider's page). Put the key in
+the variable shown, then run `uv run pytest -q -m live tests/contract`; cases without a key
+are skipped.
+
+| Provider | Variable | Notes |
+|---|---|---|
+| Google Gemini (AI Studio) | `GEMINI_API_KEY` | generous free tier; free-tier data may be used for training |
+| Groq | `GROQ_API_KEY` | fast open models, rate-limited |
+| OpenRouter | `OPENROUTER_API_KEY` | models ending in `:free` cost nothing (daily limit) |
+| Mistral | `MISTRAL_API_KEY` | free "Experiment" plan |
+| Ollama (local) | none | free; needs a capable machine |
+
+A free-only setup for `~/.forge/forge.toml`:
+
+```toml
+[roles]
+coder    = ["gemini/gemini-2.5-flash", "groq/llama-3.3-70b-versatile"]
+planner  = ["gemini/gemini-2.5-flash"]
+reviewer = ["groq/llama-3.3-70b-versatile"]
+refiner  = ["gemini/gemini-2.5-flash"]
+```
