@@ -178,6 +178,10 @@ slow. That is why setup suggests the `-instruct` variant there. Measured on 4 CP
 call took 21 output tokens and 14 s with `qwen3:4b-instruct`, against 248 tokens and 50 s with
 `qwen3:4b`.
 
+End-to-end on the same machine (2026-10-06): Forge fixed the seeded bug in `examples/buggy` using only
+`forge-qwen3:4b-instruct` in 15 minutes (72k input and 1.5k output tokens, tests green). That proves
+it works; a GPU makes it many times faster.
+
 ### 12. LiteLLM
 
 The model id after the provider name is LiteLLM's own id; LiteLLM reads the vendor's usual key

@@ -5,6 +5,9 @@ from pathlib import Path
 from forge.runtime.proc import run_argv, which
 
 MAX_UNTRACKED_BYTES = 20_000
+# Tool caches are not changes anyone made (a project without .gitignore shows them).
+CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"})
+CACHE_PATHSPECS = tuple(f":(exclude,glob)**/{name}/**" for name in sorted(CACHE_DIRS))
 
 
 async def is_repo(root: Path) -> bool:
@@ -21,20 +24,17 @@ async def diff_since(root: Path, ref: str | None = None) -> str:
         return "(not a git repository; no diff available)"
     base = ref or "HEAD"
     has_base = (await run_argv(["git", "rev-parse", "--verify", "--quiet", base], root)).code == 0
-    tracked = await run_argv(["git", "diff", base] if has_base else ["git", "diff"], root)
+    command = ["git", "diff", base] if has_base else ["git", "diff"]
+    tracked = await run_argv([*command, "--", ".", *CACHE_PATHSPECS], root)
     parts = [tracked.stdout.rstrip()]
     untracked = await run_argv(["git", "ls-files", "--others", "--exclude-standard"], root)
     for name in untracked.stdout.splitlines():
         path = root / name
-        if path.is_file():
+        if path.is_file() and not is_cache(name):
             text = path.read_bytes()[:MAX_UNTRACKED_BYTES].decode("utf-8", "replace")
             body = "\n".join(f"+{line}" for line in text.splitlines())
             parts.append(f"new file: {name}\n{body}")
     return "\n\n".join(p for p in parts if p) or "(no changes)"
-
-
-# Untracked tool caches are not changes anyone made (a project without .gitignore shows them).
-CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"})
 
 
 async def changed_files(root: Path, ref: str | None = None) -> list[str]:
@@ -47,6 +47,10 @@ async def changed_files(root: Path, ref: str | None = None) -> list[str]:
         ["git", "diff", "--name-only", base] if has_base else ["git", "diff", "--name-only"], root
     )
     untracked = await run_argv(["git", "ls-files", "--others", "--exclude-standard"], root)
-    new_files = {p for p in untracked.stdout.split() if not CACHE_DIRS & set(p.split("/"))}
-    found = set(names.stdout.split()) | new_files
-    return sorted(p for p in found if not p.startswith(".forge/"))  # Forge's own files
+    found = set(names.stdout.split()) | set(untracked.stdout.split())
+    return sorted(p for p in found if not is_cache(p) and not p.startswith(".forge/"))
+
+
+def is_cache(path: str) -> bool:
+    """True for files inside a tool cache folder (`__pycache__/x.pyc`)."""
+    return bool(CACHE_DIRS & set(path.split("/")))

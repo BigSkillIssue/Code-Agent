@@ -396,6 +396,7 @@ Next step: done (phase 6 + S57)
   - models out of quota for hours are skipped;
   - caches are left out of the "Files changed" list;
   - the refiner no longer asks for file contents.
+- S57 live: Forge solved examples/buggy end-to-end with only Ollama (forge-qwen3:4b-instruct, 4 CPU cores, 907 s, ok=true). The same run showed the report and the review diff still listing __pycache__ files when the step snapshot already held them; both now leave tool caches out (regression tests in tests/test_gitops.py).
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
