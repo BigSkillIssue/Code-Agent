@@ -11,11 +11,13 @@ from textual.widgets import Footer, Header, Input, RichLog, Static
 from forge.commands import handle_command
 from forge.config import ForgeConfig
 from forge.ctx import Ctx
+from forge.local.tasks_screen import TasksScreen
 from forge.local.tui_renderer import TuiRenderer
 from forge.pipeline import PipelineError, report_text, resume, run_task
 from forge.plan import checklist
 from forge.ports import EventBus, Executor, Store
 from forge.providers.base import ProviderError
+from forge.tasks_view import list_tasks, running_count
 from forge.wiring import close_session, open_session, show_events
 
 CSS = """
@@ -25,9 +27,11 @@ CSS = """
 #plan { height: 1fr; border: round $secondary; padding: 0 1; }
 #todos { height: auto; max-height: 50%; border: round $secondary; padding: 0 1; }
 #prompt { dock: bottom; }
+#tasksbar { dock: bottom; height: 1; color: $warning; padding: 0 1; }
+#taskdetail { height: 12; border: round $secondary; }
 #dialog { width: 90%; max-width: 110; height: auto; max-height: 90%; border: thick $warning;
           background: $surface; padding: 1 2; }
-QuestionScreen, ApprovalScreen { align: center middle; }
+QuestionScreen, ApprovalScreen, TasksScreen { align: center middle; }
 #preview { max-height: 20; overflow-y: auto; }
 .hidden { display: none; }
 """
@@ -38,7 +42,7 @@ class ForgeApp(App[None]):
 
     TITLE = "Forge"
     CSS = CSS
-    BINDINGS = [Binding("ctrl+q", "quit", "Quit")]
+    BINDINGS = [Binding("ctrl+q", "quit", "Quit"), Binding("ctrl+t", "tasks", "Tasks")]
 
     def __init__(
         self,
@@ -64,6 +68,7 @@ class ForgeApp(App[None]):
             with Vertical(id="side"):
                 yield Static("no plan yet", id="plan")
                 yield Static("no todos", id="todos")
+        yield Static("", id="tasksbar")
         yield Input(placeholder="Describe a task, or /help", id="prompt")
         yield Footer()
 
@@ -73,7 +78,22 @@ class ForgeApp(App[None]):
         events = self.ctx.bus.subscribe(self.ctx.session.id)
         self.run_worker(show_events(events, self.renderer), group="events")
         self.renderer.write(f"Forge in {self.root} — type a task, or /help", style="dim")
+        self.set_interval(1.0, self.refresh_tasks)
         self.query_one("#prompt", Input).focus()
+
+    async def refresh_tasks(self) -> None:
+        """Show how many background tasks run (jobs, agents, monitors)."""
+        if self.ctx is None:
+            return
+        running = running_count(await list_tasks(self.ctx))
+        plural = "" if running == 1 else "s"
+        text = f"{running} background task{plural} running — ctrl+t to view" if running else ""
+        self.query_one("#tasksbar", Static).update(text)
+
+    async def action_tasks(self) -> None:
+        """Open the background-task list."""
+        if self.ctx is not None:
+            await self.push_screen(TasksScreen(self.ctx, await list_tasks(self.ctx)))
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Run a slash command, or start a task."""

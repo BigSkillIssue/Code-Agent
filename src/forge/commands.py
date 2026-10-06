@@ -22,6 +22,7 @@ from forge.runtime.files import (
     undo_last_change,
 )
 from forge.runtime.ignore import project_files
+from forge.tasks_view import stop_task, task_detail, tasks_report
 
 HELP = {
     "/plan": "show the plan with step statuses",
@@ -30,6 +31,7 @@ HELP = {
     "/context": "tokens used by the last request, by category",
     "/undo": "roll back the last step or file change",
     "/mode [MODE]": "show or set the sandbox mode or approval policy",
+    "/tasks [stop] [ID]": "background jobs, agents and monitors; show or stop one",
     "/jobs": "background jobs and their status",
     "/agents": "the session's agents with status and usage",
     "/init": "write a FORGE.md with this project's commands and layout",
@@ -78,6 +80,7 @@ async def run_builtin(ctx: Ctx, name: str, args: str) -> SlashResult | None:
         "/context": lambda: context_report(ctx),
         "/plan": lambda: checklist(ctx.session.plan) if ctx.session.plan else "no plan yet",
         "/mode": lambda: set_mode(ctx, args),
+        "/tasks": lambda: tasks_command(ctx, args),
         "/jobs": lambda: jobs_report(ctx),
         "/agents": lambda: ctx.state.team.overview(ctx) if ctx.state.team else "no agents",
         "/init": lambda: init_forge_md(ctx),
@@ -91,6 +94,16 @@ async def run_builtin(ctx: Ctx, name: str, args: str) -> SlashResult | None:
     if not isinstance(value, str):
         value = await value
     return SlashResult(text=value)
+
+
+async def tasks_command(ctx: Ctx, args: str) -> str:
+    """/tasks, /tasks <id>, /tasks stop <id>."""
+    words = args.split()
+    if not words:
+        return await tasks_report(ctx)
+    if words[0] == "stop" and len(words) == 2:
+        return await stop_task(ctx, words[1])
+    return await task_detail(ctx, words[0])
 
 
 def go(ctx: Ctx) -> SlashResult:

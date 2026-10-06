@@ -897,6 +897,7 @@ async def monitor(
         raise ToolError("exit_nonzero", "the command could not start", body=result.stderr)
     if ctx.state.team is not None:
         ctx.state.team.note_job(ctx.agent_id, result.job_id)
+    ctx.state.job_labels[result.job_id] = description
     watched = ctx.state.monitors.start(ctx, result.job_id, description, filter, timeout_s)
     return (
         f"monitor {watched.id} started (job {result.job_id}): {description}\n"
@@ -988,6 +989,8 @@ async def run_shell(
         if ctx.state.team is not None and result.job_id:
             ctx.state.team.note_job(ctx.agent_id, result.job_id)
         label = description or command.strip().splitlines()[0][:60]
+        if result.job_id:
+            ctx.state.job_labels[result.job_id] = label
         return job_started(result, label)
     if result.sandbox_denied:
         result = await outside_sandbox(ctx, cmd, result)
