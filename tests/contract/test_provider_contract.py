@@ -15,6 +15,9 @@ from forge.providers.registry import get_provider
 pytestmark = pytest.mark.live
 
 # (provider, model, env var holding the key); every name is a preset or listed in EXTRA.
+# The model `forge ollama setup` creates on a machine without a GPU; override as needed.
+OLLAMA_MODEL = os.environ.get("FORGE_LIVE_OLLAMA_MODEL", "forge-qwen3:4b-instruct")
+
 ADAPTERS = [
     ("anthropic", "claude-haiku-4-5", "ANTHROPIC_API_KEY"),
     ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
@@ -26,7 +29,7 @@ ADAPTERS = [
     ("mistral", "mistral-small-latest", "MISTRAL_API_KEY"),
     ("xai", "grok-4-fast", "XAI_API_KEY"),
     ("together", "meta-llama/Llama-3.3-70B-Instruct-Turbo", "TOGETHER_API_KEY"),
-    ("ollama", "qwen3:8b", "FORGE_LIVE_OLLAMA"),
+    ("ollama", OLLAMA_MODEL, "FORGE_LIVE_OLLAMA"),
     ("litellm", "anthropic/claude-haiku-4-5", "ANTHROPIC_API_KEY"),
 ]
 

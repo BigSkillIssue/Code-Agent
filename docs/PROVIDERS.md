@@ -30,7 +30,7 @@ form, which you need only to change something.
 | 8 | Mistral | shared with OpenAI-compatible | `mistral` case |
 | 9 | xAI | shared with OpenAI-compatible | `xai` case |
 | 10 | Together | shared with OpenAI-compatible | `together` case |
-| 11 | Ollama (local) | shared with OpenAI-compatible | `ollama` case (`FORGE_LIVE_OLLAMA=1`) |
+| 11 | Ollama (local) | `tests/test_ollama_setup.py` | `ollama` case (`FORGE_LIVE_OLLAMA=1`), **passed live 2026-10-06** (forge-qwen3:4b-instruct on CPU) |
 | 12 | LiteLLM | `tests/test_fallback_tools.py` (mock response) | `litellm` case |
 
 The live contract cases are skipped unless the provider's API key is set. Each case checks a
@@ -155,15 +155,28 @@ api_key_env = "TOGETHER_API_KEY"
 
 ### 11. Ollama (local, no key)
 
+Run `forge ollama setup`; it does the following steps for you (details in the quick start).
+1. It picks a model for the machine and pulls it.
+2. It creates `forge-<model>` with a `num_ctx` that fits Forge's prompts. Ollama's default
+   window is a few thousand tokens and longer prompts are cut silently.
+3. It writes the roles and the model entry into `~/.forge/forge.toml`.
+
+`forge ollama status` checks the server and the context windows. By hand:
+
 ```toml
-[providers.ollama]
+[providers.ollama]          # preset; only needed for another host or port
 kind = "openai_compat"
 base_url = "http://localhost:11434/v1"
 
-[models."ollama/qwen3:8b"]
-context_window = 40000
-tools = true     # set false for models without tool support: prompt-based tools are used
+[models."ollama/forge-qwen3:8b"]
+context_window = 32768   # must match the model's num_ctx
+tools = true             # false: prompt-based tools are used
 ```
+
+Thinking models (e.g. `qwen3:4b`) spend many tokens before each answer; on a CPU that is very
+slow. That is why setup suggests the `-instruct` variant there. Measured on 4 CPU cores: one tool
+call took 21 output tokens and 14 s with `qwen3:4b-instruct`, against 248 tokens and 50 s with
+`qwen3:4b`.
 
 ### 12. LiteLLM
 

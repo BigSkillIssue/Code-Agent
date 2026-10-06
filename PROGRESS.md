@@ -1,6 +1,6 @@
 # Progress
 
-Next step: done (phase 6)
+Next step: done (phase 6 + S57)
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -62,6 +62,7 @@ Next step: done (phase 6)
 | S54 | 2026-10-06 | dc9ac50 | todos.py, events.py, ctx.py, tools.py, prompts.py, tui.py, local/tui_renderer.py, local/rich_renderer.py, local/json_renderer.py, docs/TOOLS.md, docs/CONTRACTS.md, tests/test_todos.py, tests/test_messages.py | todo_write per agent, TodosUpdated event; TUI side panel under the plan, plain/JSON output; prompt rule for 3+ step work |
 | S55 | 2026-10-06 | f9d72a3 | tasks_view.py, local/tasks_screen.py, tui.py, commands.py, ctx.py, tools.py, docs/quickstart.md, tests/test_tasks_view.py | /tasks [ID|stop ID] over jobs, agents and monitors; TUI bar 'N background tasks running' and ctrl+t list with output and stop |
 | S56 | 2026-10-06 | b473c6d | mcp_admin.py, mcp_cli.py, mcp_client.py, cli.py, commands.py, docs/extending.md, docs/quickstart.md, README.md, tests/test_mcp_admin.py | forge mcp add/add-json/list/get/remove (user or project scope, connection check); /mcp status, add, remove, reconnect without restart |
+| S57 | 2026-10-06 | (next) | ollama_setup.py, ollama_cli.py, config_edit.py, mcp_admin.py, cli.py, docs/quickstart.md, docs/PROVIDERS.md, README.md, docs/STEPS.md, CHANGELOG.md, tests/test_ollama_setup.py, tests/test_config_edit.py, tests/contract/test_provider_contract.py | forge ollama setup/status: hardware-based model choice, pull, forge-<model> with num_ctx, roles written; live: Ollama 0.40 on 4 CPU cores, contract test 2/2 with forge-qwen3:4b-instruct |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -215,6 +216,9 @@ Next step: done (phase 6)
 - S55: S55: tasks_view reads the local executor's jobs and the registry's agents with getattr (like /jobs did), so other executors simply show no jobs; background shell jobs and monitors record a label in SessionState.job_labels.
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
+- S57: S57: Ollama's OpenAI endpoint cannot set num_ctx per request, so setup creates a derived model forge-<model> via /api/create with the context window as a parameter; the window is recorded as context_window in [models].
+- S57: S57: tool support is read from /api/show capabilities instead of a trial request; without a GPU setup suggests qwen3:4b-instruct (no thinking phase): one tool call took 21 tokens/14 s vs 248 tokens/50 s with qwen3:4b. The browser role is left alone (text models have no vision).
+- S57: S57: the 600 s read timeout of openai_compat was already long enough for local models; no new provider timeout setting was needed.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -267,6 +271,9 @@ Next step: done (phase 6)
 - S55: S55: tasks_view reads the local executor's jobs and the registry's agents with getattr (like /jobs did), so other executors simply show no jobs; background shell jobs and monitors record a label in SessionState.job_labels.
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
+- S57: S57: Ollama's OpenAI endpoint cannot set num_ctx per request, so setup creates a derived model forge-<model> via /api/create with the context window as a parameter; the window is recorded as context_window in [models].
+- S57: S57: tool support is read from /api/show capabilities instead of a trial request; without a GPU setup suggests qwen3:4b-instruct (no thinking phase): one tool call took 21 tokens/14 s vs 248 tokens/50 s with qwen3:4b. The browser role is left alone (text models have no vision).
+- S57: S57: the 600 s read timeout of openai_compat was already long enough for local models; no new provider timeout setting was needed.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -309,6 +316,9 @@ Next step: done (phase 6)
 - S55: S55: tasks_view reads the local executor's jobs and the registry's agents with getattr (like /jobs did), so other executors simply show no jobs; background shell jobs and monitors record a label in SessionState.job_labels.
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
+- S57: S57: Ollama's OpenAI endpoint cannot set num_ctx per request, so setup creates a derived model forge-<model> via /api/create with the context window as a parameter; the window is recorded as context_window in [models].
+- S57: S57: tool support is read from /api/show capabilities instead of a trial request; without a GPU setup suggests qwen3:4b-instruct (no thinking phase): one tool call took 21 tokens/14 s vs 248 tokens/50 s with qwen3:4b. The browser role is left alone (text models have no vision).
+- S57: S57: the 600 s read timeout of openai_compat was already long enough for local models; no new provider timeout setting was needed.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -346,6 +356,9 @@ Next step: done (phase 6)
 - S55: S55: tasks_view reads the local executor's jobs and the registry's agents with getattr (like /jobs did), so other executors simply show no jobs; background shell jobs and monitors record a label in SessionState.job_labels.
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
+- S57: S57: Ollama's OpenAI endpoint cannot set num_ctx per request, so setup creates a derived model forge-<model> via /api/create with the context window as a parameter; the window is recorded as context_window in [models].
+- S57: S57: tool support is read from /api/show capabilities instead of a trial request; without a GPU setup suggests qwen3:4b-instruct (no thinking phase): one tool call took 21 tokens/14 s vs 248 tokens/50 s with qwen3:4b. The browser role is left alone (text models have no vision).
+- S57: S57: the 600 s read timeout of openai_compat was already long enough for local models; no new provider timeout setting was needed.
 
 - S37 (CI fix): a timed-out hook is killed as a process tree on Windows (taskkill /T /F); killing only bash left the child holding the pipes.
 - S45: S45: $FORGE_BASH / $FORGE_POWERSHELL (path or 'none') pick the shell executables; they are reserved and not read as config keys. actions/checkout moved to v5 (Node 24).
@@ -374,6 +387,9 @@ Next step: done (phase 6)
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
 - S56 fix: on Windows, /mcp arguments are split without POSIX escaping (shlex posix=False, outer quotes removed), so backslashes in paths stay.
 - Live runs 2026-10-06 (free Groq + Gemini keys): contract tests pass for both (4/4). Two end-to-end tasks on examples/buggy passed (ok=true, tests green). Fixes from these runs:
+- S57: S57: Ollama's OpenAI endpoint cannot set num_ctx per request, so setup creates a derived model forge-<model> via /api/create with the context window as a parameter; the window is recorded as context_window in [models].
+- S57: S57: tool support is read from /api/show capabilities instead of a trial request; without a GPU setup suggests qwen3:4b-instruct (no thinking phase): one tool call took 21 tokens/14 s vs 248 tokens/50 s with qwen3:4b. The browser role is left alone (text models have no vision).
+- S57: S57: the 600 s read timeout of openai_compat was already long enough for local models; no new provider timeout setting was needed.
   - the wait written in an error body (Gemini RetryInfo, Groq "try again in", "4h45m4s") is honoured;
   - a 413 above Groq's per-minute token quota counts as bad_request, so the next model is tried at once;
   - calls written by another model get Gemini's placeholder thought signature;

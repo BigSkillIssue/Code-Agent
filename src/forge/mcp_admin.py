@@ -6,18 +6,16 @@ replaced or removed, so comments and every other setting stay as they were.
 
 import json
 import re
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from forge.config import McpServerConfig, forge_home, is_trusted
+from forge.config_edit import parse_toml, remove_table, replace_table
 from forge.mcp_client import McpConnection
-from forge.toml_writer import dumps
 
 Scope = Literal["user", "project"]
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
-HEADER = re.compile(r"^\s*\[\s*([^\[\]]+?)\s*\]\s*(#.*)?$")
 ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 CHECK_TIMEOUT_S = 20
 
@@ -45,10 +43,8 @@ def add_server(
     path = config_path(root, scope)
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
     entry = server.model_dump(exclude_defaults=True)
-    kept = without_server(text, name).rstrip("\n")
-    block = dumps({"mcp_servers": {name: entry}})
-    updated = f"{kept}\n\n{block}" if kept else block
-    parsed = parse(updated, path)
+    updated = replace_table(text, ["mcp_servers", name], entry)
+    parsed = parse_toml(updated, path)
     if parsed.get("mcp_servers", {}).get(name) != entry:
         raise ValueError(f"{path} defines {name} in a form Forge cannot edit; edit it by hand")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,10 +64,10 @@ def remove_server(root: Path, name: str, scope: Scope | None = None) -> Path:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        if name not in parse(text, path).get("mcp_servers", {}):
+        if name not in parse_toml(text, path).get("mcp_servers", {}):
             continue
-        updated = without_server(text, name)
-        if name in parse(updated, path).get("mcp_servers", {}):
+        updated = remove_table(text, ["mcp_servers", name])
+        if name in parse_toml(updated, path).get("mcp_servers", {}):
             raise ValueError(f"{path} defines {name} in a form Forge cannot edit; edit it by hand")
         path.write_text(updated.rstrip("\n") + "\n" if updated.strip() else "", encoding="utf-8")
         return path
@@ -86,7 +82,7 @@ def list_servers(root: Path) -> list[ServerEntry]:
         path = config_path(root, scope)
         if not path.is_file():
             continue
-        servers = parse(path.read_text(encoding="utf-8"), path).get("mcp_servers") or {}
+        servers = parse_toml(path.read_text(encoding="utf-8"), path).get("mcp_servers") or {}
         for name, raw in servers.items():
             found[name] = ServerEntry(name, scope, path, McpServerConfig.model_validate(raw))
     return list(found.values())
@@ -98,33 +94,6 @@ def check_entry(name: str, server: McpServerConfig) -> None:
         raise ValueError(f"the name '{name}' must be 1-32 letters, digits, '-' or '_'")
     if bool(server.command) == bool(server.url):
         raise ValueError("a server needs either a command or a url (not both)")
-
-
-def without_server(text: str, name: str) -> str:
-    """The TOML text without the `[mcp_servers.<name>]` table and its sub-tables."""
-    out: list[str] = []
-    skipping = False
-    for line in text.splitlines(keepends=True):
-        header = HEADER.match(line)
-        if header:
-            skipping = is_server_table(header.group(1), name)
-        if not skipping:
-            out.append(line)
-    return "".join(out)
-
-
-def is_server_table(header: str, name: str) -> bool:
-    """True for `mcp_servers.<name>` and `mcp_servers.<name>.<anything>`."""
-    parts = [part.strip().strip('"').strip("'") for part in header.split(".")]
-    return len(parts) >= 2 and parts[0] == "mcp_servers" and parts[1] == name
-
-
-def parse(text: str, path: Path) -> dict[str, Any]:
-    """Parse TOML or explain which file is broken."""
-    try:
-        return tomllib.loads(text)
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"{path} is not valid TOML: {exc}") from exc
 
 
 def from_json(text: str) -> tuple[McpServerConfig, list[str]]:

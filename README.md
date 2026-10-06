@@ -43,7 +43,8 @@ forge "Make the failing test in tests/test_calc.py pass"   # one task, plain out
 forge run --json --yes "Add a --verbose flag"             # headless: JSON events, exit 0/1/2
 ```
 
-No key yet? `forge --fake "say hello"` runs everything offline with a scripted model.
+No key? `forge ollama setup` runs Forge on a local model ([Ollama](https://ollama.com)), and
+`forge --fake "say hello"` runs everything offline with a scripted model.
 The [quick start](docs/quickstart.md) walks through a real fix step by step.
 
 ## Documentation
@@ -73,6 +74,7 @@ forge trust                let this project's config set providers, MCP servers 
 forge eval                 run the benchmark tasks (--fake: offline)
 forge browser install      download the Chromium the browser agent uses
 forge mcp add NAME -- CMD  add an MCP server (also: add-json, list, get, remove)
+forge ollama setup         run locally: pick, download and configure an Ollama model
 ```
 
 Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything), `--solo`/`--team`,

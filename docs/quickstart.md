@@ -50,6 +50,27 @@ reviewer = ["openai/gpt-5-mini"]
 Every option is in [config.md](config.md); provider snippets are in [PROVIDERS.md](PROVIDERS.md).
 Check the result with `forge config check`.
 
+### Or run everything locally with Ollama (no key, no limits)
+
+1. Install Ollama from https://ollama.com/download and start it (the app starts it; on Linux
+   `ollama serve`).
+2. Run `forge ollama setup`. It looks at your RAM and graphics card, suggests a model,
+   downloads it and points all of Forge's roles at it:
+
+   | Your machine | Suggested model | Context |
+   | --- | --- | --- |
+   | GPU or Mac with 24 GB+ for the model | `qwen3-coder:30b` | 32k |
+   | 12-24 GB | `qwen3:14b` | 32k |
+   | 7-12 GB | `qwen3:8b` | 32k |
+   | no GPU | `qwen3:4b-instruct` | 8-16k |
+
+   Choose another one with `--model NAME`. Check the result with `forge ollama status`.
+3. Work as usual: `forge "..."`.
+
+Without a GPU it works, but slowly, and a 4B model is weak on hard tasks. Ollama gives models only
+a small context window by default and cuts longer prompts silently. Setup therefore creates a copy
+`forge-<model>` with a larger window, and Forge warns when a role uses an Ollama model without one.
+
 ## 4. Your first real task
 
 ```bash

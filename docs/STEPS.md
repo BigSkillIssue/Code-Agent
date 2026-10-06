@@ -307,4 +307,9 @@ The gate command from `AGENTS.md` (ruff, mypy, pytest) must also pass after ever
     - Build: `forge mcp add/add-json/list/get/remove` (user or project scope), `/mcp` status, add, remove and reconnect without restart.
     - Verify: `uv run pytest tests/test_mcp_admin.py -q`; `forge mcp add stub -- python tests/fixtures/mcp_stub.py && forge mcp list`.
 
+- [ ] **S57 — Local models with Ollama**
+    - Files: `ollama_setup.py`, `ollama_cli.py`, `config_edit.py` (shared with `mcp_admin.py`), `cli.py`, docs, `tests/test_ollama_setup.py`, `tests/test_config_edit.py`
+    - Build: `forge ollama setup` (hardware-based model choice, pull, `forge-<model>` with a fitting `num_ctx`, roles and model entry written) and `forge ollama status`; warning for Ollama models without a known context window.
+    - Verify: `uv run pytest tests/test_ollama_setup.py -q`; live: `FORGE_LIVE_OLLAMA=1 uv run pytest -m live tests/contract -k ollama` and an end-to-end task on `examples/buggy`.
+
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.

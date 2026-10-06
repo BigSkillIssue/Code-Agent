@@ -22,6 +22,8 @@ from forge.events import SessionDone
 from forge.local.json_renderer import JsonRenderer, NeedsInput
 from forge.local.rich_renderer import RichRenderer
 from forge.mcp_cli import cmd_mcp
+from forge.ollama_cli import cmd_ollama
+from forge.ollama_setup import context_warnings
 from forge.pipeline import PipelineError, Report, report_text, resume, run_task
 from forge.ports import Renderer, SessionNotFoundError
 from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
@@ -39,6 +41,7 @@ commands:
   forge eval           run the benchmark tasks in evals/tasks (--fake: offline)
   forge browser install  download the Chromium the browser agent uses
   forge mcp add|list|get|remove   manage MCP servers (forge mcp for help)
+  forge ollama setup|status       use a local Ollama model (picks one for this machine)
 """
 
 
@@ -94,6 +97,9 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
     cfg = load_config(root, profile=options.profile)
     for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
         print(f"warning: {warning}", file=sys.stderr)
+    if options.fake is None:
+        for warning in context_warnings(cfg):
+            print(f"warning: {warning}", file=sys.stderr)
     if options.fake is not None:
         use_fake_provider(cfg, Path(options.fake) if options.fake else None, root)
     return root, cfg
@@ -325,6 +331,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "resume": cmd_resume,
     "browser": cmd_browser,
     "mcp": cmd_mcp,
+    "ollama": cmd_ollama,
 }
 
 

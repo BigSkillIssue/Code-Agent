@@ -19,6 +19,8 @@ Phase 6 (S49-S56), after v1.0:
   output line to the agent as a message; the agent waits for them.
 - **Todo list:** `todo_write` keeps the agent's checklist, shown live in the TUI.
 - **Background tasks:** `/tasks` and `ctrl+t` list jobs, agents and monitors, with output and stop.
+- **Local models:** `forge ollama setup` picks a model for the machine, downloads it, gives it a
+  big enough context window and points every role at it; `forge ollama status` checks it.
 - **MCP management:** `forge mcp add/add-json/list/get/remove` and `/mcp` (add, remove,
   reconnect without a restart).
 
