@@ -20,6 +20,7 @@ CONTRACT_KINDS = frozenset(
         "model_delta",
         "model_done",
         "tool_started",
+        "tool_output",
         "tool_finished",
         "question",
         "plan_updated",

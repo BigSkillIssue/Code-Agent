@@ -18,6 +18,7 @@ once and never described twice.
 """
 
 import asyncio
+import contextvars
 import datetime
 import difflib
 import inspect
@@ -39,7 +40,7 @@ from forge import prompts
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx, McpTools, Team
-from forge.events import PlanUpdated
+from forge.events import PlanUpdated, ToolOutput
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.ports import (
@@ -129,6 +130,8 @@ class ToolDef:
 
 
 REGISTRY: dict[str, ToolDef] = {}
+# The id of the call whose body is running, so a body can label its live output (per task).
+CALL_ID: contextvars.ContextVar[str] = contextvars.ContextVar("forge_call_id", default="")
 
 
 def tool(
@@ -369,6 +372,7 @@ async def _authorize(ctx: Ctx, tool_def: ToolDef, call: ToolCall, args: dict[str
 async def _run_body(
     ctx: Ctx, tool_def: ToolDef, call: ToolCall, args: dict[str, Any]
 ) -> ToolResult:
+    token = CALL_ID.set(call.id)
     try:
         value = await tool_def.fn(ctx, **args)
     except ToolError as err:
@@ -379,6 +383,8 @@ async def _run_body(
         return failure(
             "tool_error", f"internal error in {tool_def.name}: {type(exc).__name__}: {exc}"
         )
+    finally:
+        CALL_ID.reset(token)
     if isinstance(value, str):
         return ToolResult(call_id=call.id, ok=True, text=value)
     return value
@@ -898,7 +904,14 @@ async def run_shell(
         raise ToolError("unsupported", f"{kind} is not available on this machine", hint=hint)
     started = time.monotonic()
     cmd = Command(script=command, shell=kind, cwd=str(ctx.cwd), timeout_s=timeout_s)
-    result = await ctx.executor.run(cmd, sandbox_policy(ctx), background=background)
+    live = None if background else LiveOutput(ctx, CALL_ID.get())
+    try:
+        result = await ctx.executor.run(
+            cmd, sandbox_policy(ctx), background=background, on_output=live.write if live else None
+        )
+    finally:
+        if live is not None:
+            await live.close()
     if background:
         if ctx.state.team is not None and result.job_id:
             ctx.state.team.note_job(ctx.agent_id, result.job_id)
@@ -918,6 +931,59 @@ async def run_shell(
     if shell_succeeded(kind, command, result.exit_code):
         return body
     raise ToolError("exit_nonzero", f"exit code {result.exit_code}", body=body)
+
+
+class LiveOutput:
+    """Publishes a running command's output as ToolOutput events: whole lines, masked, throttled."""
+
+    MAX_LINES = 500  # per call; the final result still has everything
+
+    def __init__(self, ctx: Ctx, call_id: str, interval_s: float = 0.2) -> None:
+        self.ctx = ctx
+        self.call_id = call_id
+        self.interval_s = interval_s
+        self.pending = ""
+        self.lines = 0
+        self.flusher: asyncio.Task[None] | None = None
+
+    def write(self, text: str) -> None:
+        """Take new output; a flush is scheduled at most every `interval_s`."""
+        self.pending += text
+        if self.flusher is None and "\n" in self.pending:
+            self.flusher = asyncio.get_running_loop().create_task(self._flush_later())
+
+    async def close(self) -> None:
+        """Publish what is left (also an unfinished last line)."""
+        if self.flusher is not None:
+            self.flusher.cancel()
+            self.flusher = None
+        if self.pending.strip():  # a lone newline is the shell wrapper's, not the command's
+            await self._publish(self.pending)
+        self.pending = ""
+
+    async def _flush_later(self) -> None:
+        await asyncio.sleep(self.interval_s)
+        cut = self.pending.rfind("\n") + 1
+        text, self.pending = self.pending[:cut], self.pending[cut:]
+        self.flusher = None
+        await self._publish(text)
+
+    async def _publish(self, text: str) -> None:
+        if not text or self.lines >= self.MAX_LINES:
+            return
+        lines = text.splitlines(keepends=True)[: self.MAX_LINES - self.lines]
+        self.lines += len(lines)
+        if self.lines >= self.MAX_LINES:
+            lines.append("[live output stops here; the result has all of it]\n")
+        await self.ctx.bus.publish(
+            ToolOutput(
+                session_id=self.ctx.session.id,
+                agent_id=self.ctx.agent_id,
+                ts=time.time(),
+                call_id=self.call_id,
+                text=mask_secrets("".join(lines)),
+            )
+        )
 
 
 async def outside_sandbox(ctx: Ctx, cmd: Command, blocked: CommandResult) -> CommandResult:

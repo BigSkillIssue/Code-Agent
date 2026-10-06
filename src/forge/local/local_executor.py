@@ -10,6 +10,7 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,7 +61,11 @@ class LocalExecutor:
         self._shells: list[ShellSession] = []
 
     async def run(
-        self, cmd: Command, policy: SandboxPolicy, background: bool = False
+        self,
+        cmd: Command,
+        policy: SandboxPolicy,
+        background: bool = False,
+        on_output: Callable[[str], None] | None = None,
     ) -> CommandResult:
         """Run a command now, or start it as a background job."""
         self.last_policy = policy
@@ -68,7 +73,7 @@ class LocalExecutor:
         if background:
             return await self._start_job(cmd, launch)
         if cmd.script is not None and cmd.shell != "none" and not cmd.env:
-            result = await self._run_in_shell(cmd, cmd.shell, launch)
+            result = await self._run_in_shell(cmd, cmd.shell, launch, on_output)
         else:
             result = await self._run_once(cmd, launch)
         if launch.mechanism != "none" and is_denied(
@@ -107,13 +112,19 @@ class LocalExecutor:
                 await shell.close()
         self._shells.clear()
 
-    async def _run_in_shell(self, cmd: Command, kind: ShellKind, launch: Launch) -> CommandResult:
+    async def _run_in_shell(
+        self,
+        cmd: Command,
+        kind: ShellKind,
+        launch: Launch,
+        on_output: Callable[[str], None] | None = None,
+    ) -> CommandResult:
         exe = find_shell(kind)
         if exe is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{kind} is not installed")
         shell = await self._borrow(kind, exe, launch)
         script = cmd.script or ""
-        outcome = await shell.run(script, Path(cmd.cwd), cmd.timeout_s)
+        outcome = await shell.run(script, Path(cmd.cwd), cmd.timeout_s, on_output)
         if outcome.timed_out:
             self._shells.remove(shell)
             if script.lstrip().startswith("sleep") and shell.proc is not None:

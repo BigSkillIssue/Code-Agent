@@ -2,6 +2,7 @@
 
 import asyncio
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,11 @@ class NoExecutor:
     """An Executor for tests that must not run commands."""
 
     async def run(
-        self, cmd: Command, policy: SandboxPolicy, background: bool = False
+        self,
+        cmd: Command,
+        policy: SandboxPolicy,
+        background: bool = False,
+        on_output: Callable[[str], None] | None = None,
     ) -> CommandResult:
         raise AssertionError(f"unexpected command: {cmd}")
 

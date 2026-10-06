@@ -38,6 +38,14 @@ class ToolStarted(Event):
     call: ToolCall
 
 
+class ToolOutput(Event):
+    """Output of a running tool so far: whole lines, throttled (S51)."""
+
+    kind: Literal["tool_output"] = "tool_output"
+    call_id: str
+    text: str
+
+
 class ToolFinished(Event):
     """A tool call finished."""
 
@@ -113,6 +121,7 @@ EVENT_TYPES: tuple[type[Event], ...] = (
     ModelDelta,
     ModelDone,
     ToolStarted,
+    ToolOutput,
     ToolFinished,
     QuestionAsked,
     PlanUpdated,
@@ -128,6 +137,7 @@ AnyEvent = Annotated[
     ModelDelta
     | ModelDone
     | ToolStarted
+    | ToolOutput
     | ToolFinished
     | QuestionAsked
     | PlanUpdated

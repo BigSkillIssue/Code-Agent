@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +149,11 @@ class SlowExecutor:
         self.stopped: list[str] = []
 
     async def run(
-        self, cmd: Command, policy: SandboxPolicy, background: bool = False
+        self,
+        cmd: Command,
+        policy: SandboxPolicy,
+        background: bool = False,
+        on_output: Callable[[str], None] | None = None,
     ) -> CommandResult:
         if background:
             return CommandResult(exit_code=None, stdout="", stderr="", job_id="j1", pid=1)

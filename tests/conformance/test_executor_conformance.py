@@ -54,3 +54,9 @@ async def test_a_long_command_moves_to_the_background(executor: Executor, tmp_pa
     slow = await executor.run(script(tmp_path, "echo early; sleep 30", timeout_s=1), POLICY)
     assert slow.timed_out and slow.job_id is not None
     await executor.job_stop(slow.job_id)
+
+
+async def test_output_arrives_while_running(executor: Executor, tmp_path: Path) -> None:
+    seen: list[str] = []
+    result = await executor.run(script(tmp_path, "echo live"), POLICY, on_output=seen.append)
+    assert result.exit_code == 0 and "live" in "".join(seen)

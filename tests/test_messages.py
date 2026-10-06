@@ -50,6 +50,7 @@ EVENTS: list[events.Event] = [
     events.ModelDelta(session_id="s", ts=1.0, text="multi\nline"),
     events.ModelDone(session_id="s", ts=1.0, message=MESSAGE, usage=USAGE),
     events.ToolStarted(session_id="s", agent_id="a1", ts=1.0, call=CALL),
+    events.ToolOutput(session_id="s", agent_id="a1", ts=1.0, call_id="c1", text="line 1\n"),
     events.ToolFinished(session_id="s", ts=1.0, result=RESULT),
     events.QuestionAsked(session_id="s", ts=1.0, questions=[QUESTION]),
     events.PlanUpdated(session_id="s", ts=1.0, plan=PLAN),

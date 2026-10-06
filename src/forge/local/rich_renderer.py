@@ -17,6 +17,7 @@ from forge.events import (
     SessionDone,
     StepDone,
     ToolFinished,
+    ToolOutput,
     ToolStarted,
 )
 from forge.plan import Plan, Question
@@ -90,6 +91,9 @@ def describe(event: Event) -> Text:
     """A one-line (or short) rendering of a non-text event."""
     if isinstance(event, ToolStarted):
         return Text(f"⏺ {call_label(event.call)}", style="cyan")
+    if isinstance(event, ToolOutput):
+        lines = event.text.rstrip("\n").split("\n")
+        return Text("\n".join(f"  │ {line}" for line in lines), style="dim")
     if isinstance(event, ToolFinished):
         first = event.result.text.splitlines()[0] if event.result.text else ""
         style = "green" if event.result.ok else "red"

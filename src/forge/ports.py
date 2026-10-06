@@ -3,7 +3,7 @@
 v1 implements them in `forge.local`; the core only ever sees these interfaces.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -113,7 +113,11 @@ class Executor(Protocol):
     """Runs commands inside the sandbox and manages background jobs."""
 
     async def run(
-        self, cmd: Command, policy: SandboxPolicy, background: bool = False
+        self,
+        cmd: Command,
+        policy: SandboxPolicy,
+        background: bool = False,
+        on_output: Callable[[str], None] | None = None,  # output so far, while it runs (S51)
     ) -> CommandResult: ...
     async def job_output(self, job_id: str, since_line: int = 0) -> CommandResult: ...
     async def job_stop(self, job_id: str) -> CommandResult: ...

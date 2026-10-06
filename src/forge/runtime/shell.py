@@ -37,7 +37,6 @@ POWERSHELL_INIT = (
 )
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[=>]")
 _MSYS_PATH = re.compile(r"^/([a-zA-Z])(/.*)?$")
-HOLD_BACK = 4096
 
 
 class ShellExited(Exception):
@@ -210,7 +209,13 @@ class ShellSession:
         if self.kind == "powershell":
             await self._send(POWERSHELL_INIT + "\n")
 
-    async def run(self, command: str, cwd: Path, timeout_s: float) -> ShellOutcome:
+    async def run(
+        self,
+        command: str,
+        cwd: Path,
+        timeout_s: float,
+        on_output: Callable[[str], None] | None = None,
+    ) -> ShellOutcome:
         """Run one command; on timeout the command keeps running and the outcome says so."""
         if not self.alive:
             await self.start()
@@ -220,7 +225,8 @@ class ShellSession:
         await self._send(wrap(command, cwd, nonce, err))
         parts: list[bytes] = []
         try:
-            status = await asyncio.wait_for(self.stream_until(nonce, parts.append), timeout_s)
+            write = live_writer(parts, on_output)
+            status = await asyncio.wait_for(self.stream_until(nonce, write), timeout_s)
         except TimeoutError:
             so_far = clean_output(b"".join(parts) + self._buffer)
             return ShellOutcome(None, so_far, timed_out=True, nonce=nonce, err_path=err)
@@ -248,9 +254,10 @@ class ShellSession:
                 self._buffer = self._buffer[end + 1 :]
                 code, _, folder = status.strip().partition(" ")
                 return int(code), folder
-            if index == -1 and len(self._buffer) > HOLD_BACK:
-                write(self._buffer[:-HOLD_BACK])  # keep enough back to see a split marker
-                self._buffer = self._buffer[-HOLD_BACK:]
+            if index == -1 and self._buffer:
+                keep = split_marker(self._buffer, marker)  # the start of a marker still arriving
+                write(self._buffer[: len(self._buffer) - keep])
+                self._buffer = self._buffer[len(self._buffer) - keep :]
             assert self.proc is not None and self.proc.stdout is not None
             chunk = await self.proc.stdout.read(65536)
             if not chunk:
@@ -275,6 +282,30 @@ class ShellSession:
         assert self.proc is not None and self.proc.stdin is not None
         self.proc.stdin.write(text.encode("utf-8"))
         await self.proc.stdin.drain()
+
+
+def split_marker(buffer: bytes, marker: bytes) -> int:
+    """Length of the longest end of `buffer` that is the start of `marker`."""
+    for size in range(min(len(buffer), len(marker) - 1), 0, -1):
+        if buffer.endswith(marker[:size]):
+            return size
+    return 0
+
+
+def live_writer(
+    parts: list[bytes], on_output: Callable[[str], None] | None
+) -> Callable[[bytes], None]:
+    """Collect output bytes; also pass them on as text while the command runs."""
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+
+    def write(data: bytes) -> None:
+        parts.append(data)
+        if on_output is not None and data:
+            text = decoder.decode(data)
+            if text:
+                on_output(_ANSI.sub("", text).replace("\r\n", "\n"))
+
+    return write
 
 
 def take_text(path: Path) -> str:

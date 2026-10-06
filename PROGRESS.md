@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S51
+Next step: S52
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -55,7 +55,8 @@ Next step: S51
 | S47 | 2026-10-05 | 5f915e7 | config_docs.py, cli.py, docs/config.md, README.md, docs/quickstart.md, docs/extending.md, tests/test_docs.py, pyproject.toml | config reference generated from ForgeConfig; test keeps it equal |
 | S48 | 2026-10-05 | a74d9a4 | pyproject.toml, __init__.py, CHANGELOG.md, .github/workflows/release.yml, packaging/pyinstaller.spec, README.md, tests/test_release.py, tests/test_smoke.py | wheel + PyInstaller binary smoke-tested locally (Linux); release workflow on tag v*; manual run green on Linux, macOS, Windows (wheel + binary smoke tests) |
 | S49 | 2026-10-06 | e3f71db | tools.py, prompts.py, agent.py, config.py, config_docs.py, docs/config.md, docs/TOOLS.md, docs/STEPS.md, tests/test_research.py | research tool (researcher sub-agent, also in solo mode, lead only); RESEARCHER prompt; web.fallback_backend |
-| S50 | 2026-10-06 | (next) | ports.py, ctx.py, config.py, config_docs.py, tools.py, prompts.py, agent.py, team.py, wiring.py, cli.py, local/playwright_browser.py, pyproject.toml, packaging/pyinstaller.spec, .github/workflows/ci.yml, AGENTS.md, docs/*, README.md, tests/test_browser.py, tests/conformance/test_browser_conformance.py | browser role with 7 browser_* tools (screenshot per action), Browser port + Playwright implementation, research(browser=true), forge browser install; real-Chromium conformance passes locally |
+| S50 | 2026-10-06 | 990eb6b | ports.py, ctx.py, config.py, config_docs.py, tools.py, prompts.py, agent.py, team.py, wiring.py, cli.py, local/playwright_browser.py, pyproject.toml, packaging/pyinstaller.spec, .github/workflows/ci.yml, AGENTS.md, docs/*, README.md, tests/test_browser.py, tests/conformance/test_browser_conformance.py | browser role with 7 browser_* tools (screenshot per action), Browser port + Playwright implementation, research(browser=true), forge browser install; real-Chromium conformance passes locally |
+| S51 | 2026-10-06 | (next) | events.py, ports.py, local/local_executor.py, runtime/shell.py, tools.py, local/json_renderer.py, local/rich_renderer.py, docs/CONTRACTS.md, tests/test_live_output.py, tests/test_messages.py, tests/support.py, tests/test_messaging.py, tests/conformance/test_executor_conformance.py, tests/fixtures/fake/live_output.json | ToolOutput events while bash/powershell run (whole lines, 0.2 s throttle, masked, max 500 lines per call); TUI and plain CLI show them dimmed |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -197,6 +198,9 @@ Next step: S51
 - S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
 - S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
 - S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
+- S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
+- S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
+- S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -237,6 +241,9 @@ Next step: S51
 - S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
 - S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
 - S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
+- S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
+- S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
+- S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -267,6 +274,9 @@ Next step: S51
 - S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
 - S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
 - S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
+- S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
+- S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
+- S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -292,6 +302,9 @@ Next step: S51
 - S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
 - S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
 - S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
+- S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
+- S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
+- S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
 
 - S37 (CI fix): a timed-out hook is killed as a process tree on Windows (taskkill /T /F); killing only bash left the child holding the pipes.
 - S45: S45: $FORGE_BASH / $FORGE_POWERSHELL (path or 'none') pick the shell executables; they are reserved and not read as config keys. actions/checkout moved to v5 (Node 24).
@@ -306,6 +319,9 @@ Next step: S51
 - S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
 - S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
 - S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
+- S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
+- S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
+- S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

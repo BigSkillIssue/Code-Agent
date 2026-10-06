@@ -1,0 +1,17 @@
+{
+  "roles": {
+    "refiner": [
+      {
+        "text": "{\"goal\": \"Count to three\", \"context\": \"\", \"requirements\": [], \"constraints\": [], \"acceptance_criteria\": [\"1 2 3 is printed\"], \"assumptions\": [], \"open_questions\": [], \"size\": \"trivial\"}"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "tool_calls": [
+        {"name": "bash", "arguments": {"command": "for i in 1 2 3; do echo $i; sleep 1; done"}}
+      ]
+    },
+    {"text": "Counted to three."}
+  ]
+}
