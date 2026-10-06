@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from forge.plan import Plan, Question
 from forge.providers.base import Message, ToolCall, ToolResult, Usage
+from forge.todos import Todo
 
 
 class Event(BaseModel):
@@ -44,6 +45,13 @@ class ToolOutput(Event):
     kind: Literal["tool_output"] = "tool_output"
     call_id: str
     text: str
+
+
+class TodosUpdated(Event):
+    """An agent replaced its todo list (S54)."""
+
+    kind: Literal["todos_updated"] = "todos_updated"
+    todos: list[Todo]
 
 
 class ToolFinished(Event):
@@ -123,6 +131,7 @@ EVENT_TYPES: tuple[type[Event], ...] = (
     ToolStarted,
     ToolOutput,
     ToolFinished,
+    TodosUpdated,
     QuestionAsked,
     PlanUpdated,
     StepDone,
@@ -139,6 +148,7 @@ AnyEvent = Annotated[
     | ToolStarted
     | ToolOutput
     | ToolFinished
+    | TodosUpdated
     | QuestionAsked
     | PlanUpdated
     | StepDone

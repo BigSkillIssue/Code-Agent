@@ -40,7 +40,7 @@ from forge import prompts
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx, McpTools, Team
-from forge.events import PlanUpdated, ToolOutput
+from forge.events import PlanUpdated, TodosUpdated, ToolOutput
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.ports import (
@@ -89,6 +89,7 @@ from forge.runtime.web import (
     search_http,
     size_text,
 )
+from forge.todos import Todo, todo_lines, todo_problems
 
 log = logging.getLogger(__name__)
 
@@ -1523,6 +1524,27 @@ PLANNING_ROLES = frozenset({"planner", "replanner"})
 BUILTIN_ROLES = frozenset(
     {"coder", "tester", "reviewer", "researcher", "browser", "explore", "lead"}
 )
+
+
+@tool(group="plan", permission="auto", read_only=True)
+async def todo_write(
+    ctx: Ctx,
+    todos: Annotated[
+        list[Todo],
+        "The whole list, in order; it replaces the previous one. At most one item in_progress.",
+    ],
+) -> str:
+    """Write your todo list for multi-step work; the user sees it live."""
+    problems = todo_problems(todos)
+    if problems:
+        raise ToolError("invalid_args", "the todo list is not valid", body="\n".join(problems))
+    ctx.state.todos[ctx.agent_id] = list(todos)
+    await ctx.bus.publish(
+        TodosUpdated(
+            session_id=ctx.session.id, agent_id=ctx.agent_id, ts=time.time(), todos=list(todos)
+        )
+    )
+    return "\n".join(todo_lines(todos))
 
 
 @tool(group="plan", permission="auto", read_only=True)

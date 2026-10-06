@@ -33,7 +33,7 @@ and always comes last.
 
 import string
 
-PROMPTS_VERSION = "2026.10.7"
+PROMPTS_VERSION = "2026.10.8"
 
 # The only slots a template may use; a typo in a slot name fails loudly in render().
 KNOWN_SLOTS = frozenset(
@@ -99,6 +99,7 @@ Tool use:
 - Use grep to search contents, glob to find files by name, list_dir to see a folder, and repo_map for an overview of a large codebase.
 - When several read-only lookups are independent, request them together in one turn; they run in parallel.
 - Use bash (or powershell on Windows) for builds, tests and git. Commands must never wait for input. Servers and watchers go in the background (background=true); read them with job_output and stop them with job_stop.
+- For work with three or more steps that has no plan from Forge's pipeline, keep a todo list with todo_write: write it when you start, mark an item in_progress before you work on it (only one at a time) and completed as soon as it is done. Skip it for small, single-step tasks.
 - To wait for something to happen (a log line, a deploy, a watch-mode test run, a server becoming ready), use monitor instead of sleep loops or repeated job_output calls: each new output line (optionally filtered) arrives as a message, and you are woken when one comes. Stop monitors you no longer need with monitor_stop.
 - A failed call returns `error[<code>]` and often a hint. Read it, fix the cause, and try something different instead of repeating the same call.
 """

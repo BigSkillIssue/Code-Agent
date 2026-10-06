@@ -52,6 +52,9 @@ EVENTS: list[events.Event] = [
     events.ToolStarted(session_id="s", agent_id="a1", ts=1.0, call=CALL),
     events.ToolOutput(session_id="s", agent_id="a1", ts=1.0, call_id="c1", text="line 1\n"),
     events.ToolFinished(session_id="s", ts=1.0, result=RESULT),
+    events.TodosUpdated(
+        session_id="s", ts=1.0, todos=[events.Todo(content="Run tests", status="pending")]
+    ),
     events.QuestionAsked(session_id="s", ts=1.0, questions=[QUESTION]),
     events.PlanUpdated(session_id="s", ts=1.0, plan=PLAN),
     events.StepDone(session_id="s", ts=1.0, step_id="s1", ok=True),

@@ -704,6 +704,18 @@ async def ask_user(
 
 **Tests:** answers come back in order; headless uses defaults and records assumptions; a sub-agent call returns `unsupported`; 5 questions refused; a choice default not in the options refused.
 
+### `todo_write`
+
+```python
+@tool(group="plan", permission="auto", read_only=True)
+async def todo_write(ctx, todos: list[Todo]) -> str  # Todo: content, status (pending|in_progress|completed), active_form
+```
+
+- **Behaviour:** replaces the calling agent's todo list (`SessionState.todos[agent_id]`; not saved with the session) and publishes `TodosUpdated`. The TUI shows the main agent's list under the plan; the plain CLI prints it as a checklist.
+- **Rules:** at most 50 items, at most one `in_progress`, content of 1-200 characters, otherwise `invalid_args` with the reasons.
+- **Output:** `todos: <done> of <n> done`, then one line per item: `[x]` completed, `[>]` in progress (shown with its `active_form`), `[ ]` pending.
+- **Prompt:** TOOL_RULES tell the model to keep a list for work with three or more steps that has no pipeline plan.
+
 ### `submit_plan`
 
 ```python

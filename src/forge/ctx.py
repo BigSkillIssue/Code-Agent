@@ -12,6 +12,7 @@ from forge.ports import Browser, BrowserFactory, EventBus, Executor, Renderer, S
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
+from forge.todos import Todo
 
 if TYPE_CHECKING:
     from forge.providers.base import ToolResult
@@ -94,6 +95,7 @@ class SessionState:
     browsers: dict[str, Browser] = field(default_factory=dict)  # agent id -> its open browser
     screenshots: dict[str, int] = field(default_factory=dict)  # agent id -> screenshots taken
     monitors: Monitors = field(default_factory=Monitors)  # background commands being watched
+    todos: dict[str, list[Todo]] = field(default_factory=dict)  # agent id -> its todo list
 
 
 @dataclass

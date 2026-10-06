@@ -22,6 +22,7 @@ CONTRACT_KINDS = frozenset(
         "tool_started",
         "tool_output",
         "tool_finished",
+        "todos_updated",
         "question",
         "plan_updated",
         "step_done",

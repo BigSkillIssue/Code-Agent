@@ -60,6 +60,7 @@ class ModelDelta(Event):    kind: Literal["model_delta"] = "model_delta";   text
 class ModelDone(Event):     kind: Literal["model_done"] = "model_done";     message: Message; usage: Usage
 class ToolStarted(Event):   kind: Literal["tool_started"] = "tool_started"; call: ToolCall
 class ToolOutput(Event):    kind: Literal["tool_output"] = "tool_output";   call_id: str; text: str   # S51: live output, whole lines, throttled
+class TodosUpdated(Event):  kind: Literal["todos_updated"] = "todos_updated"; todos: list[Todo]   # S54 (forge/todos.py)
 class ToolFinished(Event):  kind: Literal["tool_finished"] = "tool_finished"; result: ToolResult
 class QuestionAsked(Event): kind: Literal["question"] = "question";         questions: list["Question"]
 class PlanUpdated(Event):   kind: Literal["plan_updated"] = "plan_updated"; plan: "Plan"

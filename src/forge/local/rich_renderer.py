@@ -16,6 +16,7 @@ from forge.events import (
     PlanUpdated,
     SessionDone,
     StepDone,
+    TodosUpdated,
     ToolFinished,
     ToolOutput,
     ToolStarted,
@@ -23,6 +24,7 @@ from forge.events import (
 from forge.plan import Plan, Question
 from forge.ports import Answer, Approval
 from forge.providers.base import ToolCall
+from forge.todos import todo_lines
 
 MARKS = {"todo": "[ ]", "doing": "[>]", "done": "[x]", "failed": "[!]", "skipped": "[-]"}
 SETTLE_S = 0.02
@@ -94,6 +96,8 @@ def describe(event: Event) -> Text:
     if isinstance(event, ToolOutput):
         lines = event.text.rstrip("\n").split("\n")
         return Text("\n".join(f"  │ {line}" for line in lines), style="dim")
+    if isinstance(event, TodosUpdated):
+        return Text("\n".join(todo_lines(event.todos)), style="magenta")
     if isinstance(event, ToolFinished):
         first = event.result.text.splitlines()[0] if event.result.text else ""
         style = "green" if event.result.ok else "red"

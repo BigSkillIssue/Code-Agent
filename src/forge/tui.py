@@ -5,7 +5,7 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from forge.commands import handle_command
@@ -21,7 +21,9 @@ from forge.wiring import close_session, open_session, show_events
 CSS = """
 #main { height: 1fr; }
 #stream { width: 3fr; border: round $primary; padding: 0 1; }
-#plan { width: 1fr; min-width: 28; border: round $secondary; padding: 0 1; }
+#side { width: 1fr; min-width: 28; }
+#plan { height: 1fr; border: round $secondary; padding: 0 1; }
+#todos { height: auto; max-height: 50%; border: round $secondary; padding: 0 1; }
 #prompt { dock: bottom; }
 #dialog { width: 90%; max-width: 110; height: auto; max-height: 90%; border: thick $warning;
           background: $surface; padding: 1 2; }
@@ -59,7 +61,9 @@ class ForgeApp(App[None]):
         yield Header()
         with Horizontal(id="main"):
             yield RichLog(id="stream", wrap=True, markup=False)
-            yield Static("no plan yet", id="plan")
+            with Vertical(id="side"):
+                yield Static("no plan yet", id="plan")
+                yield Static("no todos", id="todos")
         yield Input(placeholder="Describe a task, or /help", id="prompt")
         yield Footer()
 

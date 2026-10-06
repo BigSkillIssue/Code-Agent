@@ -16,11 +16,12 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList, RichLog, SelectionList, Static
 
-from forge.events import Event, ModelDelta, ModelDone, PlanUpdated, ToolStarted
+from forge.events import Event, ModelDelta, ModelDone, PlanUpdated, TodosUpdated, ToolStarted
 from forge.local.rich_renderer import call_label, describe, plan_lines
 from forge.plan import Question
 from forge.ports import Answer, Approval
 from forge.providers.base import ToolCall
+from forge.todos import todo_lines
 
 OTHER = "Other…"
 R = TypeVar("R")
@@ -166,6 +167,9 @@ class TuiRenderer:
             return
         if isinstance(event, PlanUpdated):
             self.app.query_one("#plan", Static).update(Text(plan_lines(event.plan)))
+            return
+        if isinstance(event, TodosUpdated) and event.agent_id == "main":
+            self.app.query_one("#todos", Static).update(Text("\n".join(todo_lines(event.todos))))
             return
         self.stream.write(describe(event))
         if isinstance(event, ToolStarted) and (preview := diff_for(event.call)):
