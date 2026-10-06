@@ -89,7 +89,7 @@ OUTPUT_PREVIEW = 2_000  # chars shown when spilled
 OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 
 READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
-LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan"})
+LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research"})
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TOOL_GROUPS = frozenset({"files", "search", "shell", "web", "plan", "agents", "memory", "mcp"})
@@ -1079,19 +1079,16 @@ async def run_search(
     ctx: Ctx, query: str, max_results: int, allowed: list[str], blocked: list[str]
 ) -> tuple[str, list[SearchResult]]:
     """(backend name, raw results) from the configured backend."""
-    backend = ctx.cfg.web.search_backend
+    web_cfg = ctx.cfg.web
+    backend: str | None = web_cfg.search_backend
     if backend == "native":
         native = await native_search(ctx, query, max_results, allowed, blocked)
         if native is not None:
             return "native", native
-    else:
-        key = (
-            os.environ.get(ctx.cfg.web.search_api_key_env, "")
-            if ctx.cfg.web.search_api_key_env
-            else ""
-        )
-        if key:
-            return backend, await search_http(backend, key, query, max_results, allowed, blocked)
+        backend = web_cfg.fallback_backend  # the model has no search tool of its own
+    key = os.environ.get(web_cfg.search_api_key_env, "") if web_cfg.search_api_key_env else ""
+    if backend is not None and key:
+        return backend, await search_http(backend, key, query, max_results, allowed, blocked)
     raise ToolError(
         "unsupported",
         "no web search backend is available",
@@ -1102,9 +1099,9 @@ async def run_search(
 async def native_search(
     ctx: Ctx, query: str, max_results: int, allowed: list[str], blocked: list[str]
 ) -> list[SearchResult] | None:
-    """Results from the coder model's own search tool, or None when it has none."""
+    """Results from the agent's own model's search tool, or None when it has none."""
     try:
-        chain = resolve_role("coder", ctx.cfg)
+        chain = resolve_role(ctx.role, ctx.cfg)
     except ProviderError:
         return None
     if not chain:
@@ -1118,6 +1115,43 @@ async def native_search(
     except ProviderError as err:
         raise ToolError("network", f"native search failed ({err.kind}): {err}") from err
     return [SearchResult(title, url, snippet) for title, url, snippet in hits]
+
+
+RESEARCH_TURNS = {"normal": 15, "deep": 40}
+
+
+@tool(group="web", permission="auto", read_only=True)
+async def research(
+    ctx: Ctx,
+    question: Annotated[
+        str,
+        "The question with everything the researcher needs: what you want to know, why, and constraints such as versions or platforms.",
+    ],
+    browser: Annotated[
+        bool,
+        "Use a real browser with screenshots; only for pages that need JavaScript, interaction or a visual check.",
+    ] = False,
+    depth: Annotated[
+        Literal["normal", "deep"],
+        "normal: one focused question; deep: a broad comparison or many sources.",
+    ] = "normal",
+) -> str:
+    """Hand a research question to a researcher sub-agent; returns its report with sources."""
+    if browser:
+        raise ToolError(
+            "unsupported",
+            "the browser agent is not available",
+            hint="call research without browser=true",
+        )
+    return await team_of(ctx).spawn(
+        ctx,
+        "researcher",
+        question,
+        background=False,
+        isolation="none",
+        max_turns=RESEARCH_TURNS[depth],
+        name=None,
+    )
 
 
 # =====================================================================================

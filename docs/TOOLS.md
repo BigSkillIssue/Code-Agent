@@ -1,6 +1,6 @@
 # Forge — Tool reference
 
-Forge v1 ships 30 built-in tools in 8 groups, all in `tools.py`; MCP servers add more at runtime. Every tool has a spec card with six parts, and the implementation must match it exactly: **Signature** (the Python definition), **Inputs** (types, defaults, validation), **Behaviour** (the algorithm, in order), **Output** (exact text the model receives), **Errors** (codes from the shared list), **Tests** (minimum tests for the step card).
+Forge v1 ships 30 built-in tools (more since v1.0, e.g. `research`) in 8 groups, all in `tools.py`; MCP servers add more at runtime. Every tool has a spec card with six parts, and the implementation must match it exactly: **Signature** (the Python definition), **Inputs** (types, defaults, validation), **Behaviour** (the algorithm, in order), **Output** (exact text the model receives), **Errors** (codes from the shared list), **Tests** (minimum tests for the step card).
 
 ## Shared mechanics
 
@@ -611,6 +611,26 @@ No results (ok=True): `no results for "<query>"`.
 
 **Tests:** each backend with a recorded response; both filter lists at once refused; blocked domain removed even if the backend returns it; the 201st search hits `limit_reached`.
 
+
+### `research`
+
+```python
+@tool(group="web", permission="auto", read_only=True)
+async def research(
+    ctx: Ctx,
+    question: Annotated[str, "The question with everything the researcher needs ..."],
+    browser: Annotated[bool, "Use a real browser with screenshots ..."] = False,
+    depth: Annotated[Literal["normal", "deep"], "normal: one focused question; deep: ..."] = "normal",
+) -> str:
+```
+
+- **Inputs:** `question` 1-20,000 characters; `depth` sets the researcher's turn limit (normal 15, deep 40).
+- **Behaviour:** main agent only (also in solo mode, where `spawn_agent` is hidden). Starts a `researcher` sub-agent in the foreground with the RESEARCHER prompt and the read-only tools (`web_search`, `web_fetch`, file reading); its approvals go to the user as usual. `browser=true` starts the `browser` agent instead (S50). Limits of `spawn_agent` apply (`max_parallel_agents`, budget).
+- **Output:** as `spawn_agent`: `agent <id> (researcher) finished: <status>, <n> turns, ...`, then `--- report ---` and the report.
+- **Errors:** `unsupported` (sub-agent caller; browser not available), `limit_reached`, `invalid_args`.
+- **Tests:** report returned; visible in solo mode, hidden from sub-agents; depth sets the turn limit; prompts tell the coder and lead to prefer it.
+
+**Search fallback.** With `search_backend = "native"` and a model without its own search tool, `web_search` uses `web.fallback_backend` (with the key from `search_api_key_env`) when both are set; the native search uses the calling agent's model.
 ## Plan and interaction
 
 These four tools connect the agent loop to the pipeline. They read and write `ctx.session.spec` and `ctx.session.plan`, save through `ctx.store` after every change, and publish `QuestionAsked` / `PlanUpdated` / `StepDone` events.

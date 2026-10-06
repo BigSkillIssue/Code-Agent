@@ -45,6 +45,7 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "reviewer": ["openai/gpt-5-mini"],
     "compressor": ["openai/gpt-5-mini"],
     "explore": ["openai/gpt-5-mini"],
+    "researcher": ["anthropic/claude-sonnet", "openai/gpt-5-mini"],
 }
 
 
@@ -122,6 +123,7 @@ class WebConfig(_Strict):
 
     search_backend: Literal["native", "brave", "tavily", "searxng"] = "native"
     search_api_key_env: str = ""
+    fallback_backend: Literal["brave", "tavily", "searxng"] | None = None
 
 
 class McpServerConfig(_Strict):

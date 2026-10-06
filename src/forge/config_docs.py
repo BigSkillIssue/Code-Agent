@@ -83,6 +83,7 @@ DOCS: dict[str, str] = {
     "max_web_searches": "Web searches per session.",
     "search_backend": "`native` (the model's own search), `brave`, `tavily` or `searxng`.",
     "search_api_key_env": "Variable with the backend's API key (for `searxng`: its URL).",
+    "fallback_backend": "Backend for `native` when the model has no search tool of its own (uses `search_api_key_env`).",
     "command": "Command line (list) of a stdio server, or the shell command of a hook.",
     "env_keys": "Environment variables passed to the server.",
     "url": "URL of an HTTP (streamable) server.",

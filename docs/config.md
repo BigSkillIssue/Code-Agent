@@ -37,6 +37,7 @@ coder = ["anthropic/claude-sonnet", "openai/gpt-5"]
 reviewer = ["openai/gpt-5-mini"]
 compressor = ["openai/gpt-5-mini"]
 explore = ["openai/gpt-5-mini"]
+researcher = ["anthropic/claude-sonnet", "openai/gpt-5-mini"]
 ```
 
 ## [sandbox]
@@ -91,6 +92,7 @@ Web search backend selection.
 | --- | --- | --- | --- |
 | `search_backend` | `native` \| `brave` \| `tavily` \| `searxng` | `"native"` | `native` (the model's own search), `brave`, `tavily` or `searxng`. |
 | `search_api_key_env` | str | `""` | Variable with the backend's API key (for `searxng`: its URL). |
+| `fallback_backend` | `brave` \| `tavily` \| `searxng` (optional) | unset | Backend for `native` when the model has no search tool of its own (uses `search_api_key_env`). |
 
 ## [providers.<name>]
 
