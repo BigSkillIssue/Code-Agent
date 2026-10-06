@@ -13,6 +13,9 @@ with a report of what changed and what it assumed.
   steps are retried or replanned; a killed session resumes where it stopped.
 - **Safe by default:** an OS sandbox for commands (Linux, macOS), permission rules,
   approvals, protected `.git/` and `.forge/`, secret masking, `/undo` per step.
+- **Research:** a researcher sub-agent answers web questions with sources; a browser agent
+  clicks through pages and sees screenshots when plain fetching is not enough
+  (`forge browser install` once).
 - **Teams:** sub-agents, background agents with messages, a task board and git worktrees for
   large tasks.
 - **Extensible:** hooks, custom agents, skills, slash commands, MCP servers, a Python API and
@@ -68,6 +71,7 @@ forge config check         print the effective configuration
 forge config schema        the configuration schema (--markdown: docs/config.md)
 forge trust                let this project's config set providers, MCP servers and hooks
 forge eval                 run the benchmark tasks (--fake: offline)
+forge browser install      download the Chromium the browser agent uses
 ```
 
 Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything), `--solo`/`--team`,

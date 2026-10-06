@@ -90,11 +90,11 @@ async def run_agent(
 
 
 def prompt_for(ctx: Ctx, role: str) -> str:
-    """The prompt name: sub-agents get the team-member, explore or researcher prompt."""
+    """The prompt name: sub-agents get the team-member prompt or their role's own prompt."""
     if role in ctx.state.custom_roles:
         return "custom_agent"
     if ctx.agent_id != "main":
-        return role if role in ("explore", "researcher") else "team_member"
+        return role if role in ("explore", "researcher", "browser") else "team_member"
     if role == "coder" and ctx.state.mode in ("subagents", "team"):
         return "team_lead"
     return ROLE_PROMPTS.get(role, "coder")

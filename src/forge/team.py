@@ -33,8 +33,9 @@ from forge.runtime.worktree import (
     publish_main,
     remove_worktree,
 )
+from forge.tools import close_browser
 
-BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher")
+BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher", "browser")
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
 AgentStatus = Literal["running", "done", "stopped", "failed", "cancelled"]
 STATUS_OF: dict[str, AgentStatus] = {
@@ -124,6 +125,8 @@ class AgentRegistry:
         except asyncio.CancelledError:
             info.status = "cancelled"
             raise
+        finally:
+            await close_browser(ctx, info.id)
         self.finish(info, result)
         merged = await self.merge_finished(ctx, info)
         await ctx.hooks.run("subagent_stop", {"agent_id": info.id, "status": info.status}, ctx)
@@ -135,12 +138,14 @@ class AgentRegistry:
             result = await run_agent(child, info.task, role=info.role, max_turns=max_turns)
         except asyncio.CancelledError:
             info.status = "cancelled"
+            await close_browser(ctx, info.id)
             return
         except Exception as exc:  # a crashing sub-agent must not take the lead down with it
             info.status, text = "failed", f"{type(exc).__name__}: {exc}"
         else:
             self.finish(info, result)
             text = result.text.strip() + await self.merge_finished(child, info)
+        await close_browser(ctx, info.id)
         head = f"[agent {info.id} ({info.role}) finished: {info.status}]"
         self.post(info.parent_id or "main", f"{head}\n{text or '(no report)'}")
         await ctx.bus.publish(

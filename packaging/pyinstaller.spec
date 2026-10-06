@@ -16,7 +16,7 @@ def wanted(name):
 
 datas, binaries, hiddenimports = [], [], collect_submodules("forge")
 hiddenimports += ["aiosqlite", "sqlalchemy.dialects.sqlite.aiosqlite"]  # loaded by URL scheme
-for package in ("textual", "tiktoken_ext", "tree_sitter_language_pack"):
+for package in ("textual", "tiktoken_ext", "tree_sitter_language_pack", "playwright"):
     package_datas, package_binaries, package_imports = collect_all(package)
     datas += package_datas
     binaries += package_binaries

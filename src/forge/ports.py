@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from forge.events import Event
 from forge.plan import Plan, Question, TaskSpec
-from forge.providers.base import Message, ToolCall
+from forge.providers.base import ImagePart, Message, ToolCall
 
 
 class SessionNotFoundError(LookupError):
@@ -140,3 +140,39 @@ class Renderer(Protocol):
     async def show(self, event: Event) -> None: ...
     async def ask(self, questions: list[Question]) -> list[Answer]: ...
     async def approve(self, call: ToolCall, reason: str) -> Approval: ...
+
+
+class BrowserError(Exception):
+    """An expected browser failure (no browser installed, element not found, page timeout)."""
+
+    def __init__(self, message: str, hint: str = "") -> None:
+        super().__init__(message)
+        self.hint = hint
+
+
+class PageView(BaseModel):
+    """What the page shows after an action."""
+
+    url: str
+    title: str
+    image: ImagePart | None = None  # a screenshot of the visible part of the page
+
+
+class Browser(Protocol):
+    """One browser page an agent drives. Targets are visible text, `css=<selector>` or `x,y`."""
+
+    async def open(self, url: str) -> PageView: ...
+    async def click(self, target: str) -> PageView: ...
+    async def type(self, target: str, text: str, submit: bool) -> PageView: ...
+    async def scroll(self, pixels: int) -> PageView: ...
+    async def back(self) -> PageView: ...
+    async def view(self) -> PageView: ...
+    async def read(self) -> str: ...
+    async def close(self) -> None: ...
+
+
+class BrowserFactory(Protocol):
+    """Starts a fresh browser (no profile, no downloads) for one agent."""
+
+    async def new_browser(self) -> Browser: ...
+    async def close(self) -> None: ...

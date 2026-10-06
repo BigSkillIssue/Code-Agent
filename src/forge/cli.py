@@ -36,6 +36,7 @@ commands:
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
   forge eval           run the benchmark tasks in evals/tasks (--fake: offline)
+  forge browser install  download the Chromium the browser agent uses
 """
 
 
@@ -108,6 +109,16 @@ def cmd_trust(options: argparse.Namespace, rest: list[str]) -> int:
     if not args.remove:
         print("its .forge/config.toml may now set providers, MCP servers and hooks")
     return 0
+
+
+def cmd_browser(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge browser install`: download the Chromium the browser agent uses."""
+    parser = argparse.ArgumentParser(prog="forge browser")
+    parser.add_argument("action", choices=["install"])
+    parser.parse_args(rest)
+    from forge.local.playwright_browser import install_chromium
+
+    return install_chromium()
 
 
 def cmd_config(options: argparse.Namespace, rest: list[str]) -> int:
@@ -310,6 +321,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "config": cmd_config,
     "sessions": cmd_sessions,
     "resume": cmd_resume,
+    "browser": cmd_browser,
 }
 
 

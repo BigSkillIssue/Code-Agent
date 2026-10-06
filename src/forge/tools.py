@@ -42,7 +42,15 @@ from forge.ctx import Ctx, McpTools, Team
 from forge.events import PlanUpdated
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
-from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
+from forge.ports import (
+    Browser,
+    BrowserError,
+    Command,
+    CommandResult,
+    JobNotFoundError,
+    PageView,
+    SandboxPolicy,
+)
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec, text_message
 from forge.providers.registry import resolve_role
 from forge.questions import ask
@@ -72,7 +80,14 @@ from forge.runtime.search import GrepQuery, format_hits, search
 from forge.runtime.secrets import mask_secrets
 from forge.runtime.shell import ShellKind, find_shell
 from forge.runtime.tree import build_tree, render_tree
-from forge.runtime.web import SearchResult, fetch_page, filter_results, search_http, size_text
+from forge.runtime.web import (
+    SearchResult,
+    checked_url,
+    fetch_page,
+    filter_results,
+    search_http,
+    size_text,
+)
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +107,10 @@ READ_ONLY_ROLES = frozenset({"reviewer", "explore", "researcher", "planner"})
 LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research"})
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
-TOOL_GROUPS = frozenset({"files", "search", "shell", "web", "plan", "agents", "memory", "mcp"})
+TOOL_GROUPS = frozenset(
+    {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp"}
+)
+BROWSER_ROLE_TOOLS = frozenset({"web_search"})  # besides the browser group
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
 
 
@@ -213,9 +231,14 @@ def _clean_schema(node: Any, defs: dict[str, Any]) -> Any:
 
 def for_role(role: str, cfg: ForgeConfig) -> list[ToolDef]:
     """The tools an agent with this role may use."""
+    if role == "browser":
+        return [
+            t for t in REGISTRY.values() if t.group == "browser" or t.name in BROWSER_ROLE_TOOLS
+        ]
+    tools = [t for t in REGISTRY.values() if t.group != "browser"]
     if role in READ_ONLY_ROLES:
-        return [t for t in REGISTRY.values() if t.read_only]
-    return list(REGISTRY.values())
+        return [t for t in tools if t.read_only]
+    return tools
 
 
 def hidden_mcp_tool(ctx: Ctx, tool_def: ToolDef) -> bool:
@@ -1138,20 +1161,141 @@ async def research(
 ) -> str:
     """Hand a research question to a researcher sub-agent; returns its report with sources."""
     if browser:
-        raise ToolError(
-            "unsupported",
-            "the browser agent is not available",
-            hint="call research without browser=true",
-        )
+        check_browser_agent(ctx)
     return await team_of(ctx).spawn(
         ctx,
-        "researcher",
+        "browser" if browser else "researcher",
         question,
         background=False,
         isolation="none",
         max_turns=RESEARCH_TURNS[depth],
         name=None,
     )
+
+
+def check_browser_agent(ctx: Ctx) -> None:
+    """A browser agent needs a browser and a model that can see screenshots."""
+    if ctx.state.browser_factory is None:
+        raise ToolError(
+            "unsupported", "no browser is available", hint="call research without browser=true"
+        )
+    try:
+        chain = resolve_role("browser", ctx.cfg)
+    except ProviderError as err:
+        raise ToolError("unsupported", f"the browser role has no usable model: {err}") from err
+    if not chain or not chain[0][0].capabilities(chain[0][1]).vision:
+        raise ToolError(
+            "unsupported",
+            "the browser role's model cannot see images",
+            hint="set [roles] browser to a vision model, or call research without browser=true",
+        )
+
+
+# =====================================================================================
+# BROWSER
+# =====================================================================================
+
+
+async def browser_of(ctx: Ctx) -> Browser:
+    """This agent's browser, started on first use."""
+    browser = ctx.state.browsers.get(ctx.agent_id)
+    if browser is not None:
+        return browser
+    factory = ctx.state.browser_factory
+    if factory is None:
+        raise ToolError("unsupported", "no browser is available in this session")
+    try:
+        browser = await factory.new_browser()
+    except BrowserError as err:
+        raise ToolError("unsupported", str(err), hint=err.hint) from err
+    ctx.state.browsers[ctx.agent_id] = browser
+    return browser
+
+
+async def close_browser(ctx: Ctx, agent_id: str) -> None:
+    """Close an agent's browser when the agent is done."""
+    browser = ctx.state.browsers.pop(agent_id, None)
+    if browser is not None:
+        await browser.close()
+
+
+async def browse(ctx: Ctx, action: Callable[[Browser], Awaitable[PageView]]) -> ToolResult:
+    """Run one browser action and show the page: title, URL and (within the limit) a screenshot."""
+    browser = await browser_of(ctx)
+    try:
+        view = await action(browser)
+    except BrowserError as err:
+        raise ToolError("not_found" if "waiting for" in str(err) else "network", str(err)) from err
+    taken = ctx.state.screenshots.get(ctx.agent_id, 0)
+    lines = [f"title: {view.title}", f"url: {view.url}"]
+    images = []
+    if view.image is not None and taken < ctx.cfg.browser.max_screenshots:
+        ctx.state.screenshots[ctx.agent_id] = taken + 1
+        images.append(view.image)
+        size = f"{ctx.cfg.browser.viewport_width}x{ctx.cfg.browser.viewport_height}"
+        lines.append(f"screenshot attached ({size} px; click points use these coordinates)")
+    elif view.image is not None:
+        lines.append("no screenshot: the screenshot limit is reached; use browser_read")
+    return ToolResult(call_id="", ok=True, text="\n".join(lines), images=images)
+
+
+@tool(group="browser", permission="ask", read_only=True, specifier_arg="url")
+async def browser_open(ctx: Ctx, url: Annotated[str, "Full http(s) URL."]) -> ToolResult:
+    """Open a page in the browser and show it."""
+    target = await checked_url(url)
+    return await browse(ctx, lambda b: b.open(target))
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_click(
+    ctx: Ctx,
+    target: Annotated[
+        str, "Visible text of the element, `css=<selector>`, or `x,y` pixels from the screenshot."
+    ],
+) -> ToolResult:
+    """Click an element and show the page afterwards."""
+    return await browse(ctx, lambda b: b.click(target))
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_type(
+    ctx: Ctx,
+    target: Annotated[str, "Label or placeholder of the field, or `css=<selector>`."],
+    text: Annotated[str, "Text to enter (replaces the field's content)."],
+    submit: Annotated[bool, "Press Enter afterwards."] = False,
+) -> ToolResult:
+    """Type into a form field and show the page afterwards."""
+    return await browse(ctx, lambda b: b.type(target, text, submit))
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_scroll(
+    ctx: Ctx, pixels: Annotated[int, "Pixels to scroll: positive down, negative up."] = 700
+) -> ToolResult:
+    """Scroll the page and show it."""
+    return await browse(ctx, lambda b: b.scroll(pixels))
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_back(ctx: Ctx) -> ToolResult:
+    """Go back to the previous page and show it."""
+    return await browse(ctx, lambda b: b.back())
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_screenshot(ctx: Ctx) -> ToolResult:
+    """Show the current page again."""
+    return await browse(ctx, lambda b: b.view())
+
+
+@tool(group="browser", permission="auto", read_only=True)
+async def browser_read(ctx: Ctx) -> str:
+    """The visible text of the current page (cheaper than a screenshot for long text)."""
+    browser = await browser_of(ctx)
+    try:
+        return await browser.read()
+    except BrowserError as err:
+        raise ToolError("network", str(err)) from err
 
 
 # =====================================================================================
@@ -1239,7 +1383,9 @@ class StepIn(BaseModel):
 
 
 PLANNING_ROLES = frozenset({"planner", "replanner"})
-BUILTIN_ROLES = frozenset({"coder", "tester", "reviewer", "researcher", "explore", "lead"})
+BUILTIN_ROLES = frozenset(
+    {"coder", "tester", "reviewer", "researcher", "browser", "explore", "lead"}
+)
 
 
 @tool(group="plan", permission="auto", read_only=True)
@@ -1442,7 +1588,8 @@ def step_failed(step: Step) -> bool:
 async def spawn_agent(
     ctx: Ctx,
     role: Annotated[
-        str, "Role name: explore, coder, tester, reviewer, researcher, or a custom agent."
+        str,
+        "Role name: explore, coder, tester, reviewer, researcher, browser, or a custom agent.",
     ],
     task: Annotated[str, "Self-contained instructions: goal, relevant files, what to return."],
     background: Annotated[bool, "Run in parallel and get a message when done."] = False,

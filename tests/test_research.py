@@ -84,7 +84,7 @@ async def test_deep_research_gets_more_turns(tmp_project: Path) -> None:
     assert registry(ctx).agents["a1"].turns == 40
 
 
-async def test_browser_research_is_refused_until_a_browser_exists(ctx: Ctx) -> None:
+async def test_browser_research_is_refused_without_a_browser(ctx: Ctx) -> None:
     result = await call_tool(
         ctx, ToolCall(id="c1", name="research", arguments={"question": "q", "browser": True})
     )

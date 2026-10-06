@@ -14,6 +14,7 @@ covered.
 | Approvals | `ask` decisions go to the user; headless runs refuse unless `--yes` | renderers |
 | Secret masking | Tool output is scanned for key formats and secret environment values before the model sees it | `runtime/secrets.py` |
 | Trust | A project's `.forge/config.toml` may set providers, MCP servers or hooks only after `forge trust` | `config.py` |
+| Browser | The browser agent has no profile, no downloads and no file access; every request to a local or private host is aborted; `browser_open` asks like `web_fetch` | `local/playwright_browser.py`, `tools.py` |
 | Prompt structure | Fetched pages and repo files are data; the WEB_EXTRACT prompt tells the model to ignore instructions in them | `prompts.py` |
 
 ## What the security tests check

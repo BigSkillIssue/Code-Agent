@@ -46,6 +46,7 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "compressor": ["openai/gpt-5-mini"],
     "explore": ["openai/gpt-5-mini"],
     "researcher": ["anthropic/claude-sonnet", "openai/gpt-5-mini"],
+    "browser": ["anthropic/claude-sonnet", "openai/gpt-5"],
 }
 
 
@@ -126,6 +127,18 @@ class WebConfig(_Strict):
     fallback_backend: Literal["brave", "tavily", "searxng"] | None = None
 
 
+class BrowserConfig(_Strict):
+    """The browser the browser agent drives (Playwright)."""
+
+    headless: bool = True
+    channel: str | None = None  # "chrome" or "msedge": an installed browser instead of Chromium
+    executable: str | None = None
+    viewport_width: int = 1280
+    viewport_height: int = 800
+    timeout_s: float = 30
+    max_screenshots: int = 60
+
+
 class McpServerConfig(_Strict):
     """An MCP server: a local command (stdio) or a URL (HTTP)."""
 
@@ -154,6 +167,7 @@ class ForgeConfig(_Strict):
     permissions: PermissionsConfig = Field(default_factory=PermissionsConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
     mcp_servers: dict[str, McpServerConfig] = {}
     hooks: dict[HookEventName, list[HookConfig]] = {}
     profiles: dict[str, dict[str, Any]] = {}

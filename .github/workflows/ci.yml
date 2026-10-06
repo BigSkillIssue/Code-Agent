@@ -36,6 +36,24 @@ jobs:
       - name: Offline evals
         run: uv run forge --fake eval
 
+  browser:
+    # The browser agent against a real Chromium (the gate jobs skip it: no browser installed).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv sync
+          uv run playwright install --with-deps chromium
+      - name: Browser tests
+        env:
+          FORGE_REQUIRE_BROWSER: "1"
+        run: uv run pytest -q tests/conformance/test_browser_conformance.py tests/test_browser.py
+
   windows-shells:
     # The shell tools, the sandbox and the executor with each Windows shell on its own.
     name: windows shell (${{ matrix.name }})

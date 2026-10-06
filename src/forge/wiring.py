@@ -9,6 +9,7 @@ from forge.events import Event
 from forge.hooks import Hooks
 from forge.local.local_executor import LocalExecutor
 from forge.local.memory_bus import MemoryBus
+from forge.local.playwright_browser import PlaywrightBrowsers
 from forge.local.sqlite_store import SqliteStore
 from forge.mcp_client import McpHub
 from forge.modelcall import publish_error
@@ -40,6 +41,7 @@ FAKE_ROLES = (
     "explore",
     "tester",
     "researcher",
+    "browser",
     "lead",
 )
 
@@ -88,6 +90,7 @@ async def open_session(
         headless=headless,
     )
     ctx.state.team = AgentRegistry()
+    ctx.state.browser_factory = PlaywrightBrowsers(cfg.browser)  # starts on first use
     if cfg.mcp_servers:
         await connect_mcp(ctx)
     await ctx.hooks.run("session_start", {"session_id": session.id, "cwd": str(root)}, ctx)
@@ -119,6 +122,11 @@ async def close_session(ctx: Ctx) -> None:
         await ctx.state.team.close(ctx)
     if ctx.state.mcp is not None:
         await ctx.state.mcp.close()
+    for browser in ctx.state.browsers.values():
+        await browser.close()
+    ctx.state.browsers.clear()
+    if ctx.state.browser_factory is not None:
+        await ctx.state.browser_factory.close()
     for port in (ctx.executor, ctx.store):
         close = getattr(port, "close", None)
         if close is not None:

@@ -21,6 +21,7 @@ flags. A project file may set `[providers]`, `[mcp_servers]` and `[hooks]` only 
 | `permissions` | PermissionsConfig | - | See `[permissions]`. |
 | `limits` | LimitsConfig | - | See `[limits]`. |
 | `web` | WebConfig | - | See `[web]`. |
+| `browser` | BrowserConfig | - | See `[browser]`. |
 | `mcp_servers` | table of McpServerConfig | `{}` | MCP servers to connect; see `[mcp_servers.<name>]`. |
 | `hooks` | table of list of HookConfig | `{}` | Shell hooks per event: session_start, prompt_submit, pre_tool, post_tool, step_done, pre_compact, stop, subagent_stop. |
 | `profiles` | table of table of Any | `{}` | Named overlays, e.g. `[profiles.ci] approval = { policy = "never" }`. |
@@ -38,6 +39,7 @@ reviewer = ["openai/gpt-5-mini"]
 compressor = ["openai/gpt-5-mini"]
 explore = ["openai/gpt-5-mini"]
 researcher = ["anthropic/claude-sonnet", "openai/gpt-5-mini"]
+browser = ["anthropic/claude-sonnet", "openai/gpt-5"]
 ```
 
 ## [sandbox]
@@ -93,6 +95,21 @@ Web search backend selection.
 | `search_backend` | `native` \| `brave` \| `tavily` \| `searxng` | `"native"` | `native` (the model's own search), `brave`, `tavily` or `searxng`. |
 | `search_api_key_env` | str | `""` | Variable with the backend's API key (for `searxng`: its URL). |
 | `fallback_backend` | `brave` \| `tavily` \| `searxng` (optional) | unset | Backend for `native` when the model has no search tool of its own (uses `search_api_key_env`). |
+
+## [browser]
+
+The browser the browser agent drives (Playwright).
+Install Chromium once with `forge browser install`, or set `channel`.
+
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `headless` | bool | `true` | Run the browser without a window. |
+| `channel` | str (optional) | unset | Use an installed browser (`chrome`, `msedge`) instead of Playwright's Chromium. |
+| `executable` | str (optional) | unset | Path of a Chromium-based browser to start instead. |
+| `viewport_width` | int | `1280` | Page width in pixels (screenshots have this size). |
+| `viewport_height` | int | `800` | Page height in pixels. |
+| `timeout_s` | float | `30` | Seconds a page load or action may take. |
+| `max_screenshots` | int | `60` | Screenshots per browser agent; later actions return text only. |
 
 ## [providers.<name>]
 

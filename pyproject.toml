@@ -12,6 +12,7 @@ dependencies = [
     "litellm>=1.70",
     "markdownify>=1.2.3",
     "mcp>=1.10",
+    "playwright>=1.63.0",
     "pydantic>=2.9",
     "rich>=13.7",
     "sqlalchemy[asyncio]>=2.0",

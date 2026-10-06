@@ -50,6 +50,7 @@ Python **3.12+**, managed with **uv**. Use only these packages; add each one in 
 | `markdownify` | HTML → Markdown in `web_fetch` | S26 |
 | `textual` | terminal UI | S29 |
 | `mcp` | MCP client | S36 |
+| `playwright` | browser agent (Chromium via `forge browser install`) | S50 |
 | dev: `pytest`, `pytest-asyncio`, `respx`, `ruff`, `mypy` | tests, HTTP mocks, lint, types | S01 |
 
 Standard library first: `tomllib` for config, `asyncio` for processes and concurrency, `logging` for logs, `pathlib` for paths. External binaries: `git` (required), `rg` (optional; `grep` falls back to Python).

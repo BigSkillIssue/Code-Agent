@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
 from forge.plan import Plan
-from forge.ports import EventBus, Executor, Renderer, Session, Store
+from forge.ports import Browser, BrowserFactory, EventBus, Executor, Renderer, Session, Store
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
@@ -88,6 +88,9 @@ class SessionState:
     mode: str = ""  # solo | subagents | team, chosen per task by the pipeline ("" = not chosen)
     mode_override: str | None = None  # --solo / --team
     mcp: McpTools | None = None  # set by wiring when [mcp_servers] are configured
+    browser_factory: BrowserFactory | None = None  # set by wiring; None: no browser agent
+    browsers: dict[str, Browser] = field(default_factory=dict)  # agent id -> its open browser
+    screenshots: dict[str, int] = field(default_factory=dict)  # agent id -> screenshots taken
 
 
 @dataclass

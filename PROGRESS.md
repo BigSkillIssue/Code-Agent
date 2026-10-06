@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S50
+Next step: S51
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -54,7 +54,8 @@ Next step: S50
 | S46 | 2026-10-05 | da06385 | runtime/rules.py, runtime/permissions.py, runtime/secrets.py, tools.py, tests/security/, tests/test_permissions.py, docs/SECURITY.md | found and fixed: chained/wrapped/substituted commands bypassed deny rules; allow rules covered extra chained commands; bash rules did not cover powershell; reads outside the project ran without approval; no secret masking; edit_file revealed existence before the outside_root check |
 | S47 | 2026-10-05 | 5f915e7 | config_docs.py, cli.py, docs/config.md, README.md, docs/quickstart.md, docs/extending.md, tests/test_docs.py, pyproject.toml | config reference generated from ForgeConfig; test keeps it equal |
 | S48 | 2026-10-05 | a74d9a4 | pyproject.toml, __init__.py, CHANGELOG.md, .github/workflows/release.yml, packaging/pyinstaller.spec, README.md, tests/test_release.py, tests/test_smoke.py | wheel + PyInstaller binary smoke-tested locally (Linux); release workflow on tag v*; manual run green on Linux, macOS, Windows (wheel + binary smoke tests) |
-| S49 | 2026-10-06 | (next) | tools.py, prompts.py, agent.py, config.py, config_docs.py, docs/config.md, docs/TOOLS.md, docs/STEPS.md, tests/test_research.py | research tool (researcher sub-agent, also in solo mode, lead only); RESEARCHER prompt; web.fallback_backend |
+| S49 | 2026-10-06 | e3f71db | tools.py, prompts.py, agent.py, config.py, config_docs.py, docs/config.md, docs/TOOLS.md, docs/STEPS.md, tests/test_research.py | research tool (researcher sub-agent, also in solo mode, lead only); RESEARCHER prompt; web.fallback_backend |
+| S50 | 2026-10-06 | (next) | ports.py, ctx.py, config.py, config_docs.py, tools.py, prompts.py, agent.py, team.py, wiring.py, cli.py, local/playwright_browser.py, pyproject.toml, packaging/pyinstaller.spec, .github/workflows/ci.yml, AGENTS.md, docs/*, README.md, tests/test_browser.py, tests/conformance/test_browser_conformance.py | browser role with 7 browser_* tools (screenshot per action), Browser port + Playwright implementation, research(browser=true), forge browser install; real-Chromium conformance passes locally |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -193,6 +194,9 @@ Next step: S50
 - S48: S48: the release workflow can be run by hand (workflow_dispatch) to build and smoke-test on all three OS without publishing.
 - S49: S49: research reuses team.spawn (foreground researcher, depth normal=15 / deep=40 turns) and is in LEAD_ONLY_TOOLS, so sub-agents never start agents; it is not in AGENT_TOOLS, so solo mode keeps it.
 - S49: S49: native web search now uses the calling agent's model (falls back to the coder chain via resolve_role); RESEARCH_RULES are part of the CODER and TEAM_LEAD prompts. PROMPTS_VERSION 2026.10.6.
+- S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
+- S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
+- S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -230,6 +234,9 @@ Next step: S50
 - S48: S48: the release workflow can be run by hand (workflow_dispatch) to build and smoke-test on all three OS without publishing.
 - S49: S49: research reuses team.spawn (foreground researcher, depth normal=15 / deep=40 turns) and is in LEAD_ONLY_TOOLS, so sub-agents never start agents; it is not in AGENT_TOOLS, so solo mode keeps it.
 - S49: S49: native web search now uses the calling agent's model (falls back to the coder chain via resolve_role); RESEARCH_RULES are part of the CODER and TEAM_LEAD prompts. PROMPTS_VERSION 2026.10.6.
+- S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
+- S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
+- S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -257,6 +264,9 @@ Next step: S50
 - S48: S48: the release workflow can be run by hand (workflow_dispatch) to build and smoke-test on all three OS without publishing.
 - S49: S49: research reuses team.spawn (foreground researcher, depth normal=15 / deep=40 turns) and is in LEAD_ONLY_TOOLS, so sub-agents never start agents; it is not in AGENT_TOOLS, so solo mode keeps it.
 - S49: S49: native web search now uses the calling agent's model (falls back to the coder chain via resolve_role); RESEARCH_RULES are part of the CODER and TEAM_LEAD prompts. PROMPTS_VERSION 2026.10.6.
+- S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
+- S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
+- S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -279,6 +289,9 @@ Next step: S50
 - S48: S48: the release workflow can be run by hand (workflow_dispatch) to build and smoke-test on all three OS without publishing.
 - S49: S49: research reuses team.spawn (foreground researcher, depth normal=15 / deep=40 turns) and is in LEAD_ONLY_TOOLS, so sub-agents never start agents; it is not in AGENT_TOOLS, so solo mode keeps it.
 - S49: S49: native web search now uses the calling agent's model (falls back to the coder chain via resolve_role); RESEARCH_RULES are part of the CODER and TEAM_LEAD prompts. PROMPTS_VERSION 2026.10.6.
+- S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
+- S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
+- S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
 
 - S37 (CI fix): a timed-out hook is killed as a process tree on Windows (taskkill /T /F); killing only bash left the child holding the pipes.
 - S45: S45: $FORGE_BASH / $FORGE_POWERSHELL (path or 'none') pick the shell executables; they are reserved and not read as config keys. actions/checkout moved to v5 (Node 24).
@@ -290,6 +303,9 @@ Next step: S50
 - Phase 6: the user asked for S49–S56 after v1.0 (research and browser agents, tool streaming, monitor, todos, tasks view, MCP management); they approved `playwright` as a dependency and the contract changes these steps need (new events, `Executor.run(on_output)`, `StreamItem.tool_call`, `Browser` port).
 - S49: S49: research reuses team.spawn (foreground researcher, depth normal=15 / deep=40 turns) and is in LEAD_ONLY_TOOLS, so sub-agents never start agents; it is not in AGENT_TOOLS, so solo mode keeps it.
 - S49: S49: native web search now uses the calling agent's model (falls back to the coder chain via resolve_role); RESEARCH_RULES are part of the CODER and TEAM_LEAD prompts. PROMPTS_VERSION 2026.10.6.
+- S50: S50: the browser factory and the open browsers live in SessionState (like team and mcp), not as a new Ctx field; one Chromium per session, one fresh context per agent, closed when the agent finishes.
+- S50: S50: the Playwright context aborts every request to local or private hosts (DNS-checked, cached per host); browser_open additionally runs checked_url and asks like web_fetch; the other actions are auto.
+- S50: S50: [browser] channel/executable select an installed browser; tests read FORGE_BROWSER__EXECUTABLE, and CI sets FORGE_REQUIRE_BROWSER so the conformance suite cannot silently skip there.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

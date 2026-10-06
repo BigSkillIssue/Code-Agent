@@ -625,12 +625,29 @@ async def research(
 ```
 
 - **Inputs:** `question` 1-20,000 characters; `depth` sets the researcher's turn limit (normal 15, deep 40).
-- **Behaviour:** main agent only (also in solo mode, where `spawn_agent` is hidden). Starts a `researcher` sub-agent in the foreground with the RESEARCHER prompt and the read-only tools (`web_search`, `web_fetch`, file reading); its approvals go to the user as usual. `browser=true` starts the `browser` agent instead (S50). Limits of `spawn_agent` apply (`max_parallel_agents`, budget).
+- **Behaviour:** main agent only (also in solo mode, where `spawn_agent` is hidden). Starts a `researcher` sub-agent in the foreground with the RESEARCHER prompt and the read-only tools (`web_search`, `web_fetch`, file reading); its approvals go to the user as usual. `browser=true` starts the `browser` agent instead; it needs a browser and a browser-role model with vision, otherwise `unsupported`. Limits of `spawn_agent` apply (`max_parallel_agents`, budget).
 - **Output:** as `spawn_agent`: `agent <id> (researcher) finished: <status>, <n> turns, ...`, then `--- report ---` and the report.
 - **Errors:** `unsupported` (sub-agent caller; browser not available), `limit_reached`, `invalid_args`.
 - **Tests:** report returned; visible in solo mode, hidden from sub-agents; depth sets the turn limit; prompts tell the coder and lead to prefer it.
 
 **Search fallback.** With `search_backend = "native"` and a model without its own search tool, `web_search` uses `web.fallback_backend` (with the key from `search_api_key_env`) when both are set; the native search uses the calling agent's model.
+## Browser
+
+Only the `browser` role gets these tools; `research(browser=true)` starts that role. Each agent has its own browser context, which is closed when the agent finishes. Every action waits for the page to settle and then returns `title: ...`, `url: ...` and a JPEG screenshot of the viewport (`[browser] viewport_width` x `viewport_height`). After `[browser] max_screenshots` screenshots per agent, only the text is returned. The browser aborts every request to local or private hosts, and `browser_open` checks its URL like `web_fetch`.
+
+| Tool | Permission | Arguments | Does |
+|---|---|---|---|
+| `browser_open` | ask (specifier: url) | `url` | load a page |
+| `browser_click` | auto | `target`: visible text, `css=<selector>` or `x,y` | click, then show the page |
+| `browser_type` | auto | `target` (label, placeholder or `css=`), `text`, `submit=false` | fill a field, Enter if `submit` |
+| `browser_scroll` | auto | `pixels=700` (negative: up) | scroll |
+| `browser_back` | auto | none | go back |
+| `browser_screenshot` | auto | none | show the page again |
+| `browser_read` | auto | none | the visible text (max 20,000 chars), no screenshot |
+
+- **Errors:** `unsupported` (no browser or Chromium is missing; the hint names `forge browser install`), `invalid_args` (local URL), `not_found` (element not found), `network` (navigation failed or timed out).
+- **Tests:** only the browser role sees the tools; a screenshot is in every action; local URLs are refused; one browser per agent, closed at the end; the screenshot limit applies; real-Chromium conformance in `tests/conformance/test_browser_conformance.py`.
+
 ## Plan and interaction
 
 These four tools connect the agent loop to the pipeline. They read and write `ctx.session.spec` and `ctx.session.plan`, save through `ctx.store` after every change, and publish `QuestionAsked` / `PlanUpdated` / `StepDone` events.
