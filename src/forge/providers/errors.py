@@ -14,7 +14,10 @@ OVERFLOW_HINTS = (
     "prompt is too long",
 )
 # Some vendors (Gemini's free tier) say how long to wait only in the body.
-BODY_RETRY = re.compile(r'retry in ([0-9.]+)\s*s|"retryDelay":\s*"([0-9.]+)s"', re.IGNORECASE)
+BODY_RETRY = re.compile(
+    r'(?:retry|try again) in ([0-9.]+)\s*s|"retryDelay":\s*"([0-9.]+)s"', re.IGNORECASE
+)
+PER_MINUTE_QUOTA = ("tokens per minute", "rate_limit_exceeded")
 
 
 def error_from_status(status: int, body: str, headers: Mapping[str, str]) -> ProviderError:
@@ -31,6 +34,11 @@ def error_from_status(status: int, body: str, headers: Mapping[str, str]) -> Pro
         kind = "network"
     elif status >= 500:
         kind = "overloaded"
+    elif status == 413 and any(hint in lowered for hint in PER_MINUTE_QUOTA):
+        # One request above the per-minute quota (Groq's free tier): waiting cannot help.
+        return ProviderError(
+            "bad_request", f"request exceeds the provider's per-minute token limit: {message}"
+        )
     elif status == 413 or any(hint in lowered for hint in OVERFLOW_HINTS):
         kind = "context_overflow"
     else:

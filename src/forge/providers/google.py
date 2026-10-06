@@ -203,6 +203,9 @@ def tool_call_of(call: types.FunctionCall, n: int) -> ToolCall:
     )
 
 
+FOREIGN_CALL_SIGNATURE = b"skip_thought_signature_validator"
+
+
 def to_gemini_contents(messages: list[Message]) -> list[types.Content]:
     """Internal messages -> Gemini contents; consecutive tool results share one user turn."""
     names: dict[str, str] = {}
@@ -232,15 +235,30 @@ def is_tool_turn(content: types.Content) -> bool:
 
 def assistant_parts(message: Message) -> list[types.Part]:
     """The model's own raw parts when kept (thought signatures intact), else rebuilt ones."""
-    if message.reasoning:
-        return [types.Part.model_validate(raw) for raw in json.loads(message.reasoning)]
+    raw = gemini_raw_parts(message.reasoning)
+    if raw is not None:
+        return [types.Part.model_validate(item) for item in raw]
     parts = [types.Part(text=p.text) for p in message.parts if isinstance(p, TextPart) and p.text]
     for call in message.tool_calls:
         args = {} if "_raw_arguments" in call.arguments else call.arguments
         parts.append(
-            types.Part(function_call=types.FunctionCall(id=call.id, name=call.name, args=args))
+            types.Part(
+                function_call=types.FunctionCall(id=call.id, name=call.name, args=args),
+                # Calls written by another model have no signature; Gemini 3 accepts this one.
+                thought_signature=FOREIGN_CALL_SIGNATURE,
+            )
         )
     return parts or [types.Part(text="(no answer)")]
+
+
+def gemini_raw_parts(reasoning: str | None) -> list[dict[str, Any]] | None:
+    """Kept Gemini parts; None for other vendors' reasoning (their items carry a `type`)."""
+    if not reasoning:
+        return None
+    items = json.loads(reasoning)
+    if not isinstance(items, list) or any(not isinstance(i, dict) or "type" in i for i in items):
+        return None
+    return items
 
 
 def function_response(message: Message, names: Mapping[str, str]) -> types.Part:

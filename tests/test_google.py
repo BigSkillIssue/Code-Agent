@@ -14,11 +14,12 @@ from forge.providers.base import (
     Message,
     ProviderError,
     StreamItem,
+    ToolCall,
     ToolResult,
     ToolSpec,
     text_message,
 )
-from forge.providers.google import GoogleProvider, api_error
+from forge.providers.google import GoogleProvider, api_error, assistant_parts
 from forge.providers.registry import get_provider
 
 FIXTURES = Path(__file__).parent / "fixtures" / "google"
@@ -148,3 +149,16 @@ def test_rate_limit_wait_comes_from_the_body() -> None:
     err = api_error(errors.ClientError(429, body, None))
     assert err.kind == "rate_limit" and err.retry_after_s is not None
     assert 44 <= err.retry_after_s <= 45
+
+
+def test_calls_from_other_models_get_the_dummy_thought_signature() -> None:
+    """Gemini 3 refuses function calls without a signature (live run after a Groq fallback)."""
+    call = ToolCall(id="c1", name="glob", arguments={"pattern": "*.py"})
+    from_groq = Message(role="assistant", tool_calls=[call])
+    parts = assistant_parts(from_groq)
+    assert parts[0].function_call is not None
+    assert parts[0].thought_signature == b"skip_thought_signature_validator"
+    thinking = json.dumps([{"type": "thinking", "thinking": "hmm", "signature": "abc"}])
+    from_claude = Message(role="assistant", tool_calls=[call], reasoning=thinking)
+    parts = assistant_parts(from_claude)  # Claude's thinking blocks are not Gemini parts
+    assert parts[0].function_call is not None and parts[0].function_call.name == "glob"

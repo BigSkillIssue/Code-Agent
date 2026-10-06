@@ -33,6 +33,10 @@ async def diff_since(root: Path, ref: str | None = None) -> str:
     return "\n\n".join(p for p in parts if p) or "(no changes)"
 
 
+# Untracked tool caches are not changes anyone made (a project without .gitignore shows them).
+CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"})
+
+
 async def changed_files(root: Path, ref: str | None = None) -> list[str]:
     """Root-relative paths changed since `ref` (default HEAD), untracked files included."""
     if not await is_repo(root):
@@ -43,5 +47,6 @@ async def changed_files(root: Path, ref: str | None = None) -> list[str]:
         ["git", "diff", "--name-only", base] if has_base else ["git", "diff", "--name-only"], root
     )
     untracked = await run_argv(["git", "ls-files", "--others", "--exclude-standard"], root)
-    found = set(names.stdout.split()) | set(untracked.stdout.split())
+    new_files = {p for p in untracked.stdout.split() if not CACHE_DIRS & set(p.split("/"))}
+    found = set(names.stdout.split()) | new_files
     return sorted(p for p in found if not p.startswith(".forge/"))  # Forge's own files
