@@ -12,6 +12,7 @@ from forge.commands import handle_command
 from forge.config import ForgeConfig, McpServerConfig, set_trusted
 from forge.ctx import Ctx
 from forge.mcp_admin import add_server, from_json, list_servers, remove_server
+from forge.mcp_cli import split_words
 from forge.mcp_client import McpHub
 from forge.wiring import close_session
 from support import make_ctx
@@ -144,3 +145,17 @@ async def test_slash_mcp_adds_reconnects_and_removes_live(ctx_mcp: Ctx, home: Pa
     removed = (await handle_command(ctx_mcp, "/mcp remove stub")).text
     assert "removed" in removed and hub.tool("mcp__stub__add") is None
     assert "stub" not in read(home / "forge.toml").get("mcp_servers", {})  # type: ignore[operator]
+
+
+def test_slash_arguments_keep_windows_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    line = 'add s -- C:\\Python\\python.exe "C:\\My Tools\\stub.py"'
+    monkeypatch.setattr("forge.mcp_cli.os.name", "nt")
+    assert split_words(line) == [
+        "add",
+        "s",
+        "--",
+        "C:\\Python\\python.exe",
+        "C:\\My Tools\\stub.py",
+    ]
+    monkeypatch.setattr("forge.mcp_cli.os.name", "posix")
+    assert split_words('add s -- python "my stub.py"') == ["add", "s", "--", "python", "my stub.py"]

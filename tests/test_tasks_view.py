@@ -1,5 +1,6 @@
 """One view of everything running in the background: jobs, agents, monitors (S55)."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,12 @@ async def test_list_shows_jobs_agents_and_monitors(busy: Ctx) -> None:
 async def test_tasks_command_lists_shows_and_stops(busy: Ctx) -> None:
     listing = (await handle_command(busy, "/tasks")).text
     assert "j1" in listing and "m1" in listing and "a1" in listing
-    detail = (await handle_command(busy, "/tasks j1")).text
+    detail = ""
+    for _ in range(100):  # the job writes its log asynchronously (slow on Windows)
+        detail = (await handle_command(busy, "/tasks j1")).text
+        if "serving" in detail:
+            break
+        await asyncio.sleep(0.1)
     assert "serving" in detail
     stopped = (await handle_command(busy, "/tasks stop j1")).text
     assert "stopped j1" in stopped

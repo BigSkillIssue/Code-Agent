@@ -372,6 +372,7 @@ Next step: done (phase 6)
 - S55: S55: tasks_view reads the local executor's jobs and the registry's agents with getattr (like /jobs did), so other executors simply show no jobs; background shell jobs and monitors record a label in SessionState.job_labels.
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
+- S56 fix: on Windows, /mcp arguments are split without POSIX escaping (shlex posix=False, outer quotes removed), so backslashes in paths stay.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).

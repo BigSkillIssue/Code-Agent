@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import os
 import shlex
 from pathlib import Path
 
@@ -112,7 +113,7 @@ def scope_of(words: list[str]) -> Scope | None:
 
 async def mcp_command(ctx: Ctx, args: str) -> str:
     """/mcp, /mcp add ..., /mcp remove NAME, /mcp reconnect NAME: change servers live."""
-    words = shlex.split(args)
+    words = split_words(args)
     action, rest = (words[0], words[1:]) if words else ("", [])
     try:
         if action == "add":
@@ -135,6 +136,20 @@ async def mcp_command(ctx: Ctx, args: str) -> str:
     hub = ctx.state.mcp
     lines = hub.status() if isinstance(hub, McpHub) else []
     return "\n".join(lines) or "no MCP servers; add one with /mcp add NAME -- COMMAND"
+
+
+def split_words(args: str) -> list[str]:
+    """Shell-like words; on Windows backslashes stay (they are path separators there)."""
+    if os.name != "nt":
+        return shlex.split(args)
+    return [unquote(word) for word in shlex.split(args, posix=False)]
+
+
+def unquote(word: str) -> str:
+    """Remove one pair of surrounding quotes."""
+    if len(word) >= 2 and word[0] == word[-1] and word[0] in "\"'":
+        return word[1:-1]
+    return word
 
 
 def hub_of(ctx: Ctx) -> McpHub:
