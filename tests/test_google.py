@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
+from google.genai import errors
 
 from forge.config import ForgeConfig, ProviderConfig
 from forge.providers.base import (
@@ -17,7 +18,7 @@ from forge.providers.base import (
     ToolSpec,
     text_message,
 )
-from forge.providers.google import GoogleProvider
+from forge.providers.google import GoogleProvider, api_error
 from forge.providers.registry import get_provider
 
 FIXTURES = Path(__file__).parent / "fixtures" / "google"
@@ -137,3 +138,13 @@ def test_vertex_client() -> None:
     cfg = ProviderConfig(kind="google", base_url="vertex://my-project/europe-west4")
     client = GoogleProvider("v", cfg).make_client()
     assert client.vertexai
+
+
+def test_rate_limit_wait_comes_from_the_body() -> None:
+    """Gemini's free tier sends its wait time in the error body, not in Retry-After (live test)."""
+    body = json.loads(
+        (Path(__file__).parent / "fixtures" / "google" / "rate_limit_429.json").read_text()
+    )
+    err = api_error(errors.ClientError(429, body, None))
+    assert err.kind == "rate_limit" and err.retry_after_s is not None
+    assert 44 <= err.retry_after_s <= 45

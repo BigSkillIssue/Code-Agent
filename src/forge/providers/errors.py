@@ -1,5 +1,6 @@
 """Map HTTP error responses from any vendor to ProviderError kinds."""
 
+import re
 from collections.abc import Mapping
 
 from forge.providers.base import ErrorKind, ProviderError
@@ -12,6 +13,8 @@ OVERFLOW_HINTS = (
     "too many tokens",
     "prompt is too long",
 )
+# Some vendors (Gemini's free tier) say how long to wait only in the body.
+BODY_RETRY = re.compile(r'retry in ([0-9.]+)\s*s|"retryDelay":\s*"([0-9.]+)s"', re.IGNORECASE)
 
 
 def error_from_status(status: int, body: str, headers: Mapping[str, str]) -> ProviderError:
@@ -22,7 +25,8 @@ def error_from_status(status: int, body: str, headers: Mapping[str, str]) -> Pro
     if status in (401, 403) or "insufficient_quota" in lowered:
         kind = "auth"
     elif status == 429:
-        return ProviderError("rate_limit", message, retry_after(headers))
+        wait = retry_after(headers)
+        return ProviderError("rate_limit", message, wait if wait is not None else body_wait(body))
     elif status in (408, 425):
         kind = "network"
     elif status >= 500:
@@ -44,3 +48,11 @@ def retry_after(headers: Mapping[str, str]) -> float | None:
             except ValueError:
                 return None
     return None
+
+
+def body_wait(body: str) -> float | None:
+    """Seconds to wait, as written in an error body ("Please retry in 44.5s")."""
+    match = BODY_RETRY.search(body)
+    if match is None:
+        return None
+    return float(match.group(1) or match.group(2))
