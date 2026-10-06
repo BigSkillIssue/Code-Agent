@@ -1,5 +1,6 @@
 """FakeProvider: replays scripted model turns and records every request (offline tests)."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from pathlib import Path
@@ -38,7 +39,8 @@ class FakeTurn(BaseModel):
     text: str = ""
     tool_calls: list[FakeToolCall] = []
     usage: Usage | None = None
-    error: ErrorKind | None = None
+    error: ErrorKind | None = None  # with tool_calls: raised after the calls were streamed
+    delay_s: float = 0.0  # pause after the tool calls, as if the model kept writing
 
 
 class FakeScript(BaseModel):
@@ -91,7 +93,7 @@ class FakeProvider:
         """Answer with the next scripted turn for this model name."""
         self.requests.append(req)
         turn = self._next_turn(req)
-        if turn.error:
+        if turn.error and not turn.tool_calls:
             raise ProviderError(turn.error, "scripted failure")
         for start in range(0, len(turn.text), CHUNK_CHARS):
             yield StreamItem(delta=turn.text[start : start + CHUNK_CHARS])
@@ -99,6 +101,12 @@ class FakeProvider:
             ToolCall(id=c.id or f"call_{i}", name=c.name, arguments=c.arguments)
             for i, c in enumerate(turn.tool_calls)
         ]
+        for call in calls:
+            yield StreamItem(tool_call=call)
+        if turn.delay_s:
+            await asyncio.sleep(turn.delay_s)
+        if turn.error:
+            raise ProviderError(turn.error, "scripted failure after the tool calls")
         parts = [TextPart(text=turn.text)] if turn.text else []
         usage = turn.usage or Usage(
             input_tokens=estimate_tokens(req), output_tokens=max(1, len(turn.text) // 4)

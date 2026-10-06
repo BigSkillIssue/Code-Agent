@@ -286,6 +286,33 @@ def mcp_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     return [t for t in tools if t.read_only or role not in READ_ONLY_ROLES]
 
 
+SEQUENTIAL_GROUPS = frozenset({"browser"})  # read-only, but each step depends on the last
+NOT_EARLY = frozenset({"research"})  # starts an agent; wait until the model has finished
+
+
+def can_run_concurrently(tool_def: ToolDef | None) -> bool:
+    """Read-only tools that do not depend on each other may run at the same time."""
+    return tool_def is not None and tool_def.read_only and tool_def.group not in SEQUENTIAL_GROUPS
+
+
+def can_start_early(ctx: Ctx, call: ToolCall) -> bool:
+    """True if the call may start while the model is still writing: safe and no approval."""
+    tool_def = REGISTRY.get(call.name)
+    if (
+        not can_run_concurrently(tool_def)
+        or tool_def is None
+        or tool_def.permission != "auto"
+        or tool_def.name in NOT_EARLY
+        or tool_def not in agent_tools(ctx, ctx.role)
+    ):
+        return False
+    try:
+        args = validate_args(tool_def, call.arguments)
+    except ToolError:
+        return False
+    return ctx.permissions.check(tool_def, args, ctx).action == "run"
+
+
 def find_tool(ctx: Ctx, name: str) -> ToolDef | None:
     """A built-in tool, or one of the session's MCP tools."""
     found = REGISTRY.get(name)

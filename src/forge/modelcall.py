@@ -1,11 +1,20 @@
 """Single model calls: stream one answer through a role's fallback chain, publishing events."""
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 from forge.ctx import Ctx
 from forge.events import ErrorEvent, ModelDelta, ModelDone
-from forge.providers.base import ChatRequest, Message, Provider, ProviderError, ToolSpec, Usage
+from forge.providers.base import (
+    ChatRequest,
+    Message,
+    Provider,
+    ProviderError,
+    ToolCall,
+    ToolSpec,
+    Usage,
+)
 from forge.providers.fallback_tools import with_tool_fallback
 from forge.providers.registry import resolve_role
 
@@ -28,6 +37,7 @@ async def model_turn(
     messages: list[Message],
     tools: list[ToolSpec],
     json_schema: dict[str, Any] | None = None,
+    on_tool_call: Callable[[ToolCall], None] | None = None,
 ) -> tuple[Message, Usage]:
     """One model answer, trying each model of the role's fallback chain in order."""
     chain = resolve_role(role, ctx.cfg)
@@ -40,7 +50,9 @@ async def model_turn(
             model=model, system=system, messages=messages, tools=specs, json_schema=json_schema
         )
         try:
-            return await stream_reply(ctx, with_tool_fallback(provider, request), request)
+            return await stream_reply(
+                ctx, with_tool_fallback(provider, request), request, on_tool_call
+            )
         except ProviderError as err:
             last_error = err
             await publish_error(ctx, f"{provider.name}/{model} failed ({err.kind}): {err}")
@@ -48,9 +60,16 @@ async def model_turn(
     raise last_error
 
 
-async def stream_reply(ctx: Ctx, provider: Provider, request: ChatRequest) -> tuple[Message, Usage]:
+async def stream_reply(
+    ctx: Ctx,
+    provider: Provider,
+    request: ChatRequest,
+    on_tool_call: Callable[[ToolCall], None] | None = None,
+) -> tuple[Message, Usage]:
     """Stream one reply, publishing text deltas and the finished message."""
     async for item in provider.stream(request):
+        if item.tool_call is not None and on_tool_call is not None:
+            on_tool_call(item.tool_call)
         if item.delta:
             await ctx.bus.publish(
                 ModelDelta(

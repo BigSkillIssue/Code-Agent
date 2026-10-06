@@ -122,6 +122,8 @@ class ResponsesStream:
                 yield StreamItem(delta=data["delta"])
             elif kind == "response.output_item.done":
                 self.items.append(data["item"])
+                if data["item"].get("type") == "function_call":
+                    yield StreamItem(tool_call=function_call_of(data["item"], len(self.items) - 1))
             elif kind in ("response.completed", "response.incomplete"):
                 self.usage = parse_usage((data.get("response") or {}).get("usage") or {})
 

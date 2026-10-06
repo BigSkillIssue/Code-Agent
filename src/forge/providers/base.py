@@ -115,9 +115,10 @@ class ChatRequest(BaseModel):
 
 
 class StreamItem(BaseModel):
-    """What `stream()` yields, in order: text deltas, then one final item with `done`."""
+    """What `stream()` yields: text deltas and finished tool calls, then one item with `done`."""
 
     delta: str = ""  # text chunk
+    tool_call: ToolCall | None = None  # a call complete before the reply ends (S52); also in done
     done: Message | None = None  # final assistant message (last item only)
     usage: Usage | None = None  # with the last item
 

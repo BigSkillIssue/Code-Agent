@@ -102,6 +102,10 @@ async def test_tool_call_split_across_chunks() -> None:
         ToolCall(id="call_a", name="read_file", arguments={"path": "a.py"}),
         ToolCall(id="call_1", name="glob", arguments={}),
     ]
+    # call_a is complete as soon as the next call starts; the last one ends with the reply
+    early = [item.tool_call for item in items if item.tool_call is not None]
+    assert early == done.tool_calls[:1]
+    assert items.index(next(i for i in items if i.tool_call)) < len(items) - 1
 
 
 @respx.mock

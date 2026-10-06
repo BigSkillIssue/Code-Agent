@@ -97,9 +97,13 @@ class GoogleProvider:
                 config=self.config_for(req),
             )
             async for chunk in stream:
+                seen = len(state.parts)
                 delta = state.feed(chunk)
                 if delta:
                     yield StreamItem(delta=delta)
+                for n in range(seen, len(state.parts)):  # Gemini sends each call whole
+                    if (call := state.parts[n].function_call) is not None:
+                        yield StreamItem(tool_call=tool_call_of(call, n))
         except errors.APIError as exc:
             raise api_error(exc) from exc
         except httpx.HTTPError as exc:

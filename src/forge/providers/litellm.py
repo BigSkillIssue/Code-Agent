@@ -24,6 +24,7 @@ from forge.providers.base import (
 )
 from forge.providers.catalog import capabilities_for
 from forge.providers.openai_compat import (
+    completed_calls,
     finish_tool_calls,
     merge_tool_call,
     parse_usage,
@@ -85,6 +86,7 @@ class LiteLLMProvider:
 
         text: list[str] = []
         calls: dict[int, dict[str, str]] = {}
+        emitted: set[int] = set()
         usage = Usage()
         try:
             stream = await litellm.acompletion(**self.request_params(req))
@@ -98,6 +100,8 @@ class LiteLLMProvider:
                         text.append(delta["content"])
                         yield StreamItem(delta=delta["content"])
                     for call_delta in delta.get("tool_calls") or []:
+                        for call in completed_calls(calls, call_delta, emitted):
+                            yield StreamItem(tool_call=call)
                         merge_tool_call(calls, call_delta)
         except Exception as exc:
             raise provider_error(exc) from exc

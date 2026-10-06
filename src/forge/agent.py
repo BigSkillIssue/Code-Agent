@@ -25,7 +25,13 @@ from forge.providers.base import (
 )
 from forge.runtime.shell import find_shell
 from forge.skills import skills_listing
-from forge.tools import REGISTRY, agent_tools, call_tool
+from forge.tools import (
+    REGISTRY,
+    agent_tools,
+    call_tool,
+    can_run_concurrently,
+    can_start_early,
+)
 
 __all__ = ["AgentResult", "complete", "over_budget", "publish_error", "run_agent"]
 
@@ -65,9 +71,13 @@ async def run_agent(
             messages += deliver(ctx, team.take_messages(ctx.agent_id))
         specs = [t.spec for t in agent_tools(ctx, role)]  # tool_search can add tools
         messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
+        early = EarlyTools(ctx)
         try:
-            reply, turn_usage = await model_turn(ctx, role, system, messages, specs)
+            reply, turn_usage = await model_turn(
+                ctx, role, system, messages, specs, on_tool_call=early.offer
+            )
         except ProviderError as err:
+            await early.discard()
             return AgentResult(text=str(err), messages=messages, usage=usage, stopped="error")
         usage += turn_usage
         if team is not None:
@@ -80,10 +90,12 @@ async def run_agent(
                 # Reports of background agents are still due; wait and let the model use them.
                 messages += deliver(ctx, await team.wait_for_message(ctx.agent_id))
                 continue
+            await early.discard()
             return AgentResult(text=text, messages=messages, usage=usage, stopped="done")
         if over_budget(ctx):
+            await early.discard()
             return AgentResult(text=text, messages=messages, usage=usage, stopped="budget")
-        for result in await run_tool_calls(ctx, reply.tool_calls):
+        for result in await run_tool_calls(ctx, reply.tool_calls, early):
             messages.append(Message(role="tool", tool_result=result))
             _record(ctx, messages[-1])
     return AgentResult(text=text, messages=messages, usage=usage, stopped="max_turns")
@@ -136,12 +148,54 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
     }
 
 
-async def run_tool_calls(ctx: Ctx, calls: list[ToolCall]) -> list[ToolResult]:
-    """Run the calls of one turn: together if all are read-only, else one after another."""
-    defs = [REGISTRY.get(call.name) for call in calls]
-    if len(calls) > 1 and all(d is not None and d.read_only for d in defs):
-        return list(await asyncio.gather(*(run_one_tool(ctx, call) for call in calls)))
-    return [await run_one_tool(ctx, call) for call in calls]
+async def run_tool_calls(
+    ctx: Ctx, calls: list[ToolCall], early: "EarlyTools | None" = None
+) -> list[ToolResult]:
+    """Run the calls of one turn: together if all are independent reads, else in order.
+    Calls already started while the model was writing are awaited, not run again."""
+    early = early or EarlyTools(ctx)
+    started = [early.take(call) for call in calls]
+    await early.discard()  # started for a call the final reply does not contain
+    if all(can_run_concurrently(REGISTRY.get(call.name)) for call in calls):
+        runs = [task or run_one_tool(ctx, call) for call, task in zip(calls, started, strict=True)]
+        return list(await asyncio.gather(*runs))
+    results = []
+    for call, task in zip(calls, started, strict=True):
+        results.append(await task if task is not None else await run_one_tool(ctx, call))
+    return results
+
+
+class EarlyTools:
+    """Starts safe tool calls while the model is still writing its reply (S52)."""
+
+    def __init__(self, ctx: Ctx) -> None:
+        self.ctx = ctx
+        self.started: dict[str, tuple[ToolCall, asyncio.Task[ToolResult]]] = {}
+        self.stopped = False  # an earlier call must run first, so later ones wait too
+
+    def offer(self, call: ToolCall) -> None:
+        """A call is complete in the stream: start it now if it and all before it are safe."""
+        if self.stopped or call.id in self.started or not can_start_early(self.ctx, call):
+            self.stopped = True
+            return
+        task = asyncio.get_running_loop().create_task(run_one_tool(self.ctx, call))
+        self.started[call.id] = (call, task)
+
+    def take(self, call: ToolCall) -> "asyncio.Task[ToolResult] | None":
+        """The task started for exactly this call (same id, name and arguments), if any."""
+        entry = self.started.get(call.id)
+        if entry is None or entry[0] != call:
+            return None
+        del self.started[call.id]
+        return entry[1]
+
+    async def discard(self) -> None:
+        """Cancel calls the final reply does not contain (e.g. a fallback model answered)."""
+        tasks = [task for _, task in self.started.values()]
+        self.started.clear()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def run_one_tool(ctx: Ctx, call: ToolCall) -> ToolResult:

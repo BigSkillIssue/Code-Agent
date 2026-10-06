@@ -118,6 +118,7 @@ class OpenAICompatProvider:
     async def _parse(self, response: httpx.Response, model: str) -> AsyncIterator[StreamItem]:
         text: list[str] = []
         calls: dict[int, dict[str, str]] = {}
+        emitted: set[int] = set()
         usage = Usage()
         async for event in read_events(response):
             if event.data.strip() == "[DONE]":
@@ -133,6 +134,8 @@ class OpenAICompatProvider:
                     text.append(delta["content"])
                     yield StreamItem(delta=delta["content"])
                 for call_delta in delta.get("tool_calls") or []:
+                    for call in completed_calls(calls, call_delta, emitted):
+                        yield StreamItem(tool_call=call)
                     merge_tool_call(calls, call_delta)
         parts = [TextPart(text="".join(text))] if text else []
         message = Message(role="assistant", parts=list(parts), tool_calls=finish_tool_calls(calls))
@@ -250,6 +253,16 @@ def merge_tool_call(calls: dict[int, dict[str, str]], delta: Mapping[str, Any]) 
         slot["arguments"] += json.dumps(arguments)
     elif arguments:
         slot["arguments"] += str(arguments)
+
+
+def completed_calls(
+    calls: dict[int, dict[str, str]], call_delta: Mapping[str, Any], emitted: set[int]
+) -> list[ToolCall]:
+    """Calls streamed before the one this delta starts: they are complete now."""
+    index = int(call_delta.get("index", len(calls)))
+    done = [i for i in sorted(calls) if i < index and i not in emitted]
+    emitted.update(done)
+    return [finish_tool_calls({i: calls[i]})[0] for i in done]
 
 
 def finish_tool_calls(calls: dict[int, dict[str, str]]) -> list[ToolCall]:

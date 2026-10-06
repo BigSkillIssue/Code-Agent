@@ -114,6 +114,7 @@ async def test_tool_calls_and_reasoning_round_trip() -> None:
         ToolCall(id="call_a", name="read_file", arguments={"path": "a.py"}),
         ToolCall(id="call_b", name="glob", arguments={}),
     ]
+    assert [item.tool_call for item in items if item.tool_call] == done.tool_calls  # S52
     first = json.loads(route.calls[0].request.content)
     assert first["tools"][0] == {
         "type": "function",

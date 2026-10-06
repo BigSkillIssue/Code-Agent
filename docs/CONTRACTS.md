@@ -103,6 +103,7 @@ class ChatRequest(BaseModel):
 
 class StreamItem(BaseModel):        # what stream() yields, in order
     delta: str = ""                 # text chunk
+    tool_call: ToolCall | None = None  # S52: a call complete before the reply ends (also in done)
     done: Message | None = None     # final assistant message (last item only)
     usage: Usage | None = None      # with the last item
 
@@ -311,6 +312,14 @@ async def run_agent(ctx: Ctx, task: str, *, role: str = "coder",
     all are read_only), append results, compact if needed, repeat until the model
     answers without tool calls or a limit is hit."""
 ```
+
+**Early start (S52).** While the reply streams, a call in a `tool_call` item starts at once when four things hold:
+- it is read-only, auto-permitted and allowed by the rules (`can_start_early`);
+- it is not in a sequential group (`browser`);
+- it is not `research`;
+- every call before it in the same reply was also started.
+
+The finished reply decides what is used. A started call counts only if the reply contains the same call with the same id, name and arguments; otherwise it is cancelled, for example after a fallback model answered. "Parallel" means read-only and not in a sequential group (`can_run_concurrently`).
 
 ## Tool framework — `src/forge/tools.py` (top of file), `src/forge/ctx.py`
 

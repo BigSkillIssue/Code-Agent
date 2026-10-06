@@ -101,6 +101,8 @@ class AnthropicProvider:
                 delta = state.feed(event)
                 if delta:
                     yield StreamItem(delta=delta)
+                if call := state.finished_call(event):
+                    yield StreamItem(tool_call=call)
         except anthropic.APIStatusError as exc:
             raise error_from_status(
                 exc.status_code, exc.response.text, exc.response.headers
@@ -199,6 +201,13 @@ class StreamState:
         elif kind == "message_delta" and event.usage is not None:
             self.output_tokens = event.usage.output_tokens or self.output_tokens
         return ""
+
+    def finished_call(self, event: Any) -> ToolCall | None:
+        """The tool call whose block this event closes, if it closes one."""
+        if event.type != "content_block_stop":
+            return None
+        block = self.blocks.get(event.index, {})
+        return tool_call_of(block) if block.get("type") == "tool_use" else None
 
     def _delta(self, block: dict[str, Any], delta: Any) -> str:
         kind = delta.type

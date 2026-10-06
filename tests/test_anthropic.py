@@ -104,6 +104,7 @@ async def test_tool_use_and_thinking_round_trip() -> None:
     assert done is not None
     assert done.tool_calls[0].name == "read_file"
     assert done.tool_calls[0].arguments == {"path": "calc.py"}
+    assert [item.tool_call for item in items if item.tool_call] == done.tool_calls  # S52
     assert rec.bodies[0]["thinking"] == {"type": "adaptive"}
     assert rec.bodies[0]["output_config"] == {"effort": "high"}
     assert rec.bodies[0]["tools"][0]["input_schema"] == {"type": "object"}

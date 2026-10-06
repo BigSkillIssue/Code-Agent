@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S52
+Next step: S53
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -56,7 +56,8 @@ Next step: S52
 | S48 | 2026-10-05 | a74d9a4 | pyproject.toml, __init__.py, CHANGELOG.md, .github/workflows/release.yml, packaging/pyinstaller.spec, README.md, tests/test_release.py, tests/test_smoke.py | wheel + PyInstaller binary smoke-tested locally (Linux); release workflow on tag v*; manual run green on Linux, macOS, Windows (wheel + binary smoke tests) |
 | S49 | 2026-10-06 | e3f71db | tools.py, prompts.py, agent.py, config.py, config_docs.py, docs/config.md, docs/TOOLS.md, docs/STEPS.md, tests/test_research.py | research tool (researcher sub-agent, also in solo mode, lead only); RESEARCHER prompt; web.fallback_backend |
 | S50 | 2026-10-06 | 990eb6b | ports.py, ctx.py, config.py, config_docs.py, tools.py, prompts.py, agent.py, team.py, wiring.py, cli.py, local/playwright_browser.py, pyproject.toml, packaging/pyinstaller.spec, .github/workflows/ci.yml, AGENTS.md, docs/*, README.md, tests/test_browser.py, tests/conformance/test_browser_conformance.py | browser role with 7 browser_* tools (screenshot per action), Browser port + Playwright implementation, research(browser=true), forge browser install; real-Chromium conformance passes locally |
-| S51 | 2026-10-06 | (next) | events.py, ports.py, local/local_executor.py, runtime/shell.py, tools.py, local/json_renderer.py, local/rich_renderer.py, docs/CONTRACTS.md, tests/test_live_output.py, tests/test_messages.py, tests/support.py, tests/test_messaging.py, tests/conformance/test_executor_conformance.py, tests/fixtures/fake/live_output.json | ToolOutput events while bash/powershell run (whole lines, 0.2 s throttle, masked, max 500 lines per call); TUI and plain CLI show them dimmed |
+| S51 | 2026-10-06 | 6094fc1 | events.py, ports.py, local/local_executor.py, runtime/shell.py, tools.py, local/json_renderer.py, local/rich_renderer.py, docs/CONTRACTS.md, tests/test_live_output.py, tests/test_messages.py, tests/support.py, tests/test_messaging.py, tests/conformance/test_executor_conformance.py, tests/fixtures/fake/live_output.json | ToolOutput events while bash/powershell run (whole lines, 0.2 s throttle, masked, max 500 lines per call); TUI and plain CLI show them dimmed |
+| S52 | 2026-10-06 | (next) | providers/base.py, providers/anthropic.py, providers/openai_compat.py, providers/litellm.py, providers/responses.py, providers/google.py, providers/fake.py, modelcall.py, agent.py, tools.py, docs/CONTRACTS.md, tests/test_early_tools.py, tests/test_anthropic.py, tests/test_openai_compat.py, tests/test_openai_responses.py | StreamItem.tool_call from every adapter; EarlyTools starts safe reads during the stream; reply is authoritative (mismatch or failed stream cancels) |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -201,6 +202,9 @@ Next step: S52
 - S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
 - S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
 - S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
+- S52: S52: early start only while every earlier call of the reply was also early-startable, so a read never overtakes a write that the model asked for first.
+- S52: S52: fixed an S50 bug on the way: browser tools are read-only but stateful, so read-only parallelism now uses can_run_concurrently (excludes the browser group).
+- S52: S52: FakeTurn gained delay_s and error-after-calls to script slow and failing streams.
 
 - S28 (CI fix): read-only sandboxes set TMPDIR/TMP/TEMP to Forge's scratch folder, because macOS bash 3.2 writes here-documents to $TMPDIR.
 - S30: S30: tools.py cannot import team.py (inward rule), so spawn_agent reaches the registry through ctx.state.team (a Team protocol in ctx.py) set by wiring.open_session.
@@ -244,6 +248,9 @@ Next step: S52
 - S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
 - S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
 - S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
+- S52: S52: early start only while every earlier call of the reply was also early-startable, so a read never overtakes a write that the model asked for first.
+- S52: S52: fixed an S50 bug on the way: browser tools are read-only but stateful, so read-only parallelism now uses can_run_concurrently (excludes the browser group).
+- S52: S52: FakeTurn gained delay_s and error-after-calls to script slow and failing streams.
 
 - S28 (CI fix 2): the persistent bash reads each command from stdin up to a NUL byte instead of a here-document; macOS bash 3.2 writes here-documents to /tmp regardless of TMPDIR, which the read-only sandbox forbids.
 - S35: S35: mode is chosen per task in run_task (ctx.state.mode). solo removes the agent tools from the lead; subagents and team give the main coder the TEAM_LEAD prompt; team mode starts up to max_parallel_agents background workers (TEAM_TASK prompt, worktrees in git repos) and runs leftover steps solo.
@@ -277,6 +284,9 @@ Next step: S52
 - S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
 - S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
 - S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
+- S52: S52: early start only while every earlier call of the reply was also early-startable, so a read never overtakes a write that the model asked for first.
+- S52: S52: fixed an S50 bug on the way: browser tools are read-only but stateful, so read-only parallelism now uses can_run_concurrently (excludes the browser group).
+- S52: S52: FakeTurn gained delay_s and error-after-calls to script slow and failing streams.
 
 - S36 (perf): SqliteStore uses WAL with synchronous=NORMAL (fewer fsyncs; the board race test went from 6.5s to 4.6s); offline suite ~48s.
 - S37: S37: hook commands run in bash (Git Bash on Windows) or PowerShell when no bash exists; {name} placeholders come from the tool arguments, then the event, shell-quoted. match is re.fullmatch on the tool name and is ignored for events without a tool.
@@ -305,6 +315,9 @@ Next step: S52
 - S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
 - S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
 - S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
+- S52: S52: early start only while every earlier call of the reply was also early-startable, so a read never overtakes a write that the model asked for first.
+- S52: S52: fixed an S50 bug on the way: browser tools are read-only but stateful, so read-only parallelism now uses can_run_concurrently (excludes the browser group).
+- S52: S52: FakeTurn gained delay_s and error-after-calls to script slow and failing streams.
 
 - S37 (CI fix): a timed-out hook is killed as a process tree on Windows (taskkill /T /F); killing only bash left the child holding the pipes.
 - S45: S45: $FORGE_BASH / $FORGE_POWERSHELL (path or 'none') pick the shell executables; they are reserved and not read as config keys. actions/checkout moved to v5 (Node 24).
@@ -322,6 +335,9 @@ Next step: S52
 - S51: S51: Executor.run takes a synchronous on_output(str) callback; the bash/powershell tool body buffers it in LiveOutput and publishes from its own task, so the executor never awaits the bus.
 - S51: S51: the running call's id reaches tool bodies through a ContextVar (CALL_ID) set in _run_body; it is task-local, not shared state.
 - S51: S51: the persistent shell now holds back only a possible marker prefix instead of 4 KB, so short output passes at once; stderr still goes to a temp file and appears only in the result (live view shows stdout).
+- S52: S52: early start only while every earlier call of the reply was also early-startable, so a read never overtakes a write that the model asked for first.
+- S52: S52: fixed an S50 bug on the way: browser tools are read-only but stateful, so read-only parallelism now uses can_run_concurrently (excludes the browser group).
+- S52: S52: FakeTurn gained delay_s and error-after-calls to script slow and failing streams.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
