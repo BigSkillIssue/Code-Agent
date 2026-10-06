@@ -127,6 +127,7 @@ class AgentRegistry:
             raise
         finally:
             await close_browser(ctx, info.id)
+            await ctx.state.monitors.stop_agent(ctx, info.id)
         self.finish(info, result)
         merged = await self.merge_finished(ctx, info)
         await ctx.hooks.run("subagent_stop", {"agent_id": info.id, "status": info.status}, ctx)
@@ -146,6 +147,7 @@ class AgentRegistry:
             self.finish(info, result)
             text = result.text.strip() + await self.merge_finished(child, info)
         await close_browser(ctx, info.id)
+        await ctx.state.monitors.stop_agent(ctx, info.id)
         head = f"[agent {info.id} ({info.role}) finished: {info.status}]"
         self.post(info.parent_id or "main", f"{head}\n{text or '(no report)'}")
         await ctx.bus.publish(

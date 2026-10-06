@@ -867,6 +867,50 @@ async def powershell(
     return await run_shell(ctx, "powershell", command, timeout_s, background, description)
 
 
+@tool(group="shell", permission="ask", read_only=False, specifier_arg="command")
+async def monitor(
+    ctx: Ctx,
+    command: Annotated[
+        str, "Command whose output to watch, e.g. a log tail or a watch-mode test run."
+    ],
+    description: Annotated[str, "Up to 80 chars naming what is watched, e.g. 'dev server errors'."],
+    filter: Annotated[
+        str, "Regular expression: only matching lines are sent (empty: every line)."
+    ] = "",
+    timeout_s: Annotated[int, "Seconds until the command is stopped (max 3600)."] = 600,
+) -> str:
+    """Run a command in the background and receive each new output line as a message."""
+    require(command.strip() != "", "command must not be empty")
+    require(
+        0 < len(description) <= 80 and "\n" not in description, "description: one line, 1-80 chars"
+    )
+    require(1 <= timeout_s <= 3600, "timeout_s must be between 1 and 3600")
+    try:
+        re.compile(filter)
+    except re.error as exc:
+        raise ToolError("invalid_args", f"filter is not a valid regular expression: {exc}") from exc
+    kind: ShellKind = "bash" if find_shell("bash") else "powershell"
+    cmd = Command(script=command, shell=kind, cwd=str(ctx.cwd), timeout_s=timeout_s)
+    result = await ctx.executor.run(cmd, sandbox_policy(ctx), background=True)
+    if result.job_id is None:
+        raise ToolError("exit_nonzero", "the command could not start", body=result.stderr)
+    if ctx.state.team is not None:
+        ctx.state.team.note_job(ctx.agent_id, result.job_id)
+    watched = ctx.state.monitors.start(ctx, result.job_id, description, filter, timeout_s)
+    return (
+        f"monitor {watched.id} started (job {result.job_id}): {description}\n"
+        "new output lines arrive as messages; when you have nothing else to do, end your turn "
+        f'and you will be woken by them; stop with monitor_stop("{watched.id}")'
+    )
+
+
+@tool(group="shell", permission="auto", read_only=False)
+async def monitor_stop(ctx: Ctx, monitor_id: Annotated[str, "Monitor id, e.g. 'm1'."]) -> str:
+    """Stop a monitor and its command."""
+    stopped = await ctx.state.monitors.stop(ctx, monitor_id)
+    return f"stopped monitor {stopped.id} ({stopped.description}) after {stopped.sent} lines"
+
+
 @tool(group="shell", permission="auto", read_only=True)
 async def job_output(
     ctx: Ctx,

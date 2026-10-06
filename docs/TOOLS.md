@@ -524,6 +524,20 @@ src/forge/tools.py
 
 **Tests:** a fixture repo where the most referenced file comes first; budget respected; private names hidden by default; cache reused on the second call (parse count stays 0).
 
+### `monitor` and `monitor_stop`
+
+```python
+@tool(group="shell", permission="ask", read_only=False, specifier_arg="command")
+async def monitor(ctx, command: str, description: str, filter: str = "", timeout_s: int = 600) -> str
+@tool(group="shell", permission="auto", read_only=False)
+async def monitor_stop(ctx, monitor_id: str) -> str
+```
+
+- **Behaviour:** starts `command` as a background job (bash, or PowerShell without bash) with the session's sandbox. Every bash/powershell permission rule also applies to `monitor`. `monitors.py` polls the job log every 0.5 s and posts new lines to the agent's inbox, as `[monitor m1: <description>]` plus the lines (max 50 per message). With `filter` set, only lines matching the regular expression are posted. When the job ends, a last message says so (`[monitor m1 ended: exit code N (...)]`). After `timeout_s` (max 3600) the job is stopped (`timed out after ...`). If the agent ends its turn while one of its monitors runs, the agent loop waits for the next message. Monitors of a sub-agent stop when it finishes.
+- **Output:** `monitor m1 started (job j3): <description>` and how to stop it. `monitor_stop` gives `stopped monitor m1 (...) after N lines`.
+- **Errors:** `invalid_args` (empty command, bad description, bad regex, timeout out of range, monitor not running), `permission_denied` (a rule denies the command).
+- **Tests:** lines arrive in order; the filter works; stop and timeout stop the job; bash rules apply; the agent waits for monitor messages.
+
 ## Web
 
 Both tools run inside the Forge process (`runtime/web.py`, using `httpx`), not in the command sandbox, so only their permission rules control them.

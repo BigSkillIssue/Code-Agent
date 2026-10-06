@@ -122,6 +122,7 @@ async def close_session(ctx: Ctx) -> None:
         await ctx.state.team.close(ctx)
     if ctx.state.mcp is not None:
         await ctx.state.mcp.close()
+    await ctx.state.monitors.close()
     for browser in ctx.state.browsers.values():
         await browser.close()
     ctx.state.browsers.clear()

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-COMMAND_TOOLS = frozenset({"bash", "powershell"})
+COMMAND_TOOLS = frozenset({"bash", "powershell", "monitor"})  # bash rules cover all three
 PATH_TOOLS = frozenset(
     {"read_file", "write_file", "edit_file", "apply_patch", "list_dir", "glob", "grep", "repo_map"}
 )

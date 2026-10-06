@@ -86,8 +86,9 @@ async def run_agent(
         _record(ctx, reply)
         text = reply.text() or text
         if not reply.tool_calls:
-            if team is not None and team.has_running_children(ctx.agent_id):
-                # Reports of background agents are still due; wait and let the model use them.
+            waiting = ctx.state.monitors.active(ctx.agent_id)
+            if team is not None and (waiting or team.has_running_children(ctx.agent_id)):
+                # Reports of background agents or monitor lines are still due; wait for them.
                 messages += deliver(ctx, await team.wait_for_message(ctx.agent_id))
                 continue
             await early.discard()

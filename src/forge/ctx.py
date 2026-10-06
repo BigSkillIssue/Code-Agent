@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from forge.config import ForgeConfig
 from forge.hooks import Hooks
+from forge.monitors import Monitors
 from forge.plan import Plan
 from forge.ports import Browser, BrowserFactory, EventBus, Executor, Renderer, Session, Store
 from forge.providers.base import Usage
@@ -43,6 +44,7 @@ class Team(Protocol):
     async def send(self, ctx: "Ctx", to: str, text: str, summary: str) -> str: ...
     def overview(self, ctx: "Ctx") -> str: ...
     async def stop(self, ctx: "Ctx", agent: str, keep_worktree: bool) -> str: ...
+    def post(self, agent_id: str, text: str) -> None: ...
     def take_messages(self, agent_id: str) -> list[str]: ...
     async def wait_for_message(self, agent_id: str) -> list[str]: ...
     def has_running_children(self, agent_id: str) -> bool: ...
@@ -91,6 +93,7 @@ class SessionState:
     browser_factory: BrowserFactory | None = None  # set by wiring; None: no browser agent
     browsers: dict[str, Browser] = field(default_factory=dict)  # agent id -> its open browser
     screenshots: dict[str, int] = field(default_factory=dict)  # agent id -> screenshots taken
+    monitors: Monitors = field(default_factory=Monitors)  # background commands being watched
 
 
 @dataclass
