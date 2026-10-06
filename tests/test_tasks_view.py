@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from forge.local.tasks_screen import TasksScreen
 from textual.widgets import OptionList, Static
 
 from forge.commands import handle_command
 from forge.config import ForgeConfig, SandboxConfig
 from forge.ctx import Ctx
 from forge.local.local_executor import LocalExecutor
+from forge.local.tasks_screen import TasksScreen
 from forge.providers.base import ToolCall
 from forge.runtime.shell import find_shell
 from forge.tasks_view import list_tasks
