@@ -62,3 +62,10 @@ async def test_context_reaches_the_refiner(tmp_project: Path) -> None:
     await refine("Add a flag", ctx)
     system = fake.requests[0].system
     assert "app.py" in system and "Git status:" in system and "make test" in system
+
+
+def test_refiner_does_not_ask_for_what_the_agents_can_read() -> None:
+    """A live run asked the user for test_calc.py's contents; the agents read files themselves."""
+    from forge import prompts
+
+    assert "Never ask for file contents" in prompts.PROMPTS["refiner"][0]

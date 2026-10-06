@@ -33,7 +33,7 @@ and always comes last.
 
 import string
 
-PROMPTS_VERSION = "2026.10.8"
+PROMPTS_VERSION = "2026.10.9"
 
 # The only slots a template may use; a typo in a slot name fails loudly in render().
 KNOWN_SLOTS = frozenset(
@@ -133,6 +133,7 @@ Write the specification as JSON with these fields:
 
 Questions:
 - Ask only when the answer changes the result and cannot be found in the project. What you can look up belongs in context instead.
+- Never ask for file contents, error messages, test output or anything else the agents can read or run themselves later; the coding agent has the files and a shell. Note it as an assumption instead (e.g. "the agent reads test_calc.py and runs the tests to see the failure").
 - Ask at most 4 questions, most important first. Prefer "choice" questions with 2 to 6 short options and a sensible default; use "confirm" for yes or no, "multi" to pick several options, and "text" only when options cannot work.
 - Give every question a "why": one line on what changes with the answer.
 - When the user's answers to earlier questions are included, merge them into the specification and ask only about gaps that remain.

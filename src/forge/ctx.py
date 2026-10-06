@@ -97,6 +97,7 @@ class SessionState:
     monitors: Monitors = field(default_factory=Monitors)  # background commands being watched
     todos: dict[str, list[Todo]] = field(default_factory=dict)  # agent id -> its todo list
     job_labels: dict[str, str] = field(default_factory=dict)  # job id -> what it runs (/tasks)
+    cooldowns: dict[str, float] = field(default_factory=dict)  # "provider/model" -> skip until
 
 
 @dataclass

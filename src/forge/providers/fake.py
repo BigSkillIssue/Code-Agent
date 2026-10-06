@@ -41,6 +41,7 @@ class FakeTurn(BaseModel):
     usage: Usage | None = None
     error: ErrorKind | None = None  # with tool_calls: raised after the calls were streamed
     delay_s: float = 0.0  # pause after the tool calls, as if the model kept writing
+    retry_after_s: float | None = None  # with error: how long the vendor says to wait
 
 
 class FakeScript(BaseModel):
@@ -94,7 +95,7 @@ class FakeProvider:
         self.requests.append(req)
         turn = self._next_turn(req)
         if turn.error and not turn.tool_calls:
-            raise ProviderError(turn.error, "scripted failure")
+            raise ProviderError(turn.error, "scripted failure", turn.retry_after_s)
         for start in range(0, len(turn.text), CHUNK_CHARS):
             yield StreamItem(delta=turn.text[start : start + CHUNK_CHARS])
         calls = [

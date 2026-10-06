@@ -17,6 +17,7 @@ from forge.providers.base import (
 )
 from forge.providers.fallback_tools import with_tool_fallback
 from forge.providers.registry import resolve_role
+from forge.providers.retry import MAX_RETRY_AFTER_S
 
 
 async def complete(
@@ -45,7 +46,7 @@ async def model_turn(
         raise ProviderError("bad_request", f"no model is configured for role '{role}'")
     specs = list(tools)
     last_error: ProviderError | None = None
-    for provider, model in chain:
+    for provider, model in usable(ctx, chain):
         request = ChatRequest(
             model=model, system=system, messages=messages, tools=specs, json_schema=json_schema
         )
@@ -56,8 +57,22 @@ async def model_turn(
         except ProviderError as err:
             last_error = err
             await publish_error(ctx, f"{provider.name}/{model} failed ({err.kind}): {err}")
+            cool_down(ctx, f"{provider.name}/{model}", err)
     assert last_error is not None
     raise last_error
+
+
+def usable(ctx: Ctx, chain: list[tuple[Provider, str]]) -> list[tuple[Provider, str]]:
+    """The chain without models that are out of quota for a while (all of it if every one is)."""
+    now = time.monotonic()
+    ready = [(p, m) for p, m in chain if ctx.state.cooldowns.get(f"{p.name}/{m}", 0) <= now]
+    return ready or chain
+
+
+def cool_down(ctx: Ctx, key: str, err: ProviderError) -> None:
+    """Skip a model whose quota is gone for longer than a retry would wait (daily limits)."""
+    if err.kind == "rate_limit" and (err.retry_after_s or 0) > MAX_RETRY_AFTER_S:
+        ctx.state.cooldowns[key] = time.monotonic() + (err.retry_after_s or 0)
 
 
 async def stream_reply(

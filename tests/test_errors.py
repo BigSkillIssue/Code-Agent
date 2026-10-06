@@ -31,3 +31,10 @@ def test_request_above_the_per_minute_quota_is_not_a_context_overflow() -> None:
 
 def test_a_real_413_is_still_a_context_overflow() -> None:
     assert error_from_status(413, "Request entity too large", {}).kind == "context_overflow"
+
+
+def test_waits_in_hours_and_minutes_are_read() -> None:
+    """Gemini's daily free quota answers 'Please retry in 4h45m4.24s.' (live run)."""
+    err = error_from_status(429, "Quota exceeded.\nPlease retry in 4h45m4.24s.", {})
+    assert err.retry_after_s == 4 * 3600 + 45 * 60 + 4.24
+    assert error_from_status(429, "Please retry in 2m5s.", {}).retry_after_s == 125.0

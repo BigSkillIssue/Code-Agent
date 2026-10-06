@@ -15,8 +15,10 @@ OVERFLOW_HINTS = (
 )
 # Some vendors (Gemini's free tier) say how long to wait only in the body.
 BODY_RETRY = re.compile(
-    r'(?:retry|try again) in ([0-9.]+)\s*s|"retryDelay":\s*"([0-9.]+)s"', re.IGNORECASE
+    r'(?:retry|try again) in ((?:[0-9]+h)?(?:[0-9]+m)?(?:[0-9.]+s)?)|"retryDelay":\s*"([0-9.]+)s"',
+    re.IGNORECASE,
 )
+DURATION_PART = re.compile(r"([0-9.]+)([hms])")
 PER_MINUTE_QUOTA = ("tokens per minute", "rate_limit_exceeded")
 
 
@@ -59,8 +61,11 @@ def retry_after(headers: Mapping[str, str]) -> float | None:
 
 
 def body_wait(body: str) -> float | None:
-    """Seconds to wait, as written in an error body ("Please retry in 44.5s")."""
-    match = BODY_RETRY.search(body)
-    if match is None:
-        return None
-    return float(match.group(1) or match.group(2))
+    """Seconds to wait, as written in an error body ("Please retry in 4h45m4.2s")."""
+    for match in BODY_RETRY.finditer(body):
+        text = match.group(1) or (match.group(2) + "s" if match.group(2) else "")
+        parts = DURATION_PART.findall(text)
+        if parts:
+            scale = {"h": 3600.0, "m": 60.0, "s": 1.0}
+            return sum(float(value) * scale[unit] for value, unit in parts)
+    return None
