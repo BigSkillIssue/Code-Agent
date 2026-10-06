@@ -83,6 +83,7 @@ line at the bottom. Questions and approvals open dialogs. Useful commands:
 | `/compact`, `/context` | shrink the context; show what fills it |
 | `/mode read-only` | switch the sandbox or approval policy |
 | `/init` | write a `FORGE.md` with the project's commands and layout |
+| `/mcp` | MCP servers; `/mcp add NAME -- COMMAND` adds one without a restart |
 | `/tasks` | background jobs, agents and monitors (`/tasks stop j1`); `ctrl+t` opens the list |
 | `/help` | everything else, including your own commands |
 

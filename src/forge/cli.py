@@ -21,6 +21,7 @@ from forge.eval_cli import cmd_eval
 from forge.events import SessionDone
 from forge.local.json_renderer import JsonRenderer, NeedsInput
 from forge.local.rich_renderer import RichRenderer
+from forge.mcp_cli import cmd_mcp
 from forge.pipeline import PipelineError, Report, report_text, resume, run_task
 from forge.ports import Renderer, SessionNotFoundError
 from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
@@ -37,6 +38,7 @@ commands:
   forge resume [ID]    continue a session's plan (default: the latest)
   forge eval           run the benchmark tasks in evals/tasks (--fake: offline)
   forge browser install  download the Chromium the browser agent uses
+  forge mcp add|list|get|remove   manage MCP servers (forge mcp for help)
 """
 
 
@@ -322,6 +324,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "sessions": cmd_sessions,
     "resume": cmd_resume,
     "browser": cmd_browser,
+    "mcp": cmd_mcp,
 }
 
 

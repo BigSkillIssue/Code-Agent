@@ -72,6 +72,7 @@ forge config schema        the configuration schema (--markdown: docs/config.md)
 forge trust                let this project's config set providers, MCP servers and hooks
 forge eval                 run the benchmark tasks (--fake: offline)
 forge browser install      download the Chromium the browser agent uses
+forge mcp add NAME -- CMD  add an MCP server (also: add-json, list, get, remove)
 ```
 
 Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything), `--solo`/`--team`,

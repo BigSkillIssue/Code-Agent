@@ -114,12 +114,14 @@ class McpHub:
 
     def __init__(self, cfg: ForgeConfig, root: Path) -> None:
         self.cfg = cfg
+        self.root = root
         self.connections = {
             name: McpConnection(name, conf, root) for name, conf in cfg.mcp_servers.items()
         }
         self.tools: dict[str, ToolDef] = {}
         self.loaded: set[str] = set()
         self.deferred = False
+        self.server_tools: dict[str, list[str]] = {}  # server -> its Forge tool names
 
     async def connect(self) -> list[str]:
         """Connect every server and list its tools; returns one error line per failed server."""
@@ -144,6 +146,49 @@ class McpHub:
         read_only = bool(tool.annotations and tool.annotations.read_only_hint)
         fn = partial(self.call, server, tool.name, schema)
         self.tools[name] = ToolDef(name, "mcp", fn, spec, "ask", read_only, None)
+        self.server_tools.setdefault(server, []).append(name)
+
+    # ------------------------------------------------------------------ changes at runtime (S56)
+
+    async def add_server(self, name: str, config: McpServerConfig) -> str:
+        """Connect a new (or changed) server now; returns its status line."""
+        await self.remove_server(name)
+        connection = McpConnection(name, config, self.root)
+        self.connections[name] = connection
+        try:
+            session = await connection.start()
+            listing = await session.list_tools()
+        except Exception as exc:
+            return f"{name}: failed: {exc}"
+        for tool in listing.tools:
+            self.add_tool(name, tool)
+        self.deferred = len(self.tools) > self.cfg.limits.mcp_defer_threshold
+        return f"{name}: connected, {len(listing.tools)} tools"
+
+    async def remove_server(self, name: str) -> bool:
+        """Disconnect a server and forget its tools; False if there was none."""
+        connection = self.connections.pop(name, None)
+        for tool_name in self.server_tools.pop(name, []):
+            self.tools.pop(tool_name, None)
+            self.loaded.discard(tool_name)
+        if connection is not None:
+            await connection.close()
+        return connection is not None
+
+    async def reconnect(self, name: str) -> str:
+        """Connect a server again (after a crash or a config change)."""
+        connection = self.connections.get(name)
+        if connection is None:
+            return f"no MCP server '{name}'"
+        return await self.add_server(name, connection.config)
+
+    def status(self) -> list[str]:
+        """One line per server: connected or not, and how many tools it gave."""
+        lines = []
+        for name, connection in self.connections.items():
+            state = "connected" if connection.alive else "not connected"
+            lines.append(f"{name:<16} {state:<14} {len(self.server_tools.get(name, []))} tools")
+        return lines
 
     # ------------------------------------------------------------------ the McpTools port
 

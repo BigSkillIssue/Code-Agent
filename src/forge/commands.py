@@ -12,6 +12,7 @@ from typing import Any
 
 from forge.config import forge_home
 from forge.ctx import Ctx
+from forge.mcp_cli import mcp_command
 from forge.plan import checklist
 from forge.runtime.checkpoint import CheckpointError, restore
 from forge.runtime.files import (
@@ -32,6 +33,7 @@ HELP = {
     "/undo": "roll back the last step or file change",
     "/mode [MODE]": "show or set the sandbox mode or approval policy",
     "/tasks [stop] [ID]": "background jobs, agents and monitors; show or stop one",
+    "/mcp [add|remove|reconnect]": "MCP servers: status, or change them without a restart",
     "/jobs": "background jobs and their status",
     "/agents": "the session's agents with status and usage",
     "/init": "write a FORGE.md with this project's commands and layout",
@@ -81,6 +83,7 @@ async def run_builtin(ctx: Ctx, name: str, args: str) -> SlashResult | None:
         "/plan": lambda: checklist(ctx.session.plan) if ctx.session.plan else "no plan yet",
         "/mode": lambda: set_mode(ctx, args),
         "/tasks": lambda: tasks_command(ctx, args),
+        "/mcp": lambda: mcp_command(ctx, args),
         "/jobs": lambda: jobs_report(ctx),
         "/agents": lambda: ctx.state.team.overview(ctx) if ctx.state.team else "no agents",
         "/init": lambda: init_forge_md(ctx),

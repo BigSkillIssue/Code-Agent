@@ -79,6 +79,21 @@ Review $ARGUMENTS for bugs and report each with path:line.
 
 ## MCP servers
 
+Add servers from the command line (they go to `~/.forge/forge.toml`; `--scope project` uses
+`.forge/config.toml`, which needs `forge trust`):
+
+```bash
+forge mcp add github --env-key GITHUB_TOKEN -- npx -y @modelcontextprotocol/server-github
+forge mcp add docs --url https://mcp.example.com/mcp --header-env Authorization=DOCS_TOKEN
+forge mcp add-json fs '{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}'
+forge mcp list          # every server, where it is configured, and whether it answers
+forge mcp remove docs
+```
+
+Inside a session, `/mcp` shows the servers. `/mcp add ...`, `/mcp remove NAME` and
+`/mcp reconnect NAME` change them without a restart. Secrets are never written to the
+config: `env_keys` and `headers_env` name environment variables. The same entries by hand:
+
 ```toml
 [mcp_servers.github]
 command = ["npx", "-y", "@modelcontextprotocol/server-github"]
