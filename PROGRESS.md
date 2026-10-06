@@ -373,6 +373,13 @@ Next step: done (phase 6)
 - S56: S56: config edits work on the TOML text and replace only [mcp_servers.<name>] and its sub-tables, so comments and other settings stay; the result is parsed again and refused if the entry is not exactly what was written.
 - S56: S56: add-json accepts the Claude Code / Desktop entry format; env values and fixed header values are never stored, only variable names (env_keys, headers_env from ${VAR}).
 - S56 fix: on Windows, /mcp arguments are split without POSIX escaping (shlex posix=False, outer quotes removed), so backslashes in paths stay.
+- Live runs 2026-10-06 (free Groq + Gemini keys): contract tests pass for both (4/4). Two end-to-end tasks on examples/buggy passed (ok=true, tests green). Fixes from these runs:
+  - the wait written in an error body (Gemini RetryInfo, Groq "try again in", "4h45m4s") is honoured;
+  - a 413 above Groq's per-minute token quota counts as bad_request, so the next model is tried at once;
+  - calls written by another model get Gemini's placeholder thought signature;
+  - models out of quota for hours are skipped;
+  - caches are left out of the "Files changed" list;
+  - the refiner no longer asks for file contents.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -381,8 +388,8 @@ Next step: done (phase 6)
 - S08: `CommandResult` gained four optional fields that the shell and job tools need and the contract lacks: `cwd` (folder after a shell command), `pid`, `elapsed_s` and `total_lines` (job status and paging). `ports.JobNotFoundError` was added for unknown job ids. All contract fields are unchanged.
 - S14: `Ctx` gained one field beyond the contract, `state: SessionState` (default factory): runtime state shared by all agents of a session — the usage tally now, the agent registry and budgets later. All contract fields are unchanged.
 - S22: S22: live contract test (tests/contract) not run here: no API keys in this environment.
-- S23: S23: live contract test for Gemini not run here: no GEMINI_API_KEY.
-- S25: S25: Phase 2 gate (10 providers pass the live contract test) not verified here: no API keys in this environment. 12 live cases exist in tests/contract and skip without keys; run 'uv run pytest tests/contract -m live' with keys set.
+- S23: live contract test for Gemini: passed 2026-10-06 (gemini-3.8-flash, free tier) after the model update; see the 'Live runs' decision.
+- S25: Phase 2 gate (10 providers pass the live contract test): 2 of 10 verified live on 2026-10-06 (Gemini, Groq, free tiers); the others still need keys. 12 live cases exist in tests/contract and skip without keys; run 'uv run pytest tests/contract -m live' with keys set.
 - S26b: S26b: native web search for OpenAI/Gemini providers not implemented (they fall back to unsupported unless an HTTP backend is configured).
 - S28: S28: Windows has no OS sandbox yet (restricted token + job object not implemented); there, commands rely on approvals (on-request asks for every non-read-only command) and Forge's path checks. Sandbox tests skip on Windows.
 - S28: S28: Landlock cannot protect .git/.forge inside a writable root (allow-only rules); only Forge's own file tools enforce protected_path. sandbox_denied detection is a heuristic on error text.

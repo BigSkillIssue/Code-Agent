@@ -23,9 +23,9 @@ form, which you need only to change something.
 | 1 | Anthropic | `tests/test_anthropic.py` (recorded SSE) | `anthropic` case |
 | 2 | OpenAI, Chat Completions | `tests/test_openai_compat.py` | `openai` case |
 | 3 | OpenAI, Responses | `tests/test_openai_responses.py` | `openai-responses` case |
-| 4 | Google Gemini | `tests/test_google.py` (recorded stream) | `gemini` case |
+| 4 | Google Gemini | `tests/test_google.py` (recorded stream) | `gemini` case, **passed live 2026-10-06** (gemini-3.8-flash) |
 | 5 | OpenRouter | shared with OpenAI-compatible | `openrouter` case |
-| 6 | Groq | shared with OpenAI-compatible | `groq` case |
+| 6 | Groq | shared with OpenAI-compatible | `groq` case, **passed live 2026-10-06** (openai/gpt-oss-120b) |
 | 7 | DeepSeek | shared with OpenAI-compatible | `deepseek` case |
 | 8 | Mistral | shared with OpenAI-compatible | `mistral` case |
 | 9 | xAI | shared with OpenAI-compatible | `xai` case |
@@ -208,18 +208,30 @@ are skipped.
 
 | Provider | Variable | Notes |
 |---|---|---|
-| Google Gemini (AI Studio) | `GEMINI_API_KEY` | generous free tier; free-tier data may be used for training |
-| Groq | `GROQ_API_KEY` | fast open models, rate-limited |
+| Google Gemini (AI Studio) | `GEMINI_API_KEY` | measured 2026-10-06 for gemini-3.8-flash: 5 requests per minute and 20 per day; free-tier data may be used for training |
+| Groq | `GROQ_API_KEY` | measured 2026-10-06 for openai/gpt-oss-120b: 8,000 tokens per minute (one agent request is 4-9k tokens, so expect waits) |
 | OpenRouter | `OPENROUTER_API_KEY` | models ending in `:free` cost nothing (daily limit) |
 | Mistral | `MISTRAL_API_KEY` | free "Experiment" plan |
-| Ollama (local) | none | free; needs a capable machine |
+| Ollama (local) | none | free and unlimited; needs a capable machine |
 
-A free-only setup for `~/.forge/forge.toml`:
+An agent makes many requests per task, so free tiers run out quickly. Forge copes with that:
+- it waits as long as the provider asks (also when the wait is only in the error body);
+- it switches to the next model of the role when a request is above a per-minute quota;
+- it skips a model for the rest of a long block (a daily quota) instead of asking again.
+
+Put two providers in every role so one can take over. A free-only setup for `~/.forge/forge.toml`,
+the one used for the live runs on 2026-10-06:
 
 ```toml
 [roles]
-coder    = ["gemini/gemini-2.5-flash", "groq/llama-3.3-70b-versatile"]
-planner  = ["gemini/gemini-2.5-flash"]
-reviewer = ["groq/llama-3.3-70b-versatile"]
-refiner  = ["gemini/gemini-2.5-flash"]
+refiner    = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+planner    = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+coder      = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+reviewer   = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+compressor = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+explore    = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
+researcher = ["groq/openai/gpt-oss-120b", "gemini/gemini-3.8-flash"]
 ```
+
+Model names change often: `curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` lists Groq's,
+and Gemini's error message names the replacement when a model is retired.
