@@ -272,4 +272,39 @@ The gate command from `AGENTS.md` (ruff, mypy, pytest) must also pass after ever
     - Build: `uv tool install forge` from the built wheel; PyInstaller single binaries per OS; release workflow on tag.
     - Verify: on each OS, a clean machine runs `forge --version` and `forge run --json --yes "say hi" --fake` successfully.
 
+## Phase 6 · After v1.0: research, browser, streaming, background work
+
+- [ ] **S49 — Research tool and web search fallback**
+    - Files: `tools.py`, `prompts.py`, `agent.py`, `team.py`, `config.py`, `config_docs.py`, `docs/config.md`, `tests/test_research.py`
+    - Build: `research(question, browser, depth)` starts a researcher sub-agent (also in solo mode, main agent only) and returns its report; RESEARCHER prompt; CODER/TEAM_LEAD prefer `research` for anything beyond a single fact; `web.fallback_backend` used when the model has no native search.
+    - Verify: `uv run pytest tests/test_research.py -q`.
+- [ ] **S50 — Browser agent with screenshots**
+    - Files: `ports.py` (`Browser`, `BrowserFactory`), `ctx.py`, `local/playwright_browser.py`, `tools.py` (browser group), `prompts.py` (BROWSER), `team.py`, `config.py`, `cli.py` (`forge browser install`), `wiring.py`, `packaging/pyinstaller.spec`, `tests/test_browser.py`, `tests/conformance/test_browser_conformance.py`
+    - Build: a `browser` role whose tools open, click, type, scroll, read and go back, each returning a screenshot; URLs pass `checked_url` and permission rules; `research(browser=true)` starts it, only when the model has vision.
+    - Verify: `uv run pytest tests/test_browser.py tests/conformance -q` (Chromium integration skipped when no browser is installed).
+- [ ] **S51 — Live tool output**
+    - Files: `events.py` (`ToolOutput`), `ports.py` (`Executor.run(on_output=...)`), `local/local_executor.py`, `runtime/shell.py`, `tools.py`, renderers, conformance suites
+    - Build: shell output reaches the renderers while the command runs, throttled; the final result is unchanged.
+    - Verify: `uv run pytest tests/test_live_output.py tests/conformance -q`.
+- [ ] **S52 — Early tool start**
+    - Files: `providers/base.py` (`StreamItem.tool_call`), provider adapters, `modelcall.py`, `agent.py` or `early_tools.py`
+    - Build: read-only tools that need no approval start as soon as their call is complete in the stream; others wait for the full reply; a failed stream cancels early calls.
+    - Verify: `uv run pytest tests/test_early_tools.py -q`.
+- [ ] **S53 — Monitor tool**
+    - Files: `tools.py` (`monitor`, `monitor_stop`), `monitors.py`, `agent.py`, `team.py`, `prompts.py`, `tests/test_monitor.py`
+    - Build: a background command whose new output lines (optionally filtered) arrive as messages to the agent; the agent waits while monitors run.
+    - Verify: `uv run pytest tests/test_monitor.py -q`.
+- [ ] **S54 — Agent todo list**
+    - Files: `tools.py` (`todo_write`), `events.py` (`TodosUpdated`), `ctx.py`, renderers, `prompts.py`
+    - Build: the agent keeps a visible checklist for multi-step work outside a pipeline plan.
+    - Verify: `uv run pytest -q -k todo`.
+- [ ] **S55 — Background tasks view**
+    - Files: `tasks_view.py`, `commands.py` (`/tasks`), `tui.py`, `local/tui_renderer.py`, `tests/test_tasks_view.py`
+    - Build: one list of running jobs, agents and monitors with output and stop, as `/tasks` and a TUI panel.
+    - Verify: `uv run pytest tests/test_tasks_view.py tests/test_tui.py -q`.
+- [ ] **S56 — MCP server management**
+    - Files: `mcp_admin.py`, `cli.py` (`forge mcp ...`), `commands.py` (`/mcp`), `mcp_client.py`, `tests/test_mcp_admin.py`
+    - Build: `forge mcp add/add-json/list/get/remove` (user or project scope), `/mcp` status, add, remove and reconnect without restart.
+    - Verify: `uv run pytest tests/test_mcp_admin.py -q`; `forge mcp add stub -- python tests/fixtures/mcp_stub.py && forge mcp list`.
+
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.
