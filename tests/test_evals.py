@@ -101,3 +101,18 @@ def test_swebench_runner_offline(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "pass  demo__calc-1" in out and "FAIL  demo__calc-2" in out
     assert "passed 1/2" in out and code == 1
     assert main(["--fake", "eval", "--swebench", str(data), "--limit", "1"]) == 0
+
+
+async def test_a_task_whose_models_all_fail_counts_as_failed() -> None:
+    """A live run crashed the whole suite when every model was out of quota for one task."""
+    from forge.config import ForgeConfig
+    from forge.evals import run_eval
+    from forge.providers.fake import FakeProvider, FakeTurn
+    from forge.wiring import install_fake
+
+    task = load_tasks(REPO / "evals", "fix-add")[0]
+    cfg = ForgeConfig()
+    out = FakeTurn(error="rate_limit", retry_after_s=4 * 3600)
+    install_fake(cfg, FakeProvider([out] * 20))
+    result = await run_eval(task, REPO / "evals", cfg, fake=False)
+    assert not result.passed and "model error (rate_limit)" in result.note

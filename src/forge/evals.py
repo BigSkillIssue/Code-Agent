@@ -15,8 +15,9 @@ from forge.config import ForgeConfig
 from forge.local.auto_renderer import AutoRenderer
 from forge.local.local_executor import LocalExecutor
 from forge.local.memory_store import MemoryStore
-from forge.pipeline import run_task
+from forge.pipeline import PipelineError, run_task
 from forge.prompts import PROMPTS_VERSION
+from forge.providers.base import ProviderError
 from forge.providers.fake import FakeProvider
 from forge.runtime.proc import run_argv
 from forge.runtime.shell import find_shell
@@ -147,16 +148,21 @@ async def run_eval(
             headless=True,
         )
         ctx.state.mode_override = mode
+        problem = ""
         try:
-            report = await run_task(task.prompt, ctx)
+            await run_task(task.prompt, ctx)
+        except (ProviderError, PipelineError) as exc:
+            # One task without a working model must not end the whole suite.
+            kind = exc.kind if isinstance(exc, ProviderError) else "pipeline"
+            problem = f"model error ({kind}): {str(exc)[:200]}"
         finally:
             await close_session(ctx)
         check = await run_argv(_check_argv(python_command(task.check)), root, timeout_s=300)
-    note = "" if check.code == 0 else (check.stdout + check.stderr).strip()[-300:]
+    note = problem or ("" if check.code == 0 else (check.stdout + check.stderr).strip()[-300:])
     return EvalResult(
         name=task.name,
-        passed=check.code == 0,
-        cost_usd=report.usage.cost_usd,
+        passed=check.code == 0 and not problem,
+        cost_usd=ctx.state.usage.cost_usd,
         seconds=time.monotonic() - started,
         note=note,
     )
