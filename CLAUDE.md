@@ -32,6 +32,13 @@ User instruction in the session > `AGENTS.md` > `docs/CONTRACTS.md` > step card 
 10. **Never call real LLM APIs in unit tests.** Use `FakeProvider` and recorded fixtures; live tests are marked `@pytest.mark.live` and skipped by default.
 11. **Never weaken a test to make it pass.** If a test from an earlier step fails, fix the code or report it.
 
+## Forge Web (`forge-web/`)
+
+`forge-web/` is a separate product: a multi-user server with a web UI built on top of Forge, added at the
+user's request. Hard rule 3 ("no server code") does not apply inside `forge-web/`; everywhere else it still
+does. Forge never imports Forge Web, and Forge Web never changes anything under `src/` or `tests/`. Work on
+Forge Web follows `forge-web/AGENTS.md`, `forge-web/PROGRESS.md` and `forge-web/docs/STEPS.md`.
+
 ## Stack and allowed dependencies
 
 Python **3.12+**, managed with **uv**. Use only these packages; add each one in the step that first needs it, not earlier.

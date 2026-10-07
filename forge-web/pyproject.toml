@@ -1,0 +1,61 @@
+# Forge Web: the multi-user server and web UI for Forge. A uv workspace of two packages:
+#   packages/sandbox  -> forge-sandbox (runs inside each project's container)
+#   packages/server   -> forge-web     (the server and the built web UI)
+
+[tool.uv.workspace]
+members = ["packages/sandbox", "packages/server"]
+
+[tool.uv.sources]
+forge = { path = "..", editable = true }
+forge-sandbox = { workspace = true }
+forge-web = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "forge-sandbox",
+    "forge-web",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["packages/sandbox/src", "packages/server/src", "tests"]
+extend-exclude = ["*.md", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF"]
+ignore = [
+    "RUF001", # ambiguous unicode in strings: docs and prompts use typographic dashes
+    "RUF002",
+    "RUF003",
+    "RUF012", # pydantic models declare mutable defaults on purpose
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Model-facing text may exceed the line length.
+"packages/sandbox/src/forge_sandbox/prompts.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Forge itself is found from its source tree (it ships no py.typed marker).
+mypy_path = "packages/sandbox/src:packages/server/src:../src"
+packages = ["forge_sandbox", "forge_web"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not docker and not e2e and not postgres and not live'"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "docker: needs a running Docker (or Podman) daemon",
+    "e2e: drives the web UI in Chromium (needs the built frontend)",
+    "postgres: needs FORGE_WEB_TEST_POSTGRES pointing at a Postgres database",
+    "live: calls a real provider API (needs API keys)",
+]

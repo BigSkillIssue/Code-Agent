@@ -1,0 +1,70 @@
+"""The `forge-web` command: run the server and manage it."""
+
+import argparse
+import asyncio
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+from forge_web import __version__
+from forge_web.settings import SettingsError, WebSettings, load_settings
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The argument parser with every subcommand."""
+    parser = argparse.ArgumentParser(prog="forge-web", description="Forge Web server.")
+    parser.add_argument("--version", action="version", version=f"forge-web {__version__}")
+    parser.add_argument("--config", type=Path, help="settings file (default: in the data folder)")
+    parser.add_argument("--data-dir", type=Path, help="data folder (database, keys, logs)")
+    commands = parser.add_subparsers(dest="command")
+    serve = commands.add_parser("serve", help="run the web server")
+    serve.add_argument("--host", help="address to listen on (default from settings)")
+    serve.add_argument("--port", type=int, help="port to listen on (default from settings)")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run one subcommand and return its exit code."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
+    try:
+        settings = settings_from(args)
+    except SettingsError as err:
+        print(f"error: {err}", file=sys.stderr)
+        return 1
+    if args.command == "serve":
+        return serve(settings)
+    return 0
+
+
+def settings_from(args: argparse.Namespace) -> WebSettings:
+    """Settings from the file and environment, with the command-line options on top."""
+    overrides: dict[str, object] = {}
+    if args.data_dir is not None:
+        overrides["data_dir"] = str(args.data_dir)
+    for key in ("host", "port"):
+        if getattr(args, key, None) is not None:
+            overrides[f"server.{key}"] = getattr(args, key)
+    return load_settings(args.config, overrides=overrides)
+
+
+def serve(settings: WebSettings) -> int:
+    """Serve until interrupted (one process: run state lives in memory)."""
+    import uvicorn
+
+    from forge_web.app import create_app
+
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    config = uvicorn.Config(
+        create_app(settings),
+        host=settings.server.host,
+        port=settings.server.port,
+        proxy_headers=True,
+        log_level="info",
+    )
+    # asyncio.run keeps the default loop (Proactor on Windows), which subprocesses need.
+    asyncio.run(uvicorn.Server(config).serve())
+    return 0

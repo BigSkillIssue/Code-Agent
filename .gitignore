@@ -22,3 +22,7 @@ examples/plugin_demo/.forge/changes.log
 .idea/
 .vscode/
 .DS_Store
+
+# Forge Web
+forge-web/frontend/node_modules/
+forge-web/packages/server/src/forge_web/static/

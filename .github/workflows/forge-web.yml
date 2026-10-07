@@ -1,0 +1,40 @@
+name: Forge Web
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["forge-web/**", "src/forge/**", ".github/workflows/forge-web.yml"]
+  pull_request:
+    paths: ["forge-web/**", "src/forge/**", ".github/workflows/forge-web.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: forge-web-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: forge-web
+
+jobs:
+  gate:
+    name: gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync
+      - name: Lint
+        run: uv run ruff check .
+      - name: Types
+        run: uv run mypy packages
+      - name: Tests
+        run: uv run pytest -q

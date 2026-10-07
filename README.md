@@ -59,6 +59,7 @@ The [quick start](docs/quickstart.md) walks through a real fix step by step.
 | [Security](docs/SECURITY.md) | Sandbox, rules, approvals, secrets, known limits |
 | [Design](docs/PLAN.md), [Contracts](docs/CONTRACTS.md) | Architecture and fixed interfaces |
 | [Eval results](evals/RESULTS.md) | Benchmark runs per model and prompt version |
+| [Forge Web](forge-web/README.md) | Multi-user server with a web UI (separate product in `forge-web/`) |
 
 ## Commands
 
