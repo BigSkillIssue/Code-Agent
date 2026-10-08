@@ -1,4 +1,4 @@
-// The panel next to a chat: the project's files and its changes.
+// The panel next to a chat: the project's files, its changes and (for editors) its terminals.
 
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -7,8 +7,9 @@ import { t } from "../lib/i18n";
 import { Changes } from "./Changes";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
+import { TerminalPanel } from "./Terminal";
 
-type Tab = "files" | "changes";
+type Tab = "files" | "changes" | "terminal";
 
 interface Props {
   projectId: string;
@@ -23,10 +24,16 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
   const client = useMemo(() => api ?? projectApi(projectId), [api, projectId]);
   const [tab, setTab] = useState<Tab>("files");
   const [file, setFile] = useState<string | null>(null);
+  const [terminalsOpened, setTerminalsOpened] = useState(false); // stay connected once opened
   const tabs: [Tab, string][] = [
     ["files", t("files")],
     ["changes", t("changes")],
+    ...(canEdit ? [["terminal", t("terminal")] as [Tab, string]] : []),
   ];
+  const choose = (next: Tab) => {
+    setTab(next);
+    if (next === "terminal") setTerminalsOpened(true);
+  };
   return (
     <aside className="flex h-full min-w-0 flex-col bg-card" aria-label={t("showPanel")}>
       <div className="flex items-center gap-1 border-b border-line px-2" role="tablist">
@@ -37,7 +44,7 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
             role="tab"
             aria-selected={tab === id}
             className={`px-2 py-2 text-sm ${tab === id ? "border-b-2 border-accent font-medium" : "text-muted"}`}
-            onClick={() => setTab(id)}
+            onClick={() => choose(id)}
           >
             {label}
           </button>
@@ -54,6 +61,11 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
             <FileTree api={client} canEdit={canEdit} refreshKey={refreshKey} onOpen={setFile} onError={onError} />
           ))}
         {tab === "changes" && <Changes api={client} canEdit={canEdit} refreshKey={refreshKey} onError={onError} />}
+        {canEdit && terminalsOpened && (
+          <div className={tab === "terminal" ? "h-full" : "hidden"}>
+            <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -49,7 +49,7 @@ class Listener:
     def __init__(self, terminal: "Terminal", channel: Channel) -> None:
         self.terminal = terminal
         self.channel = channel
-        self.queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self.queue: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.pending = 0
         self.task = asyncio.create_task(self._send())
 
@@ -58,13 +58,17 @@ class Listener:
         self.pending += len(data)
         self.queue.put_nowait(data)
 
+    def finish(self) -> None:
+        """Close the channel once the queued output is sent (the terminal has ended)."""
+        self.queue.put_nowait(None)
+
     async def _send(self) -> None:
         with contextlib.suppress(ChannelClosed):
-            while True:
-                data = await self.queue.get()
+            while (data := await self.queue.get()) is not None:
                 await self.channel.send(data)
                 self.pending -= len(data)
                 self.terminal.maybe_resume()
+            await self.channel.close()
 
 
 class Terminal:
@@ -106,10 +110,7 @@ class Terminal:
             self._loop.remove_reader(self.master)
             self._loop.create_task(self._ended())
             return
-        self.scrollback += data
-        del self.scrollback[:-SCROLLBACK]
-        for listener in self.listeners:
-            listener.push(data)
+        self._broadcast(data)
         if self.listeners and max(lis.pending for lis in self.listeners) > PAUSE_AT:
             self._loop.remove_reader(self.master)
             self.paused = True
@@ -121,10 +122,17 @@ class Terminal:
             self.paused = False
             self._loop.add_reader(self.master, self._readable)
 
+    def _broadcast(self, data: bytes) -> None:
+        self.scrollback += data
+        del self.scrollback[:-SCROLLBACK]
+        for listener in self.listeners:
+            listener.push(data)
+
     async def _ended(self) -> None:
         self.exit_code = await asyncio.to_thread(self.process.wait)
+        self._broadcast(f"\r\n[process exited with code {self.exit_code}]\r\n".encode())
         for listener in self.listeners:
-            listener.push(f"\r\n[process exited with code {self.exit_code}]\r\n".encode())
+            listener.finish()
 
     def write(self, data: bytes) -> None:
         """Type into the terminal (buffered when the terminal is not ready for more)."""
@@ -164,6 +172,8 @@ class Terminal:
             os.close(self.master)
         for listener in self.listeners:
             listener.task.cancel()
+            with contextlib.suppress(ChannelClosed):
+                await listener.channel.close()
 
 
 def _controlling_terminal() -> None:
@@ -246,6 +256,8 @@ class Ptys:
         listener = Listener(terminal, channel)
         if terminal.scrollback:
             listener.push(bytes(terminal.scrollback))
+        if terminal.exit_code is not None:
+            listener.finish()
         terminal.listeners.add(listener)
         try:
             while True:

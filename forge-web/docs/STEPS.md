@@ -104,7 +104,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: empty project, git URL (public or with the user's token), ZIP upload unpacked inside the container, server folder (admins only, under allowed roots); quotas (projects per user, disk); delete with container and volumes.
     - Tests: zip-slip, symlink entries, device entries and zip bombs rejected; a server folder outside the allowlist rejected; quota enforced.
     - Verify: `uv run pytest tests/test_projects.py tests/test_unzip.py -q`
-- [ ] **W13 — Terminal**
+- [x] **W13 — Terminal**
     - Files: `forge_web/terminals.py`, `frontend/src/panels/Terminal.tsx`, `tests/test_terminals.py`
     - Build: PTY sessions through the daemon, one WebSocket per terminal, xterm.js with tabs and resize.
     - Tests: echo and resize; an output flood does not stall chat events on the same connection.

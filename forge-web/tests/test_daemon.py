@@ -107,6 +107,29 @@ async def test_terminal_echo_and_resize(tmp_path: Path) -> None:
         await client.call("pty.close", {"id": term["id"]})
 
 
+async def read_to_end(channel: Any) -> bytes:
+    seen = b""
+    while data := await asyncio.wait_for(channel.read(), 10):
+        seen += data
+    return seen
+
+
+@POSIX_ONLY
+async def test_a_terminal_that_ends_closes_its_channels(tmp_path: Path) -> None:
+    async with sandbox(tmp_path) as (_daemon, client):
+        term = await client.call("pty.create", {"argv": ["/bin/sh"], "cols": 80, "rows": 24})
+        channel = await client.open("pty", {"id": term["id"]})
+        await channel.send(b"echo bye-$((1+1)); exit 3\n")
+        seen = await read_to_end(channel)
+        assert b"bye-2" in seen and b"exited with code 3" in seen
+        later = await client.open("pty", {"id": term["id"]})  # scrollback, then the end
+        assert b"exited with code 3" in await read_to_end(later)
+        other = await client.call("pty.create", {"argv": ["/bin/sh"], "cols": 80, "rows": 24})
+        watching = await client.open("pty", {"id": other["id"]})
+        await client.call("pty.close", {"id": other["id"]})
+        await read_to_end(watching)  # ends instead of waiting forever
+
+
 async def test_attaching_to_a_missing_terminal_is_refused(tmp_path: Path) -> None:
     async with sandbox(tmp_path) as (_daemon, client):
         with pytest.raises(OpenFailed) as err:

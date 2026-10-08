@@ -42,7 +42,7 @@ OWN = {
 # once access is granted, these routes answer 503 here.
 SANDBOX_PATHS = (
     "/api/projects/{project_id}/files", "/api/projects/{project_id}/git/",
-    "/api/projects/{project_id}/usage",
+    "/api/projects/{project_id}/usage", "/api/projects/{project_id}/terminals",
 )  # fmt: skip
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
@@ -67,6 +67,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "SwitchIn": {"branch": "evil", "create": True},
     "RemoteIn": {"url": "https://example.com/evil.git"},
     "SyncIn": {"branch": "main"},
+    "TerminalIn": {"cols": 80, "rows": 24},
 }
 
 
@@ -166,7 +167,7 @@ def filled(path: str, world: World) -> str:
         "project_id": world.project_id, "chat_id": world.chat_id, "member_id": world.owner.id,
         "user_id": world.owner.id, "token": "x" * 20, "invite_id": "0" * 16,
         "session_id": "0" * 16, "key_id": "0" * 16, "name": "google", "provider": "google",
-        "credential_id": "0" * 16,
+        "credential_id": "0" * 16, "terminal_id": "t0123abcd",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

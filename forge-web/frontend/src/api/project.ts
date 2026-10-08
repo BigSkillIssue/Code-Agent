@@ -49,7 +49,22 @@ export interface SyncResult {
   output: string;
 }
 
+export interface TerminalInfo {
+  id: string;
+  cols: number;
+  rows: number;
+  started_at: number;
+  running: boolean;
+  exit_code: number | null;
+  attached: number;
+}
+
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
+
+function socketUrl(path: string): string {
+  const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${window.location.host}${path}`;
+}
 
 export function projectApi(projectId: string) {
   const base = `/api/projects/${encodeURIComponent(projectId)}`;
@@ -81,6 +96,10 @@ export function projectApi(projectId: string) {
     setRemote: (url: string) => api.put(`${base}/git/remote`, { url }),
     push: () => api.post<SyncResult>(`${base}/git/push`, {}),
     pull: () => api.post<SyncResult>(`${base}/git/pull`, {}),
+    terminals: () => api.get<TerminalInfo[]>(`${base}/terminals`),
+    openTerminal: (cols: number, rows: number) => api.post<TerminalInfo>(`${base}/terminals`, { cols, rows }),
+    closeTerminal: (id: string) => api.delete(`${base}/terminals/${encodeURIComponent(id)}`),
+    terminalUrl: (id: string) => socketUrl(`${base}/terminals/${encodeURIComponent(id)}/ws`),
   };
 }
 

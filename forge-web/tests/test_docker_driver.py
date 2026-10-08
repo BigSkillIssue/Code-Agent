@@ -69,7 +69,7 @@ needs_docker = [
 async def driver() -> AsyncIterator[DockerDriver]:
     created = DockerDriver(SandboxSettings(image=IMAGE, cpus=1, memory="1g", pids=256))
     yield created
-    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d"):
+    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d", "dtest-t"):
         await created.remove(project_id)
 
 
@@ -309,5 +309,22 @@ async def test_a_git_job_clones_into_a_project(driver: DockerDriver) -> None:
         cloned = await client.call("git.bundle_clone", {"url": "https://example.com/up.git"})
         assert cloned == {"branch": "trunk"}
         assert (await client.call("fs.read", {"path": "hello.txt"}))["text"] == "hi\n"
+    finally:
+        await client.close()
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_a_terminal_runs_as_the_project_user(driver: DockerDriver) -> None:
+    client = await client_for(driver, "dtest-t")
+    try:
+        term = await client.call("pty.create", {"cols": 80, "rows": 24})
+        channel = await client.open("pty", {"id": term["id"]})
+        await channel.send(b"echo who-$(id -u)-$(pwd); exit 7\n")
+        seen = b""
+        while data := await asyncio.wait_for(channel.read(), 15):
+            seen += data
+        assert b"who-1000-/workspace" in seen  # not root, in the workspace
+        assert b"exited with code 7" in seen
     finally:
         await client.close()

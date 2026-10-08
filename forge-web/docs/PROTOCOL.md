@@ -110,7 +110,7 @@ Notification (daemon → server): `procs.exited {id, exit_code}`.
 | Kind | Opened by | Arguments | Carries |
 | --- | --- | --- | --- |
 | `chat` | server | `chat_id`, `after_seq` | messages: `hello` (chat info + `oldest`), `gap` (items before `oldest` are gone), then `{"type": "item", "seq", "item"}` in order |
-| `pty` | server | `id` | DATA both ways (output / keystrokes); a `{"type": "resize", "cols", "rows"}` message |
+| `pty` | server | `id` | DATA both ways (output / keystrokes, scrollback first); a `{"type": "resize", "cols", "rows"}` message; the daemon closes it after the last output once the terminal has ended |
 | `connect` | server | `port` | DATA to and from 127.0.0.1:`port` inside the sandbox (live preview) |
 | `forward` | daemon | `target` | DATA to and from a server target (LLM gateway, egress proxy); unknown targets are refused |
 

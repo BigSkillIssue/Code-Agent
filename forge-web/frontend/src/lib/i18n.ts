@@ -89,7 +89,7 @@ const en = {
   data: "Data",
   files: "Files",
   changes: "Changes",
-  showPanel: "Files and changes",
+  showPanel: "Files, changes and terminal",
   close: "Close",
   newFile: "New file",
   newFolder: "New folder",
@@ -145,6 +145,15 @@ const en = {
   creating: "Creating…",
   cloning: "Cloning the repository…",
   unpacking: "Uploading and unpacking…",
+  terminal: "Terminal",
+  terminalN: "Terminal {n}",
+  newTerminal: "New terminal",
+  closeTerminal: "Close terminal",
+  noTerminals: "No terminal open. Start one with +.",
+  connecting: "Connecting…",
+  terminalEnded: "This terminal has ended.",
+  terminalLost: "The connection to this terminal is lost.",
+  reconnect: "Reconnect",
 };
 
 type Texts = typeof en;
@@ -239,7 +248,7 @@ const de: Texts = {
   data: "Daten",
   files: "Dateien",
   changes: "Änderungen",
-  showPanel: "Dateien und Änderungen",
+  showPanel: "Dateien, Änderungen und Terminal",
   close: "Schließen",
   newFile: "Neue Datei",
   newFolder: "Neuer Ordner",
@@ -295,6 +304,15 @@ const de: Texts = {
   creating: "Wird angelegt …",
   cloning: "Repository wird geklont …",
   unpacking: "Wird hochgeladen und entpackt …",
+  terminal: "Terminal",
+  terminalN: "Terminal {n}",
+  newTerminal: "Neues Terminal",
+  closeTerminal: "Terminal schließen",
+  noTerminals: "Kein Terminal offen. Starte eines mit +.",
+  connecting: "Verbinde …",
+  terminalEnded: "Dieses Terminal ist beendet.",
+  terminalLost: "Die Verbindung zu diesem Terminal ist abgebrochen.",
+  reconnect: "Neu verbinden",
 };
 
 export type TextKey = keyof Texts;

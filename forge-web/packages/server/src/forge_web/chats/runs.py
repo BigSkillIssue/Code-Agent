@@ -109,6 +109,7 @@ class RunManager:
         self.boots: dict[str, str] = {}
         self.lives: dict[str, LiveChat] = {}
         self.last_active: dict[str, float] = {}  # project id -> last time it was used
+        self.closing = False  # the server is shutting down
         self._project_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._chat_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -116,7 +117,7 @@ class RunManager:
 
     async def link(self, project_id: str) -> SandboxClient:
         """The project's sandbox connection, (re)connecting when needed."""
-        self.last_active[project_id] = time.monotonic()
+        self.touch(project_id)
         async with self._project_locks[project_id]:
             client = self.links.get(project_id)
             if client is not None and not client.closed:
@@ -132,6 +133,10 @@ class RunManager:
             self.links[project_id] = client
             self.boots[project_id] = str(hello.info.get("boot", ""))
             return client
+
+    def touch(self, project_id: str) -> None:
+        """Someone used the project's sandbox (it is not idle)."""
+        self.last_active[project_id] = time.monotonic()
 
     async def call(self, project_id: str, method: str, params: dict[str, Any] | None = None) -> Any:
         """Call a daemon method of the project's sandbox."""
@@ -355,6 +360,7 @@ class RunManager:
 
     async def close(self) -> None:
         """Stop following every chat and close every sandbox connection."""
+        self.closing = True
         for live in list(self.lives.values()):
             await self._stop_relay(live)
         for client in list(self.links.values()):

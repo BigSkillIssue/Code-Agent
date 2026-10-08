@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W13
+Next step: W14
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -22,7 +22,8 @@ Next step: W13
 | W11b | 2026-10-08 | b2fc642 | forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/{gitsync,git_api,settings,services}.py, forge_sandbox/{gitops,methods}.py, tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | push and pull through a git job outside the project: bundles in, bundles out, the token only in the job |
 | W11c | 2026-10-08 | 5d6980f | frontend/src/panels/*, frontend/src/api/{client,project}.ts, frontend/src/components/ChatView.tsx, frontend/src/lib/i18n.ts, frontend/package.json, forge_sandbox/gitinfo.py, tests/test_git_api.py | file tree, editor and changes panel beside the chat; Forge's working files excluded from git; patched react-router and diff |
 | W12a | 2026-10-08 | befb1c8 | forge_sandbox/{unzip,usage,fsops,gitops,methods,daemon}.py, forge_web/{projects,sources,quotas,gitsync,files_api,startup,settings,services,app,sandbox_calls}.py, forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/chats/api.py, tests/{test_unzip,test_projects,test_docker_driver,test_access}.py, docs/{PROTOCOL,STEPS}.md | projects from git URLs, ZIP uploads and server folders; quotas for projects per user and disk per project |
-| W12b | 2026-10-08 | (next) | frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx, frontend/src/{api/project,state/store,lib/i18n}.ts | the new-project dialog with every source |
+| W12b | 2026-10-08 | f532536 | frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx, frontend/src/{api/project,state/store,lib/i18n}.ts | the new-project dialog with every source |
+| W13 | 2026-10-08 | (next) | forge_web/{terminals,app}.py, forge_web/chats/runs.py, forge_sandbox/pty.py, frontend/src/panels/{Terminal,XtermView,ProjectPanel,terminal.test}.tsx, frontend/src/{api/project,lib/i18n}.ts, tests/{test_terminals,test_daemon,test_docker_driver,test_access}.py, docs/PROTOCOL.md | terminals in the browser: tabs, resize, reconnect; a terminal that ends closes its channels |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -132,10 +133,16 @@ Next step: W13
 - W12a: quotas: `quotas.projects_per_user` (default 20, admins exempt) and `quotas.project_disk_mb` (default 10 000), measured with `fs.usage` (cached for a minute). Uploads and ZIP imports may only use the room that is left; a clone over the limit is deleted; a full project refuses new chat messages.
 
 - W12b: dialogs render into a portal on `document.body`: the sidebar slides with a CSS transform, which would otherwise become the containing block of a fixed overlay.
+- W13: one WebSocket per terminal (`/api/projects/{id}/terminals/{tid}/ws`), editors only; binary messages are keystrokes and output, a text message resizes. Once open, the socket closes with 4404 when the terminal is gone (exited, closed, sandbox stopped) and with 1012 when the server shuts down; the browser reconnects only after other drops (backoff, 5 failed tries, then a button) and resets the screen first because the daemon replays the scrollback on every attach.
+- W13: a terminal that ends (its program exited, or `pty.close`) now closes every attached `pty` channel after the last output, so viewers learn about it instead of waiting forever (`forge_sandbox/pty.py`, outside the card's files).
+- W13: typing in a terminal counts as activity for the idle stop (`RunManager.touch`); an open but unused terminal does not keep a sandbox running.
+- W13: xterm.js 6.0.0 + addon-fit 0.11.0 load only when the terminal tab opens (own chunk, like the code editor); the tab list loads on the first visit and opens a shell if there is none, sized to the panel so the prompt does not wrap twice; terminals stay connected while the panel is open, also on other tabs.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
 - W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
-- W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+, a major upgrade for a later step.
+- W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+ (npm now suggests 5.0.3), a major upgrade for a later step.
 - W12a: a cloned repository's `.forge/config.toml` (hooks, MCP servers) is loaded by Forge inside the sandbox like any project config; it cannot leave the sandbox, but it could run commands without asking. Review with W17 whether chats should ignore project hooks/MCP until the owner trusts the project.
+- W13: Docker Hub answered the sandbox image build with 429 (rate limit for this network); the base image was pulled from `mirror.gcr.io/library/python:3.12-slim-bookworm` and tagged locally. Worth a `--build-arg` for the base image in W16 so installs behind a mirror work.
+- W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a.
