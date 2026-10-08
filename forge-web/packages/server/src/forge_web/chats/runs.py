@@ -11,7 +11,7 @@ import json
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,8 +31,14 @@ from forge_web.sandbox_client import ForwardTarget, SandboxClient
 log = logging.getLogger(__name__)
 MAX_STREAMING = 200_000
 MAX_OUTPUT_LINES = 500
-ChatOptionsFor = Callable[[Chat], dict[str, Any]]
+ChatOptionsFor = Callable[[Chat, dict[str, Any]], dict[str, Any]]  # chat, link info -> options
+ChatEnvFor = Callable[[Chat], dict[str, str]]
 TargetsFor = Callable[[str], dict[str, ForwardTarget]]
+OnLink = Callable[[str, SandboxClient], Awaitable[dict[str, Any]]]
+
+
+async def _no_setup(_project_id: str, _client: SandboxClient) -> dict[str, Any]:
+    return {}
 
 
 @dataclass
@@ -86,6 +92,9 @@ class RunManager:
         hub: Hub,
         options_for: ChatOptionsFor,
         targets_for: TargetsFor | None = None,
+        *,
+        env_for: ChatEnvFor | None = None,
+        on_link: OnLink = _no_setup,
     ) -> None:
         self.db = db
         self.writer = writer
@@ -93,7 +102,10 @@ class RunManager:
         self.hub = hub
         self.options_for = options_for
         self.targets_for = targets_for or (lambda _project_id: {})
+        self.env_for = env_for or (lambda _chat: {})
+        self.on_link = on_link
         self.links: dict[str, SandboxClient] = {}
+        self.link_info: dict[str, dict[str, Any]] = {}
         self.boots: dict[str, str] = {}
         self.lives: dict[str, LiveChat] = {}
         self.last_active: dict[str, float] = {}  # project id -> last time it was used
@@ -113,6 +125,7 @@ class RunManager:
             client = SandboxClient(link, targets=self.targets_for(project_id))
             try:
                 hello = await client.start()
+                self.link_info[project_id] = await self.on_link(project_id, client)
             except Exception:
                 await client.close()
                 raise
@@ -170,11 +183,13 @@ class RunManager:
             if live.boot != boot:  # the daemon restarted: its numbers start again at 1
                 live.boot, live.dseq = boot, 0
                 await self._save(live.chat_id, daemon_boot=boot)
-            options = self.options_for(chat)
-            wanted = json.dumps(options, sort_keys=True)
+            options = self.options_for(chat, self.link_info.get(chat.project_id, {}))
+            env = self.env_for(chat)
+            wanted = json.dumps([options, env], sort_keys=True)
             following = live.relay is not None and not live.relay.done()
             if not following or wanted != live.opened_with:
-                await client.call("chat.open", {"chat_id": chat.id, "options": options})
+                params = {"chat_id": chat.id, "options": options, "env": env}
+                await client.call("chat.open", params)
                 live.opened_with = wanted
             if not following:
                 live.relay = asyncio.create_task(self._relay(live, client))
@@ -313,6 +328,11 @@ class RunManager:
             live.relay.cancel()
             await asyncio.gather(live.relay, return_exceptions=True)
             live.relay = None
+
+    def working(self, chat_id: str) -> bool:
+        """The chat is running a turn or waiting for an answer."""
+        live = self.lives.get(chat_id)
+        return live is not None and live.state in ("running", "waiting")
 
     def busy(self, project_id: str) -> bool:
         """A chat of the project is running or waiting for an answer."""

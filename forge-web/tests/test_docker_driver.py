@@ -221,3 +221,29 @@ async def test_a_chat_survives_a_server_restart(docker_data: Path) -> None:
             assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
             read = await second.services.runs.call(project["id"], "fs.read", {"path": "a.txt"})
             assert read["text"] == "A\n"
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_programs_reach_only_allowed_hosts_through_the_egress_proxy() -> None:
+    from forge_web.egress import Egress, EgressPolicy
+
+    driver = DockerDriver(SandboxSettings(image=IMAGE, cpus=1, memory="1g"), egress_port=47102)
+    egress = Egress(EgressPolicy(["pypi.org"]))
+    client = SandboxClient(await driver.connect("dtest-e"), targets={"egress": egress.connect})
+    await client.start()
+    try:
+        await client.call("forward.listen", {"target": "egress", "port": 47102})
+        fetch = (
+            "import urllib.request\n"
+            "for url in ('https://pypi.org/simple/pip/', 'https://example.com/'):\n"
+            " try:\n  print(urllib.request.urlopen(url, timeout=20).status)\n"
+            " except Exception as e:\n  print('blocked', type(e).__name__)"
+        )
+        lines = await run_as_agent(client, fetch)
+        assert lines[0] == "200", lines
+        assert lines[1].startswith("blocked"), lines
+    finally:
+        await client.close()
+        await egress.close()
+        await driver.remove("dtest-e")

@@ -31,8 +31,9 @@ class DockerDriver:
 
     name = "docker"
 
-    def __init__(self, settings: SandboxSettings) -> None:
+    def __init__(self, settings: SandboxSettings, *, egress_port: int | None = None) -> None:
         self.settings = settings
+        self.egress_port = egress_port  # programs reach the internet only through this proxy
         self.binary = shutil.which(settings.docker) or settings.docker
         self._runtime: str | None = None
         self._locks: dict[str, asyncio.Lock] = {}
@@ -70,6 +71,16 @@ class DockerDriver:
         ]  # fmt: skip
         if runtime:
             args += ["--runtime", runtime]
+        if self.egress_port is not None:
+            proxy = f"http://127.0.0.1:{self.egress_port}"
+            for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
+                args += ["--env", f"{name}={proxy}"]
+            args += [
+                "--env",
+                "NO_PROXY=127.0.0.1,localhost",
+                "--env",
+                "no_proxy=127.0.0.1,localhost",
+            ]
         return [*args, s.image]
 
     async def docker(

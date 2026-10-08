@@ -64,6 +64,7 @@ class Chat(Base):
     model: Mapped[str] = mapped_column(String(200), default="")
     shared: Mapped[bool] = mapped_column(Boolean, default=False)
     daemon_boot: Mapped[str] = mapped_column(String(64), default="")
+    token_generation: Mapped[int] = mapped_column(Integer, default=1)  # bump to revoke tokens
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
 
@@ -82,3 +83,51 @@ class ChatEvent(Base):
     type: Mapped[str] = mapped_column(String(32))
     kind: Mapped[str] = mapped_column(String(32), default="")  # event kind for type == event
     data: Mapped[str] = mapped_column(Text)  # the item as JSON
+
+
+class ApiKey(Base):
+    """A model provider's API key, encrypted: a user's own, or the server's (owner_id "")."""
+
+    __tablename__ = "api_keys"
+    __table_args__ = (Index("api_keys_by_owner", "owner_id", "provider"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(32), default="")  # "" = a server key
+    provider: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(100), default="")
+    hint: Mapped[str] = mapped_column(String(16), default="")  # the last characters, for people
+    secret: Mapped[str] = mapped_column(Text)  # encrypted with the vault
+    created_at: Mapped[float] = mapped_column(Float)
+    last_used_at: Mapped[float] = mapped_column(Float, default=0)
+
+
+class KeyGrant(Base):
+    """A user's permission to use the server's keys, with a monthly limit."""
+
+    __tablename__ = "key_grants"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    monthly_limit_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = default
+
+
+class UsageRecord(Base):
+    """One model call through the gateway, as the upstream reported it (or estimated)."""
+
+    __tablename__ = "usage"
+    __table_args__ = (Index("usage_by_user", "user_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32))
+    chat_id: Mapped[str] = mapped_column(String(32), default="")
+    project_id: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(200), default="")
+    key_kind: Mapped[str] = mapped_column(String(8))  # own | server | none
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0)
+    estimated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[float] = mapped_column(Float)

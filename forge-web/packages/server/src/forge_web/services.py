@@ -9,8 +9,11 @@ from forge_web.chats.runs import RunManager
 from forge_web.containers.driver import ContainerDriver
 from forge_web.db.engine import Database
 from forge_web.db.writer import EventWriter
+from forge_web.egress import Egress
+from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.hub import Hub
 from forge_web.settings import WebSettings
+from forge_web.vault import Vault
 
 
 @dataclass
@@ -23,6 +26,10 @@ class Services:
     driver: ContainerDriver
     hub: Hub
     runs: RunManager
+    vault: Vault
+    gateway: Gateway
+    gateway_server: PrivateServer
+    egress: Egress
     dev_token: str = ""
     dev_user_id: str = ""
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work

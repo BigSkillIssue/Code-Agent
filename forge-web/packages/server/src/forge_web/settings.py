@@ -54,6 +54,32 @@ class SandboxSettings(_Strict):
     idle_minutes: float = Field(default=30, gt=0)  # stop a project's container after this long
 
 
+DEFAULT_EGRESS = [
+    "pypi.org", "files.pythonhosted.org", "registry.npmjs.org", "registry.yarnpkg.com",
+    "github.com", "codeload.github.com", "objects.githubusercontent.com",
+    "raw.githubusercontent.com", "gitlab.com", "bitbucket.org", "crates.io", "static.crates.io",
+    "index.crates.io", "proxy.golang.org", "sum.golang.org", "rubygems.org",
+    "repo.maven.apache.org", "deb.debian.org", "security.debian.org",
+]  # fmt: skip
+
+
+class GatewaySettings(_Strict):
+    """The model gateway: whose keys pay, and how much."""
+
+    server_keys_for: Literal["admins", "granted", "everyone"] = "granted"
+    monthly_limit_usd: float = Field(default=20.0, ge=0)  # per user, on the server's keys
+    max_output_tokens: int = Field(default=64_000, ge=256)  # per request
+    upstreams: dict[str, str] = {}  # provider -> base URL (self-hosted proxies, tests)
+
+
+class EgressSettings(_Strict):
+    """Where programs in a container may connect (through the egress proxy)."""
+
+    enabled: bool = True
+    allow: list[str] = Field(default_factory=lambda: list(DEFAULT_EGRESS))  # "*" = any host
+    allow_private: bool = False  # private and loopback addresses (only for tests)
+
+
 class DevSettings(_Strict):
     """Development mode: one local user, a login link in the log, optionally the fake model."""
 
@@ -69,6 +95,8 @@ class WebSettings(_Strict):
     server: ServerSettings = ServerSettings()
     database: DatabaseSettings = DatabaseSettings()
     sandbox: SandboxSettings = SandboxSettings()
+    gateway: GatewaySettings = GatewaySettings()
+    egress: EgressSettings = EgressSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:
