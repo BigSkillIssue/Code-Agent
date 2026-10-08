@@ -1,0 +1,36 @@
+# Forge Web as a systemd service (Linux, server installed without Docker).
+#   sudo useradd --system --create-home --home-dir /var/lib/forge-web --groups docker forge-web
+#   sudo cp forge-web.service /etc/systemd/system/ && sudo systemctl enable --now forge-web
+# The docker group is as powerful as root on this machine: give it to this user only.
+[Unit]
+Description=Forge Web
+Documentation=https://github.com/BigSkillIssue/Code-Agent/tree/main/forge-web/docs/EINRICHTUNG.md
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=forge-web
+Group=forge-web
+SupplementaryGroups=docker
+Environment=FORGE_WEB_DATA_DIR=/var/lib/forge-web
+Environment=FORGE_WEB_CONFIG=/etc/forge-web/forge-web.toml
+# Secrets (GOOGLE/GITHUB client secrets, SMTP password) as FORGE_WEB_..._SECRET=...
+EnvironmentFile=-/etc/forge-web/forge-web.env
+ExecStart=/opt/forge-web/bin/forge-web serve
+Restart=on-failure
+RestartSec=5
+# Hardening: the server itself writes only its data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/forge-web
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

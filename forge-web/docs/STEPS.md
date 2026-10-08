@@ -119,7 +119,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: profile, linked sign-ins, API keys, TOTP two-factor (required for admins if set), default models; admin: users, invites, roles, quotas, server keys and grants, usage, audit log, sign-up mode, sandbox limits.
     - Tests: usage totals equal the database; TOTP codes (RFC 6238 vectors); admin-only routes refuse members.
     - Verify: `uv run pytest tests/test_admin.py tests/test_totp.py -q`
-- [ ] **W16 — Deployment** (split: [x] W16a doctor, TLS check, wheel; [ ] W16b images, compose, services, release, guide)
+- [x] **W16 — Deployment** (split: W16a doctor, TLS check, wheel; W16b images, compose, services, release, guide)
     - Files: `docker/server.Dockerfile`, `compose.yaml`, `deploy/{Caddyfile,forge-web.service,com.forge.web.plist,forge-web-winsw.xml}`, `forge_web/doctor.py`, `.github/workflows/forge-web-release.yml`, `docs/EINRICHTUNG.md`, `README.md`
     - Build: server image and compose file (server + Caddy with automatic HTTPS); service templates for Linux, macOS and Windows; `forge-web doctor`; a release workflow building the wheel with the web UI and the images; a German step-by-step setup guide including Google and GitHub OAuth apps.
     - Tests: `doctor` reports a missing Docker or image; the wheel contains the built UI.

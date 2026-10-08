@@ -1,0 +1,21 @@
+<!-- Forge Web as a Windows service with WinSW (https://github.com/winsw/winsw).
+     Rename WinSW-x64.exe to forge-web-winsw.exe next to this file, then:
+       forge-web-winsw.exe install
+       forge-web-winsw.exe start
+     Docker Desktop needs a signed-in user; on a server, prefer WSL2 with Docker Engine. -->
+<service>
+  <id>forge-web</id>
+  <name>Forge Web</name>
+  <description>Forge Web: a coding agent for several people, in the browser.</description>
+  <executable>C:\forge-web\venv\Scripts\forge-web.exe</executable>
+  <arguments>serve</arguments>
+  <env name="FORGE_WEB_DATA_DIR" value="C:\ProgramData\forge-web"/>
+  <env name="FORGE_WEB_CONFIG" value="C:\ProgramData\forge-web\forge-web.toml"/>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <onfailure action="restart" delay="10 sec"/>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W16b
+Next step: W17
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -28,7 +28,8 @@ Next step: W16b
 | W14b | 2026-10-08 | 66097f5 | frontend/src/panels/{Preview,preview.test,ProjectPanel}.tsx, frontend/src/{api/project,lib/i18n}.ts, forge_sandbox/{netinfo,methods,daemon}.py, forge_web/preview.py, tests/test_daemon.py | the Preview tab: dev-server suggestions, programs with output, ports, the app in a sandboxed frame or a new tab |
 | W15a | 2026-10-08 | 61c310a | forge_web/{admin_api,settings_api,settings,startup,app}.py, forge_web/auth/{totp,second_factor,accounts,routes,oauth,sessions,ratelimit}.py, forge_web/chats/api.py, forge_web/db/{models.py,migrations/versions/0005_settings.py}, tests/{test_totp,test_admin,test_oauth,test_access}.py | two-factor sign-in, profile and password, default model, admin settings at run time, usage of everyone |
 | W15b | 2026-10-08 | 3aa6a8c | frontend/src/pages/{Settings,SettingsAccess,Admin,AdminServer,parts,Auth,account.test,Auth.test}.tsx, frontend/src/api/account.ts, frontend/src/{App,components/Sidebar}.tsx, frontend/src/{state/store,lib/i18n}.ts | the Settings and Admin pages and the code step at sign-in |
-| W16a | 2026-10-08 | (next) | forge_web/{doctor,cli,preview,app}.py, packages/server/pyproject.toml, tests/{test_doctor,test_preview,test_access}.py | `forge-web doctor`, the on-demand TLS check for preview hosts, the web UI in the wheel |
+| W16a | 2026-10-08 | 5bbfad9 | forge_web/{doctor,cli,preview,app}.py, packages/server/pyproject.toml, tests/{test_doctor,test_preview,test_access}.py | `forge-web doctor`, the on-demand TLS check for preview hosts, the web UI in the wheel |
+| W16b | 2026-10-08 | (next) | docker/server.Dockerfile(.dockerignore), compose.yaml, deploy/{Caddyfile,env.example,forge-web.example.toml,forge-web.service,com.forge.web.plist,forge-web-winsw.xml}, ../.github/workflows/forge-web-release.yml, docs/EINRICHTUNG.md, README.md, tests/{test_deploy,test_docker_driver}.py | server image, compose with Caddy, service templates, release workflow, German setup guide |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -164,6 +165,10 @@ Next step: W16b
 - W16a: `forge-web doctor` reads the settings like `serve` and checks the data folder, the built web UI, the event loop (Windows), isolation against the listening address, HTTPS for servers on the network, sign-in providers' secrets, Docker CLI and daemon, the sandbox image, gVisor, and preview DNS; it prints OK/WARN/FAIL with a fix for each and exits 1 on any FAIL. It changes nothing.
 - W16a: `GET /api/preview/allowed-host?domain=` answers 200 only for preview hosts of existing projects; Caddy's on-demand TLS asks it before requesting a certificate, so made-up names never cause certificate requests.
 - W16a: the wheel takes `forge_web/static/**` as hatch artifacts, so the built UI is in it although git ignores the folder; a test builds the wheel (with a stand-in page when the UI is not built) and looks for it.
+- W16b: the server image builds the UI in a Node stage, installs Forge, the sandbox package and the server into a venv, adds the Docker CLI from `docker:27.5.1-cli`, and runs as user `forge-web` (uid 10001) with `/data` as the data folder. In compose it gets the host's Docker socket through `group_add: DOCKER_GID` (no root in the container); only Caddy publishes ports, so `FORWARDED_ALLOW_IPS="*"` is safe there. A `sandbox-image` service only pulls the sandbox image (projects start with `--pull never`).
+- W16b: Caddy serves Forge and, with on-demand TLS, every preview host (`*.PREVIEW_DOMAIN`), asking `/api/preview/allowed-host` first. Let's Encrypt limits certificates per domain per week; very large installs should use a wildcard certificate with a DNS challenge instead (noted for the guide).
+- W16b: service templates: systemd (own user in the docker group, `ProtectSystem=strict`, writes only the data folder), launchd, WinSW; the guide recommends WSL2 + Docker Engine on Windows servers.
+- W16b: the release workflow (tags `forge-web-v*`) builds the UI and the three wheels, checks that the server wheel carries the UI and that the wheels install and start, builds and pushes `ghcr.io/<owner>/forge-web` and `forge-web-sandbox` (on manual runs it only builds and starts the server image), and attaches the wheels to a GitHub release. No release has been tagged yet; until then the guide builds the images from the checkout.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).

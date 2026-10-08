@@ -1,0 +1,11 @@
+**
+!pyproject.toml
+!src/forge/**
+!forge-web/packages/sandbox/**
+!forge-web/packages/server/**
+!forge-web/frontend/**
+forge-web/frontend/node_modules
+forge-web/packages/server/src/forge_web/static
+**/__pycache__
+**/*.pyc
+**/.mypy_cache

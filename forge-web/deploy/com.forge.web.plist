@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Forge Web as a launchd service (macOS). Docker Desktop must be running for this user.
+     cp com.forge.web.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.forge.web.plist
+     Change the paths below to where forge-web is installed and where its data should live. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.forge.web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/opt/forge-web/bin/forge-web</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FORGE_WEB_DATA_DIR</key>
+    <string>/usr/local/var/forge-web</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/usr/local/var/log/forge-web.log</string>
+  <key>StandardErrorPath</key>
+  <string>/usr/local/var/log/forge-web.log</string>
+</dict>
+</plist>

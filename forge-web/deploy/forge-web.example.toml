@@ -1,0 +1,31 @@
+# Copy to forge-web/forge-web.toml (compose) or /etc/forge-web/forge-web.toml (system service).
+# Every value can also be set as FORGE_WEB_<SECTION>__<KEY>; admins change many of them later
+# in the web UI (Administration -> Settings).
+
+[auth]
+signup = "invite"            # invite | approval | open
+# allowed_domains = ["example.com"]
+admin_two_factor = true      # admins must use two-factor sign-in
+
+# Sign-in with Google: console.cloud.google.com -> APIs & Services -> Credentials.
+# Redirect URI: https://FORGE_DOMAIN/api/auth/oauth/google/callback
+# [auth.providers.google]
+# client_id = "1234-abc.apps.googleusercontent.com"   # secret: GOOGLE_SECRET in .env
+
+# Sign-in with GitHub: github.com -> Settings -> Developer settings -> OAuth Apps.
+# Callback URL: https://FORGE_DOMAIN/api/auth/oauth/github/callback
+# [auth.providers.github]
+# client_id = "Ov23li..."                             # secret: GITHUB_SECRET in .env
+
+[sandbox]
+cpus = 2.0
+memory = "4g"
+idle_minutes = 30
+
+[quotas]
+projects_per_user = 20
+project_disk_mb = 10000
+
+[gateway]
+server_keys_for = "granted"  # admins | granted | everyone
+monthly_limit_usd = 20.0

@@ -1,0 +1,23 @@
+# Caddy in front of Forge Web: HTTPS for Forge and, on demand, for every preview host.
+# Used by compose.yaml; for a server without Docker set FORGE_UPSTREAM=127.0.0.1:8420.
+{
+	email {$ACME_EMAIL}
+	# A certificate is only requested for hosts Forge Web says are previews of real projects.
+	on_demand_tls {
+		ask http://{$FORGE_UPSTREAM:forge-web:8420}/api/preview/allowed-host
+	}
+}
+
+{$FORGE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy {$FORGE_UPSTREAM:forge-web:8420}
+}
+
+# Previews: p<port>-<project>.<preview domain>. Use a domain of its own (not a subdomain of
+# Forge's), so a preview is another site than Forge.
+*.{$PREVIEW_DOMAIN} {
+	tls {
+		on_demand
+	}
+	reverse_proxy {$FORGE_UPSTREAM:forge-web:8420}
+}

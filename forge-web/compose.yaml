@@ -1,0 +1,55 @@
+# Forge Web with automatic HTTPS (Caddy). Copy deploy/env.example to .env, fill it in, then:
+#   docker compose up -d
+#   docker compose logs forge-web        # shows the link for the first admin account
+#   docker compose exec forge-web forge-web doctor
+# German step-by-step guide: docs/EINRICHTUNG.md
+name: forge-web
+
+services:
+  forge-web:
+    image: ${FORGE_WEB_IMAGE:-ghcr.io/bigskillissue/forge-web:latest}
+    restart: unless-stopped
+    # Starting project containers needs the host's Docker; its socket is as powerful as root
+    # on the host, so only this service gets it (see docs/SECURITY.md).
+    group_add: ["${DOCKER_GID:?set DOCKER_GID in .env (getent group docker | cut -d: -f3)}"]
+    environment:
+      FORGE_WEB_CONFIG: /config/forge-web.toml
+      FORGE_WEB_SERVER__PUBLIC_URL: https://${FORGE_DOMAIN:?set FORGE_DOMAIN in .env}
+      FORGE_WEB_PREVIEW__DOMAIN: ${PREVIEW_DOMAIN:?set PREVIEW_DOMAIN in .env}
+      FORGE_WEB_SANDBOX__IMAGE: ${SANDBOX_IMAGE:-ghcr.io/bigskillissue/forge-web-sandbox:latest}
+      FORGE_WEB_GOOGLE_SECRET: ${GOOGLE_SECRET:-}
+      FORGE_WEB_GITHUB_SECRET: ${GITHUB_SECRET:-}
+      FORGE_WEB_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Only Caddy reaches this service, so its X-Forwarded-* headers are trusted.
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - forge-web-data:/data
+      - ./forge-web.toml:/config/forge-web.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose: ["8420"]
+
+  # Pulls the sandbox image (projects start with `docker run --pull never`) and exits.
+  sandbox-image:
+    image: ${SANDBOX_IMAGE:-ghcr.io/bigskillissue/forge-web-sandbox:latest}
+    entrypoint: ["true"]
+    restart: "no"
+
+  caddy:
+    image: caddy:2.9.1
+    restart: unless-stopped
+    depends_on: [forge-web]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      FORGE_DOMAIN: ${FORGE_DOMAIN}
+      PREVIEW_DOMAIN: ${PREVIEW_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      FORGE_UPSTREAM: forge-web:8420
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  forge-web-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,119 @@
+name: Forge Web release
+
+# A tag `forge-web-v*` builds the wheels (Forge, the sandbox and the server with the built web
+# UI) and the two images (server, sandbox), pushes the images to GHCR and publishes a release.
+# Run it by hand to build and check everything without publishing.
+on:
+  push:
+    tags: ["forge-web-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: forge-web/frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build the web UI
+        working-directory: forge-web/frontend
+        run: npm ci && npm run build
+      - name: Build the wheels
+        run: |
+          uv build --wheel --out-dir dist .
+          uv build --wheel --out-dir dist forge-web/packages/sandbox
+          uv build --wheel --out-dir dist forge-web/packages/server
+      - name: The server wheel carries the web UI
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/forge_web-*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          assert "forge_web/static/index.html" in names, "the web UI is missing"
+          print(wheel, len(names), "files")
+          PY
+      - name: The wheels install and start
+        run: |
+          python -m venv /tmp/fw
+          /tmp/fw/bin/pip install dist/*.whl
+          /tmp/fw/bin/forge-web --version
+          /tmp/fw/bin/forge-web --data-dir /tmp/fw-data doctor || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-web-wheels
+          path: dist/*.whl
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Names and tags
+        id: names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          version="${GITHUB_REF_NAME#forge-web-v}"
+          echo "server=ghcr.io/${owner}/forge-web" >> "$GITHUB_OUTPUT"
+          echo "sandbox=ghcr.io/${owner}/forge-web-sandbox" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: forge-web/docker/sandbox.Dockerfile
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: |
+            ${{ steps.names.outputs.sandbox }}:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.sandbox }}:latest
+      - name: Server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: forge-web/docker/server.Dockerfile
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          load: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          tags: |
+            ${{ steps.names.outputs.server }}:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.server }}:latest
+      - name: The server image starts
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: docker run --rm "${{ steps.names.outputs.server }}:latest" forge-web --version
+
+  release:
+    needs: [wheels, images]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: forge-web-wheels
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+          body: |
+            Forge Web ${{ github.ref_name }}.
+            Images: ghcr.io/${{ github.repository_owner }}/forge-web and forge-web-sandbox.
+            Setup guide (German): forge-web/docs/EINRICHTUNG.md

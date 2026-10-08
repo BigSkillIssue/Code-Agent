@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sqlite3
 import subprocess
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -166,7 +167,8 @@ async def test_idle_stop_and_restart_keep_the_files(driver: DockerDriver, tmp_pa
 
 @pytest.fixture
 def docker_data(tmp_path: Path) -> Iterator[Path]:
-    yield tmp_path / "data"
+    data = tmp_path / "data"
+    yield data
     names = subprocess.run(
         ["docker", "ps", "-aq", "--filter", "label=org.forge-web.project"],
         capture_output=True,
@@ -174,6 +176,14 @@ def docker_data(tmp_path: Path) -> Iterator[Path]:
     ).stdout.split()
     if names:
         subprocess.run(["docker", "rm", "-f", *names], capture_output=True)
+    # The projects' volumes too (only those of this test's projects).
+    database = data / "forge-web.db"
+    if database.exists():
+        with sqlite3.connect(database) as db:
+            ids = [row[0] for row in db.execute("SELECT id FROM projects")]
+        volumes = [f"forge-web-{i}-{kind}" for i in ids for kind in ("workspace", "home")]
+        if volumes:
+            subprocess.run(["docker", "volume", "rm", "-f", *volumes], capture_output=True)
 
 
 @needs_docker[0]

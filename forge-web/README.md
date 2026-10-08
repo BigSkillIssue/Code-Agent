@@ -5,8 +5,8 @@ Windows server; people sign in with Google, GitHub or email and password, keep s
 Forge in each one — with a file tree and editor, a changes/git panel, a terminal and a live preview, much like
 the Claude Code desktop app. Every project runs in its own hardened container, so users can be strangers.
 
-> Status: under construction — see [`docs/STEPS.md`](docs/STEPS.md) and [`PROGRESS.md`](PROGRESS.md).
-> German setup guide: [`docs/EINRICHTUNG.md`](docs/EINRICHTUNG.md) (from step W16).
+> Status: feature-complete, in final review — see [`docs/STEPS.md`](docs/STEPS.md) and
+> [`PROGRESS.md`](PROGRESS.md). Setup guide (German): [`docs/EINRICHTUNG.md`](docs/EINRICHTUNG.md).
 
 ## Try it from a checkout
 
@@ -82,3 +82,21 @@ Everyone can turn on two-factor sign-in in their settings (any authenticator app
 for a lost phone). With `auth.admin_two_factor = true`, admins must use it before they can administer.
 Admins change sign-up rules, quotas, sandbox limits and server-key rules on the Admin page; those
 values are kept in the database and win over `forge-web.toml`.
+
+## Running it for other people
+
+`compose.yaml` runs Forge Web, the sandbox image and Caddy (automatic HTTPS, also for preview hosts)
+on a Linux server with Docker:
+
+```bash
+cp deploy/env.example .env && cp deploy/forge-web.example.toml forge-web.toml   # fill them in
+docker compose up -d
+docker compose logs forge-web                    # the link for the first admin account
+docker compose exec forge-web forge-web doctor   # what is missing, and how to fix it
+```
+
+`deploy/` also has service templates for running the server without Docker (systemd, launchd,
+WinSW); the projects still run in Docker containers. Images and wheels come from the release
+workflow (`.github/workflows/forge-web-release.yml`, tags `forge-web-v*`) or are built from this
+checkout (`docker/server.Dockerfile`, `docker/sandbox.Dockerfile`). The German guide walks through
+DNS, HTTPS, Google and GitHub sign-in apps, backups and updates.
