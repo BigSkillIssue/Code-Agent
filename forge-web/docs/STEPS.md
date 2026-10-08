@@ -54,8 +54,8 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: argon2id passwords (bounded parallel hashing); server-side sessions (only the token's hash is stored) in HttpOnly cookies (`__Host-` over HTTPS); a CSRF value every changing request must send; Origin checks for API calls and WebSockets; the first admin via a one-time setup link; sign-up modes invite / approval / open (+ allowed domains); invites, reset and email links that work once; SMTP optional; rate limits; audit log; `forge-web user add|reset-link|list`; sign-in, setup, sign-up, reset and verify pages.
     - Tests: setup token; sign-in, sign-out, rate limit; missing or wrong CSRF → 403; cross-site requests and WebSockets refused; each sign-up mode; a wrong email cannot burn an invite; a reset link works once and ends other sessions.
     - Verify: `uv run pytest tests/test_auth.py tests/test_user_cli.py -q`
-- [ ] **W08b — Members, administration and the access matrix**
-    - Files: `forge_web/projects.py` (members), `forge_web/auth/admin.py`, `tests/test_access.py`
+- [x] **W08b — Members, administration and the access matrix**
+    - Files: `forge_web/members.py`, `forge_web/auth/admin.py`, `tests/test_access.py`
     - Build: project members with roles owner / editor / viewer; admin API for users (approve, roles, disable), invites and reset links; a user's own sessions (list, end).
     - Tests: every route × an outsider is refused (a matrix over the route table); viewers cannot change anything; admin routes refuse members.
     - Verify: `uv run pytest tests/test_access.py -q`

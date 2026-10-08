@@ -92,7 +92,8 @@ host in local mode).
 - Test file per module under `tests/`; shared fixtures in `tests/conftest.py`.
 - Tests that need Docker are marked `docker`, browser tests `e2e`, Postgres tests `postgres`.
 - Security tests are written with the feature, not at the end.
-- Offline suite stays under 60 seconds.
+- Offline suite stays under 90 seconds. Every real chat worker costs 2-3 s of Forge imports, so a test starts
+  one only when it needs a real process; everything else runs the worker in the test process.
 
 ## PROGRESS.md format
 

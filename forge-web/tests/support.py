@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from forge_sandbox.daemon import Daemon
 from forge_sandbox.mux import Mux, OpenHandler
 from forge_sandbox.protocol import Notify
@@ -235,3 +237,28 @@ class Browser:
 
     def seqs(self) -> list[int]:
         return [m["seq"] for m in self.messages if m.get("type") == "item"]
+
+
+class WebClient:
+    """An HTTP client that keeps cookies and sends the CSRF value like the web UI does."""
+
+    def __init__(self, server: LiveServer, origin: str | None = None) -> None:
+        headers = {"Origin": origin} if origin else {}
+        self.client = httpx.AsyncClient(base_url=server.url, headers=headers, timeout=30)
+
+    async def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        csrf = self.client.cookies.get("forge_csrf")
+        headers = {"X-CSRF-Token": csrf} if csrf else {}
+        return await self.client.request(method, path, headers=headers, **kwargs)
+
+    async def post(self, path: str, body: dict[str, Any] | None = None) -> httpx.Response:
+        return await self.request("POST", path, json=body or {})
+
+    async def get(self, path: str) -> httpx.Response:
+        return await self.client.get(path)
+
+    async def __aenter__(self) -> "WebClient":
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        await self.client.aclose()

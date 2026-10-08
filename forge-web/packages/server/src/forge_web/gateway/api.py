@@ -8,7 +8,7 @@ from forge.providers.catalog import PRESETS
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from forge_web.auth.sessions import CurrentUser
+from forge_web.auth.sessions import AdminUser, CurrentUser
 from forge_web.db.models import ApiKey, KeyGrant, UsageRecord, User
 from forge_web.gateway.keys import delete_key, list_keys, save_key, server_key_limit
 from forge_web.gateway.meter import month_start
@@ -41,12 +41,6 @@ def supported(provider: str) -> bool:
     """The gateway can serve this provider."""
     preset = PRESETS.get(provider)
     return preset is not None and preset.kind in KINDS
-
-
-def require_admin(user: User) -> None:
-    """403 unless the user is an admin."""
-    if user.role != "admin":
-        raise HTTPException(403, "only admins can do that")
 
 
 async def month_total(services: Services, user_id: str) -> float:
@@ -129,13 +123,11 @@ def keys_router() -> APIRouter:
         }
 
     @router.get("/api/admin/keys")
-    async def server_keys(request: Request, user: CurrentUser) -> list[dict[str, Any]]:
-        require_admin(user)
+    async def server_keys(request: Request, admin: AdminUser) -> list[dict[str, Any]]:
         return [key_view(k) for k in await list_keys(services_of(request).db, "")]
 
     @router.post("/api/admin/keys", status_code=201)
-    async def add_server_key(body: KeyIn, request: Request, user: CurrentUser) -> dict[str, Any]:
-        require_admin(user)
+    async def add_server_key(body: KeyIn, request: Request, admin: AdminUser) -> dict[str, Any]:
         if not supported(body.provider):
             raise HTTPException(422, f"Forge Web cannot use keys for {body.provider}")
         services = services_of(request)
@@ -145,16 +137,14 @@ def keys_router() -> APIRouter:
         return key_view(key)
 
     @router.delete("/api/admin/keys/{key_id}", status_code=204)
-    async def remove_server_key(key_id: str, request: Request, user: CurrentUser) -> None:
-        require_admin(user)
+    async def remove_server_key(key_id: str, request: Request, admin: AdminUser) -> None:
         if not await delete_key(services_of(request).db, "", key_id):
             raise HTTPException(404, "no such key")
 
     @router.put("/api/admin/grants/{user_id}")
     async def set_grant(
-        user_id: str, body: GrantIn, request: Request, user: CurrentUser
+        user_id: str, body: GrantIn, request: Request, admin: AdminUser
     ) -> dict[str, Any]:
-        require_admin(user)
         async with services_of(request).db.session() as session, session.begin():
             if await session.get(User, user_id) is None:
                 raise HTTPException(404, "no such user")

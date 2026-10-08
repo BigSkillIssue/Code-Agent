@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W08b
+Next step: W09
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -13,7 +13,8 @@ Next step: W08b
 | W05b | 2026-10-08 | 853c351 | frontend/ (package.json, vite.config.ts, tsconfig.json, index.html, public/favicon.svg, src/{main,App}.tsx, src/api/{types,client,socket}.ts, src/state/{store,transcript}.ts, src/components/{Sidebar,ChatView,Transcript,Composer,Markdown}.tsx, src/components/cards/*.tsx, src/lib/{i18n,tools}.ts, src/pages/Login.tsx, src/styles.css, tests), forge_web/{webui,app}.py, tests/test_webui.py, ../.github/workflows/forge-web.yml, README.md | React 19 + Vite 6 + Tailwind 4 app: sidebar of projects and chats, streaming transcript with tool, approval, question, plan and report cards, German/English, light/dark; served with an SPA fallback and a strict CSP; checked end to end in Chromium |
 | W06 | 2026-10-08 | f6ad99d | docker/sandbox.Dockerfile, docker/sandbox.Dockerfile.dockerignore, forge_web/containers/docker.py, forge_web/{sandbox_cli,settings,app,services,cli}.py, forge_web/chats/runs.py, tests/{support,test_docker_driver}.py, ../.github/workflows/forge-web.yml | one container per project: daemon as PID 1 under --init, volumes for /workspace and /home/forge, read-only root, no network, all capabilities dropped but six, no-new-privileges, CPU/memory/PID/nofile limits, gVisor when installed; attach over `docker exec`; chats resume after a server restart; idle containers stop; `forge-web sandbox build`; real-Docker tests pass locally (4) |
 | W07 | 2026-10-08 | e70f4bb | forge_web/gateway/{__init__,tokens,upstreams,meter,keys,proxy,api}.py, forge_web/{egress,vault,startup,app,services,settings}.py, forge_web/chats/runs.py, forge_web/containers/docker.py, forge_web/db/models.py, forge_web/db/migrations/versions/0002_gateway.py, tests/{test_gateway,test_gateway_e2e,test_egress,test_docker_driver}.py | model calls go sandbox → daemon forward → private gateway (unix socket) → provider with the real key; signed run tokens valid only while their chat works; only model endpoints; output capped; usage from the upstream's reply (estimate if aborted); user keys win, server keys need a grant and a monthly limit; egress CONNECT proxy with an allow list and public addresses only; e2e test with Forge's real Anthropic client |
-| W08a | 2026-10-08 | (next) | forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py, forge_web/{audit,user_cli,startup,services,settings,app,cli,projects,ws}.py, forge_web/chats/api.py, forge_web/gateway/{api,proxy}.py, forge_web/db/{models.py,migrations/versions/0003_accounts.py}, frontend/src/{App.tsx,api/client.ts,pages/Auth.tsx,components/Sidebar.tsx,lib/i18n.ts}, tests/{support,test_auth,test_user_cli,test_server,test_docker_driver,test_gateway_e2e,test_dev_chat}.py | real accounts: argon2id, hashed server-side sessions, CSRF value per session, Origin checks (API + WebSocket), first-admin setup link, invite/approval/open sign-up, one-time links, rate limits, audit log, user CLI; checked in Chromium |
+| W08a | 2026-10-08 | 26e3d1a | forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py, forge_web/{audit,user_cli,startup,services,settings,app,cli,projects,ws}.py, forge_web/chats/api.py, forge_web/gateway/{api,proxy}.py, forge_web/db/{models.py,migrations/versions/0003_accounts.py}, frontend/src/{App.tsx,api/client.ts,pages/Auth.tsx,components/Sidebar.tsx,lib/i18n.ts}, tests/{support,test_auth,test_user_cli,test_server,test_docker_driver,test_gateway_e2e,test_dev_chat}.py | real accounts: argon2id, hashed server-side sessions, CSRF value per session, Origin checks (API + WebSocket), first-admin setup link, invite/approval/open sign-up, one-time links, rate limits, audit log, user CLI; checked in Chromium |
+| W08b | 2026-10-08 | (next) | forge_web/{members,app}.py, forge_web/auth/admin.py, forge_web/gateway/api.py, tests/{support,test_auth,test_access}.py, AGENTS.md | project members (owner / editor / viewer; a project keeps one owner; removed or demoted members' running turns stop); admin API for accounts, invites, reset links and the audit log; a user's own sessions; the access test walks every API route as stranger, outsider, viewer and owner |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -72,6 +73,12 @@ Next step: W08b
 - W08a: when the data folder's path is too long for a unix socket (~100 bytes), the gateway socket goes into a private temp folder (0700).
 - W08a: rate limits live in the app's services (no module-level state).
 - W08a: the suite stays under 60 s by running the CLI tests in-process.
+- W08b: members live in `members.py`, not `projects.py` (the card's file): projects.py keeps the project lifecycle.
+- W08b: owners add people by the email of an existing active account; an unknown email answers 404, so owners can tell whether an address has an account (accepted: only signed-in users who own a project can ask, and sign-up already tells the same). Inviting strangers into a project goes through admin invites.
+- W08b: invites and sessions are named in the API by the first 16 hex characters of their hash, never by their secret; deleting by prefix escapes LIKE wildcards.
+- W08b: admin routes use the `AdminUser` dependency, so a member is refused (403) before the request body is even validated; the server always keeps one active admin and every project one owner (409).
+- W08b: the OpenAPI schema is no longer served (`openapi_url=None`); the access test reads it from `app.openapi()` and fails for any new route that has no access rule or no sample body.
+- W08b: the suite budget is now 90 s (AGENTS.md): about 13 real chat workers cost ~3 s of Forge imports each, which cannot shrink without changing Forge. The access tests that change nothing share one server.
 
 ## Open issues
-- (none)
+- W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned with the chat UI, W10).

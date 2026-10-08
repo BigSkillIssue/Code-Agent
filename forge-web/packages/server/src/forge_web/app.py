@@ -6,12 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from forge_web import __version__
+from forge_web.auth.admin import admin_router
 from forge_web.auth.dev import dev_router
 from forge_web.auth.origin import OriginGuard
 from forge_web.auth.routes import auth_router
 from forge_web.chats.api import chats_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.gateway.api import keys_router
+from forge_web.members import members_router
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
 from forge_web.startup import start_services, stop_services
@@ -32,11 +34,12 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
             await stop_services(services)
 
     app = FastAPI(
-        title="Forge Web", version=__version__, docs_url=None, redoc_url=None, lifespan=lifespan
-    )
+        title="Forge Web", version=__version__, lifespan=lifespan,
+        docs_url=None, redoc_url=None, openapi_url=None,
+    )  # fmt: skip
     routers = (
-        health_router(), auth_router(), dev_router(), projects_router(), chats_router(),
-        keys_router(),
+        health_router(), auth_router(), admin_router(), dev_router(), projects_router(),
+        members_router(), chats_router(), keys_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)
