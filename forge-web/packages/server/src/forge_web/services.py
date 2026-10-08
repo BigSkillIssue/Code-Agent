@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from fastapi import Request, WebSocket
 
+from forge_web.auth.ratelimit import AuthLimits
 from forge_web.chats.runs import RunManager
 from forge_web.containers.driver import ContainerDriver
 from forge_web.db.engine import Database
@@ -32,6 +33,9 @@ class Services:
     egress: Egress
     dev_token: str = ""
     dev_user_id: str = ""
+    setup_token: str = ""  # while no account exists: lets the first admin sign up
+    oauth_providers: list[str] = field(default_factory=list)  # sign-in providers set up
+    limits: AuthLimits = field(default_factory=AuthLimits)
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
 
 

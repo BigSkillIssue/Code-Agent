@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, FolderPlus, MessageSquarePlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import type { Chat, Project } from "../api/types";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
@@ -110,7 +111,16 @@ export function Sidebar({ activeChat }: { activeChat?: string }) {
           <ProjectItem key={project.id} project={project} activeChat={activeChat} />
         ))}
       </nav>
-      <div className="border-t border-line px-4 py-3 text-sm text-muted">{user?.name}</div>
+      <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
+        <span className="min-w-0 flex-1 truncate">{user?.name}</span>
+        <button
+          type="button"
+          className="underline"
+          onClick={() => api.post("/api/auth/logout").finally(() => window.location.assign("/"))}
+        >
+          {t("signOut")}
+        </button>
+      </div>
     </aside>
   );
 }

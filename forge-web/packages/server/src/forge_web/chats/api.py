@@ -13,7 +13,7 @@ from forge_sandbox.methods import ChatMode
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
 from forge_web.access import require_chat, require_project
-from forge_web.auth.dev import CurrentUser
+from forge_web.auth.sessions import CurrentUser
 from forge_web.containers.driver import SandboxError
 from forge_web.db.models import Chat, ChatEvent, User
 from forge_web.services import Services, services_of

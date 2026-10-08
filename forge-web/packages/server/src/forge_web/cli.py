@@ -32,6 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
     from forge_web import sandbox_cli
 
     sandbox_cli.add_arguments(commands.add_parser("sandbox", help="manage the sandbox image"))
+    from forge_web import user_cli
+
+    user_cli.add_arguments(commands.add_parser("user", help="manage accounts"))
     return parser
 
 
@@ -49,6 +52,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     if args.command == "serve":
         return serve(settings)
+    if args.command == "user":
+        from forge_web import user_cli
+
+        return user_cli.run(settings, args)
     if args.command == "sandbox":
         from forge_web import sandbox_cli
 
@@ -82,10 +89,6 @@ def serve(settings: WebSettings) -> int:
     import uvicorn
 
     from forge_web.app import create_app
-
-    if not settings.dev.enabled:
-        print("error: accounts are not built yet; start with --dev for now", file=sys.stderr)
-        return 1
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     config = uvicorn.Config(

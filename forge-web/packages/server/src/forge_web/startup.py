@@ -14,7 +14,7 @@ from forge_web.containers.docker import DockerDriver
 from forge_web.containers.driver import ContainerDriver
 from forge_web.containers.local import LocalDriver
 from forge_web.db.engine import Database
-from forge_web.db.models import Chat
+from forge_web.db.models import Chat, User
 from forge_web.db.writer import EventWriter
 from forge_web.egress import Egress, EgressPolicy
 from forge_web.fake import fake_script
@@ -124,6 +124,23 @@ async def after_start(services: Services, docker: bool) -> None:
         services.dev_token, services.dev_user_id = secrets.token_urlsafe(24), user.id
         link = f"{services.settings.base_url()}/api/auth/dev-login?token={services.dev_token}"
         print(f"\nForge Web (development mode): open {link}\n", file=sys.stderr, flush=True)
+    elif not await any_user(services):
+        services.setup_token = secrets.token_urlsafe(24)
+        link = f"{services.settings.base_url()}/setup#token={services.setup_token}"
+        print(
+            f"\nForge Web: create the first admin account at {link}\n", file=sys.stderr, flush=True
+        )
+    if not docker and not services.settings.dev.enabled:
+        log.warning(
+            "local isolation: everyone who signs in can run commands on this machine as the "
+            "server's user; sign-up is limited to invites. Use Docker isolation for other people."
+        )
+
+
+async def any_user(services: Services) -> bool:
+    """At least one account exists."""
+    async with services.db.session() as session:
+        return await session.scalar(select(User.id).limit(1)) is not None
 
 
 async def resume_active(services: Services) -> None:

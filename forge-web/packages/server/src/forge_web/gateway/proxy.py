@@ -8,8 +8,10 @@ import asyncio
 import contextlib
 import json
 import logging
+import shutil
 import socket
 import sys
+import tempfile
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
@@ -41,6 +43,7 @@ from forge_web.vault import Vault
 
 log = logging.getLogger(__name__)
 MAX_BODY = 8 * 1024 * 1024
+MAX_SOCKET_PATH = 100
 ChatIsWorking = Callable[[str], bool]
 
 
@@ -229,12 +232,18 @@ class PrivateServer:
     def __init__(self, app: FastAPI, run_dir: Path) -> None:
         self.path = run_dir / "gateway.sock"
         self.port = 0
+        self._temp: Path | None = None
         if sys.platform == "win32":
             config = uvicorn.Config(
                 app, host="127.0.0.1", port=0, log_level="warning", lifespan="off"
             )
         else:
-            run_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if len(str(self.path).encode()) > MAX_SOCKET_PATH:
+                # Unix socket paths are short (about 100 bytes): use a private temp folder.
+                self._temp = Path(tempfile.mkdtemp(prefix="forge-web-"))
+                self.path = self._temp / "gateway.sock"
+            else:
+                run_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             with contextlib.suppress(FileNotFoundError):
                 self.path.unlink()
             config = uvicorn.Config(app, uds=str(self.path), log_level="warning", lifespan="off")
@@ -266,3 +275,5 @@ class PrivateServer:
         if self._task is not None:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self._task, 10)
+        if self._temp is not None:
+            shutil.rmtree(self._temp, ignore_errors=True)

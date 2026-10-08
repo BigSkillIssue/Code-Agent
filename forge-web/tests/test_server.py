@@ -23,7 +23,7 @@ def scripted(tmp_path: Path, script: dict[str, Any]) -> LiveServer:
 
 
 def api(server: LiveServer) -> httpx.AsyncClient:
-    return httpx.AsyncClient(base_url=server.url, headers={"Cookie": server.cookie}, timeout=60)
+    return httpx.AsyncClient(base_url=server.url, headers=server.headers(), timeout=60)
 
 
 async def new_chat(client: httpx.AsyncClient, **chat: Any) -> tuple[str, str]:
@@ -55,8 +55,10 @@ async def test_sign_in_is_required(server: LiveServer) -> None:
         good = await anonymous.get(
             "/api/auth/dev-login", params={"token": server.services.dev_token}
         )
-        assert good.status_code == 303 and "forge_dev" in good.headers["set-cookie"]
-        assert "httponly" in good.headers["set-cookie"].lower()
+        assert good.status_code == 303
+        cookies = good.headers.get_list("set-cookie")
+        session_cookie = next(h for h in cookies if "forge_session" in h)
+        assert "httponly" in session_cookie.lower() and "samesite=lax" in session_cookie.lower()
     from websockets.asyncio.client import connect
     from websockets.exceptions import InvalidStatus
 

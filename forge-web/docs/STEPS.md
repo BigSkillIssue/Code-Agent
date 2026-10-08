@@ -49,11 +49,16 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: run tokens bound to user, chat and run; upstreams from Forge's provider presets (Anthropic, OpenAI-compatible incl. Ollama, Gemini); path and model allowlists; the right auth header per provider; cost reserved before and settled from the upstream's usage; monthly limits per user; user keys (BYOK) and server keys granted to users, encrypted with MultiFernet (master key outside the database); a CONNECT proxy with a domain allowlist and no private addresses, reached from containers through tcp-forward.
     - Tests: no real key reaches the container; over the limit → blocked; aborted stream still charged; wrong path or model → 403; token dead after the run; egress to a private IP or an unlisted domain refused.
     - Verify: `uv run pytest tests/test_gateway.py tests/test_egress.py -q`
-- [ ] **W08 — Accounts, sessions and access control**
-    - Files: `forge_web/auth/{passwords,sessions,csrf,setup,signup,mail,ratelimit}.py`, `forge_web/access.py`, `forge_web/audit.py`, `tests/test_auth.py`, `tests/test_access.py`
-    - Build: argon2id passwords (bounded parallel hashing); server-side sessions in `__Host-` cookies with revocation; CSRF header on every unsafe request; Origin check on WebSocket connect; first admin via a one-time setup token or `forge-web user add --admin`; sign-up modes invite / approval / open (+ allowed domains); email verification and reset links (SMTP optional, else admin-made links); project members with roles owner / editor / viewer; audit log.
-    - Tests: every endpoint × non-member → denied (a matrix test over the route table); missing CSRF → 403; wrong Origin rejected; login rate limit; each sign-up mode enforced.
-    - Verify: `uv run pytest tests/test_auth.py tests/test_access.py -q`
+- [x] **W08a — Accounts and sessions**
+    - Files: `forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py`, `forge_web/{audit,user_cli,startup,services,settings,app}.py`, `forge_web/db/migrations/versions/0003_accounts.py`, `frontend/src/pages/Auth.tsx`, `frontend/src/api/client.ts`, `tests/test_auth.py`, `tests/test_user_cli.py`
+    - Build: argon2id passwords (bounded parallel hashing); server-side sessions (only the token's hash is stored) in HttpOnly cookies (`__Host-` over HTTPS); a CSRF value every changing request must send; Origin checks for API calls and WebSockets; the first admin via a one-time setup link; sign-up modes invite / approval / open (+ allowed domains); invites, reset and email links that work once; SMTP optional; rate limits; audit log; `forge-web user add|reset-link|list`; sign-in, setup, sign-up, reset and verify pages.
+    - Tests: setup token; sign-in, sign-out, rate limit; missing or wrong CSRF → 403; cross-site requests and WebSockets refused; each sign-up mode; a wrong email cannot burn an invite; a reset link works once and ends other sessions.
+    - Verify: `uv run pytest tests/test_auth.py tests/test_user_cli.py -q`
+- [ ] **W08b — Members, administration and the access matrix**
+    - Files: `forge_web/projects.py` (members), `forge_web/auth/admin.py`, `tests/test_access.py`
+    - Build: project members with roles owner / editor / viewer; admin API for users (approve, roles, disable), invites and reset links; a user's own sessions (list, end).
+    - Tests: every route × an outsider is refused (a matrix over the route table); viewers cannot change anything; admin routes refuse members.
+    - Verify: `uv run pytest tests/test_access.py -q`
 - [ ] **W09 — Google and GitHub sign-in**
     - Files: `forge_web/auth/oauth.py`, `forge_web/auth/github_repos.py`, `tests/test_oauth.py`
     - Build: Authlib with PKCE, state and nonce; Google OIDC (`email_verified` required); GitHub OAuth with the verified primary email; link accounts only by verified email; "connect GitHub for repositories" as a separate grant (or a personal token), stored encrypted.

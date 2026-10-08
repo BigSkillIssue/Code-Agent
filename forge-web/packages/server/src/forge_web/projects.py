@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from forge_web.access import member_projects, require_project
-from forge_web.auth.dev import CurrentUser
+from forge_web.auth.sessions import CurrentUser
 from forge_web.db.models import Project, ProjectMember
 from forge_web.services import services_of
 

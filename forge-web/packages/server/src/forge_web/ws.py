@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from forge_web.access import require_chat
-from forge_web.auth.dev import websocket_user
+from forge_web.auth.sessions import websocket_user
 from forge_web.chats.api import stored_items
 from forge_web.db.models import User
 from forge_web.hub import Subscriber

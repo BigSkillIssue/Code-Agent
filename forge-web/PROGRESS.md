@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W08
+Next step: W08b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -12,7 +12,8 @@ Next step: W08
 | W05a | 2026-10-08 | 389b90c | forge_web/db/{__init__,engine,models,writer}.py, forge_web/db/migrations/{env.py,script.py.mako,versions/0001_initial.py}, forge_web/chats/{api,runs,items}.py, forge_web/{hub,ws,projects,access,services,fake,app,cli,settings,dev_chat}.py, forge_web/auth/{__init__,dev}.py, forge_sandbox/{daemon,gitinfo}.py, tests/{support,test_server}.py, docs/STEPS.md | single-user server: projects, chats, event log with gapless numbers, WebSocket replay without gaps or repeats, first answer wins across tabs; `serve --dev [--fake]` |
 | W05b | 2026-10-08 | 853c351 | frontend/ (package.json, vite.config.ts, tsconfig.json, index.html, public/favicon.svg, src/{main,App}.tsx, src/api/{types,client,socket}.ts, src/state/{store,transcript}.ts, src/components/{Sidebar,ChatView,Transcript,Composer,Markdown}.tsx, src/components/cards/*.tsx, src/lib/{i18n,tools}.ts, src/pages/Login.tsx, src/styles.css, tests), forge_web/{webui,app}.py, tests/test_webui.py, ../.github/workflows/forge-web.yml, README.md | React 19 + Vite 6 + Tailwind 4 app: sidebar of projects and chats, streaming transcript with tool, approval, question, plan and report cards, German/English, light/dark; served with an SPA fallback and a strict CSP; checked end to end in Chromium |
 | W06 | 2026-10-08 | f6ad99d | docker/sandbox.Dockerfile, docker/sandbox.Dockerfile.dockerignore, forge_web/containers/docker.py, forge_web/{sandbox_cli,settings,app,services,cli}.py, forge_web/chats/runs.py, tests/{support,test_docker_driver}.py, ../.github/workflows/forge-web.yml | one container per project: daemon as PID 1 under --init, volumes for /workspace and /home/forge, read-only root, no network, all capabilities dropped but six, no-new-privileges, CPU/memory/PID/nofile limits, gVisor when installed; attach over `docker exec`; chats resume after a server restart; idle containers stop; `forge-web sandbox build`; real-Docker tests pass locally (4) |
-| W07 | 2026-10-08 | (next) | forge_web/gateway/{__init__,tokens,upstreams,meter,keys,proxy,api}.py, forge_web/{egress,vault,startup,app,services,settings}.py, forge_web/chats/runs.py, forge_web/containers/docker.py, forge_web/db/models.py, forge_web/db/migrations/versions/0002_gateway.py, tests/{test_gateway,test_gateway_e2e,test_egress,test_docker_driver}.py | model calls go sandbox → daemon forward → private gateway (unix socket) → provider with the real key; signed run tokens valid only while their chat works; only model endpoints; output capped; usage from the upstream's reply (estimate if aborted); user keys win, server keys need a grant and a monthly limit; egress CONNECT proxy with an allow list and public addresses only; e2e test with Forge's real Anthropic client |
+| W07 | 2026-10-08 | e70f4bb | forge_web/gateway/{__init__,tokens,upstreams,meter,keys,proxy,api}.py, forge_web/{egress,vault,startup,app,services,settings}.py, forge_web/chats/runs.py, forge_web/containers/docker.py, forge_web/db/models.py, forge_web/db/migrations/versions/0002_gateway.py, tests/{test_gateway,test_gateway_e2e,test_egress,test_docker_driver}.py | model calls go sandbox → daemon forward → private gateway (unix socket) → provider with the real key; signed run tokens valid only while their chat works; only model endpoints; output capped; usage from the upstream's reply (estimate if aborted); user keys win, server keys need a grant and a monthly limit; egress CONNECT proxy with an allow list and public addresses only; e2e test with Forge's real Anthropic client |
+| W08a | 2026-10-08 | (next) | forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py, forge_web/{audit,user_cli,startup,services,settings,app,cli,projects,ws}.py, forge_web/chats/api.py, forge_web/gateway/{api,proxy}.py, forge_web/db/{models.py,migrations/versions/0003_accounts.py}, frontend/src/{App.tsx,api/client.ts,pages/Auth.tsx,components/Sidebar.tsx,lib/i18n.ts}, tests/{support,test_auth,test_user_cli,test_server,test_docker_driver,test_gateway_e2e,test_dev_chat}.py | real accounts: argon2id, hashed server-side sessions, CSRF value per session, Origin checks (API + WebSocket), first-admin setup link, invite/approval/open sign-up, one-time links, rate limits, audit log, user CLI; checked in Chromium |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -64,6 +65,13 @@ Next step: W08
 - W07: unknown models are priced at $5/$25 per million tokens on server keys, so limits still bite; cost is reserved before a call (input estimate + capped output) and settled from the upstream's usage.
 - W07: the egress proxy needs no listening port (socketpair per connection); when the server itself has HTTPS_PROXY, CONNECTs are chained through it.
 - W07: only provider kinds anthropic, openai_compat (incl. Ollama, LM Studio, vLLM, OpenRouter, Groq, …) and google go through the gateway; LiteLLM, Bedrock and Vertex do not.
+
+- W08: W08 split into W08a (accounts, sessions) and W08b (members, admin API, access matrix).
+- W08a: requests without an Origin header (scripts, tests, the CLI) pass the Origin check: only browsers can be tricked into cross-site requests, and they always send Origin; the CSRF value still guards every changing request of a session.
+- W08a: in local isolation (not dev mode) sign-up needs an invite, and the server warns that every user can run commands as the server's user.
+- W08a: when the data folder's path is too long for a unix socket (~100 bytes), the gateway socket goes into a private temp folder (0700).
+- W08a: rate limits live in the app's services (no module-level state).
+- W08a: the suite stays under 60 s by running the CLI tests in-process.
 
 ## Open issues
 - (none)

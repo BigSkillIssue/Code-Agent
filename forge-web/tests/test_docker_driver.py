@@ -182,7 +182,7 @@ async def test_a_chat_survives_a_server_restart(docker_data: Path) -> None:
     settings = dev_settings(docker_data, script, isolation="docker", image=IMAGE)
     with LiveServer(settings) as first:
         async with httpx.AsyncClient(
-            base_url=first.url, headers={"Cookie": first.cookie}, timeout=120
+            base_url=first.url, headers=first.headers(), timeout=120
         ) as api:
             project = (await api.post("/api/projects", json={"name": "Docker"})).json()
             chat = (
@@ -198,7 +198,7 @@ async def test_a_chat_survives_a_server_restart(docker_data: Path) -> None:
     # The first server is gone; its container (and the waiting chat in it) is not.
     with LiveServer(settings) as second:
         async with httpx.AsyncClient(
-            base_url=second.url, headers={"Cookie": second.cookie}, timeout=120
+            base_url=second.url, headers=second.headers(), timeout=120
         ) as api:
             pending: list[dict[str, Any]] = []
             for _ in range(300):

@@ -80,6 +80,28 @@ class EgressSettings(_Strict):
     allow_private: bool = False  # private and loopback addresses (only for tests)
 
 
+class SmtpSettings(_Strict):
+    """Outgoing mail for verification and reset links (optional)."""
+
+    host: str = ""  # empty = no mail; admins hand out links instead
+    port: int = 587
+    username: str = ""
+    password_env: str = "FORGE_WEB_SMTP_PASSWORD"  # the password is read from this variable
+    from_address: str = ""
+    starttls: bool = True
+
+
+class AuthSettings(_Strict):
+    """Who may sign up and how sign-in works."""
+
+    signup: Literal["invite", "approval", "open"] = "invite"
+    allowed_domains: list[str] = []  # for approval/open sign-up: only these email domains
+    passwords: bool = True  # email + password accounts
+    session_days: float = Field(default=30, gt=0)
+    allowed_origins: list[str] = []  # extra origins for the browser (besides public_url)
+    smtp: SmtpSettings = SmtpSettings()
+
+
 class DevSettings(_Strict):
     """Development mode: one local user, a login link in the log, optionally the fake model."""
 
@@ -95,6 +117,7 @@ class WebSettings(_Strict):
     server: ServerSettings = ServerSettings()
     database: DatabaseSettings = DatabaseSettings()
     sandbox: SandboxSettings = SandboxSettings()
+    auth: AuthSettings = AuthSettings()
     gateway: GatewaySettings = GatewaySettings()
     egress: EgressSettings = EgressSettings()
     dev: DevSettings = DevSettings()

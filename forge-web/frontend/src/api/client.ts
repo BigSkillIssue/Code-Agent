@@ -9,11 +9,20 @@ export class ApiError extends Error {
   }
 }
 
+/** The CSRF value the server put in a cookie for this session's pages. */
+export function csrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)forge_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (method !== "GET") headers["X-CSRF-Token"] = csrfToken();
   const response = await fetch(path, {
     method,
     credentials: "same-origin",
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {

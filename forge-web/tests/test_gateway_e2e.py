@@ -102,7 +102,7 @@ async def test_forge_reaches_the_model_only_through_the_gateway(
     settings.dev.fake = False
     settings.gateway.upstreams = {"anthropic": upstream.url}
     with LiveServer(settings) as server:
-        headers = {"Cookie": server.cookie}
+        headers = server.headers()
         async with httpx.AsyncClient(base_url=server.url, headers=headers, timeout=120) as api:
             saved = await api.post("/api/keys", json={"provider": "anthropic", "key": REAL_KEY})
             assert saved.status_code == 201 and REAL_KEY not in saved.text

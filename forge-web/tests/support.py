@@ -137,8 +137,25 @@ class LiveServer:
         self.url = f"http://127.0.0.1:{port}"
         self.ws_url = f"ws://127.0.0.1:{port}/api/ws"
         self.services = self.app.state.services
-        self.cookie = f"forge_dev={self.services.dev_token}"
+        self.cookie, self.csrf = "", ""
+        if self.services.dev_token:
+            self.sign_in()
         return self
+
+    def sign_in(self) -> None:
+        """Start a session for the development admin (cookies for HTTP and WebSocket)."""
+        import httpx
+
+        login = httpx.get(
+            f"{self.url}/api/auth/dev-login", params={"token": self.services.dev_token}
+        )
+        cookies = {c.name: c.value for c in login.cookies.jar}
+        self.cookie = "; ".join(f"{name}={value}" for name, value in cookies.items())
+        self.csrf = cookies.get("forge_csrf", "")
+
+    def headers(self) -> dict[str, str]:
+        """What a signed-in client sends: the session cookie and the CSRF value."""
+        return {"Cookie": self.cookie, "X-CSRF-Token": self.csrf}
 
     def __exit__(self, *_exc: object) -> None:
         self.server.should_exit = True

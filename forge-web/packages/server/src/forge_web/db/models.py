@@ -20,6 +20,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), default="member")  # admin | member
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | pending | disabled
     created_at: Mapped[float] = mapped_column(Float)
+    password_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Project(Base):
@@ -131,3 +133,50 @@ class UsageRecord(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0)
     estimated: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AuthSession(Base):
+    """A signed-in browser. The cookie holds a random token; only its hash is stored."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (Index("auth_sessions_by_user", "user_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 of the token
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    csrf: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[float] = mapped_column(Float)
+    last_seen_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(300), default="")
+
+
+class OneTimeToken(Base):
+    """An invite, a password reset or an email check: a link that works once, for a while."""
+
+    __tablename__ = "one_time_tokens"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # sha256 of the token
+    purpose: Mapped[str] = mapped_column(String(16))  # invite | reset | verify
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email: Mapped[str] = mapped_column(String(320), default="")
+    role: Mapped[str] = mapped_column(String(16), default="member")
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class AuditEntry(Base):
+    """Something security-relevant that happened, and who did it."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("audit_by_time", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    user_id: Mapped[str] = mapped_column(String(32), default="")
+    action: Mapped[str] = mapped_column(String(64))
+    target: Mapped[str] = mapped_column(String(200), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")

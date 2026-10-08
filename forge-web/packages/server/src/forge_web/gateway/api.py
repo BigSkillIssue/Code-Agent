@@ -8,7 +8,7 @@ from forge.providers.catalog import PRESETS
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from forge_web.auth.dev import CurrentUser
+from forge_web.auth.sessions import CurrentUser
 from forge_web.db.models import ApiKey, KeyGrant, UsageRecord, User
 from forge_web.gateway.keys import delete_key, list_keys, save_key, server_key_limit
 from forge_web.gateway.meter import month_start

@@ -7,6 +7,8 @@ from fastapi import APIRouter, FastAPI
 
 from forge_web import __version__
 from forge_web.auth.dev import dev_router
+from forge_web.auth.origin import OriginGuard
+from forge_web.auth.routes import auth_router
 from forge_web.chats.api import chats_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.gateway.api import keys_router
@@ -32,9 +34,13 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     app = FastAPI(
         title="Forge Web", version=__version__, docs_url=None, redoc_url=None, lifespan=lifespan
     )
-    routers = (health_router(), dev_router(), projects_router(), chats_router(), keys_router())
+    routers = (
+        health_router(), auth_router(), dev_router(), projects_router(), chats_router(),
+        keys_router(),
+    )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)
+    app.add_middleware(OriginGuard)
     app.add_middleware(SecurityHeaders, https=settings.base_url().startswith("https://"))
     mount_web_ui(app)  # last: it answers every path the API does not
     return app

@@ -6,7 +6,7 @@ import type { Chat } from "./api/types";
 import { ChatView } from "./components/ChatView";
 import { Sidebar } from "./components/Sidebar";
 import { t } from "./lib/i18n";
-import { Login } from "./pages/Login";
+import { AuthPages, type AuthConfig } from "./pages/Auth";
 import { useStore } from "./state/store";
 
 function ErrorBar() {
@@ -78,10 +78,20 @@ function Shell() {
 
 export function App() {
   const { user, signedOut, init } = useStore();
+  const [config, setConfig] = useState<AuthConfig | null>(null);
   useEffect(() => {
     void init();
   }, [init]);
-  if (signedOut) return <Login />;
+  useEffect(() => {
+    if (signedOut) api.get<AuthConfig>("/api/auth/config").then(setConfig).catch(() => undefined);
+  }, [signedOut]);
+  if (signedOut) {
+    return config ? (
+      <BrowserRouter>
+        <AuthPages config={config} />
+      </BrowserRouter>
+    ) : null;
+  }
   if (!user) return null;
   return (
     <BrowserRouter>
