@@ -9,6 +9,7 @@ import type {
   ChatItem,
   ChatMode,
   LiveState,
+  Model,
   Project,
   ServerMessage,
   StoredItem,
@@ -33,7 +34,10 @@ interface Store {
   chatData: Record<string, ChatData>;
   error: string;
   socket: ForgeSocket | null;
+  models: Model[] | null;
   init: () => Promise<void>;
+  loadModels: () => Promise<void>;
+  searchFiles: (projectId: string, query: string) => Promise<string[]>;
   loadChats: (projectId: string) => Promise<void>;
   createProject: (name: string) => Promise<Project>;
   createChat: (projectId: string, mode?: ChatMode) => Promise<Chat>;
@@ -111,6 +115,7 @@ export const useStore = create<Store>((set, get) => ({
   chatData: {},
   error: "",
   socket: null,
+  models: null,
 
   async init() {
     try {
@@ -124,6 +129,17 @@ export const useStore = create<Store>((set, get) => ({
       if (err instanceof ApiError && err.status === 401) set({ signedOut: true });
       else set({ error: String(err) });
     }
+  },
+
+  async loadModels() {
+    const models = await api.get<Model[]>("/api/models");
+    set({ models });
+  },
+
+  async searchFiles(projectId, query) {
+    const params = new URLSearchParams({ query, limit: "20" });
+    const found = await api.get<{ files: string[] }>(`/api/projects/${projectId}/files/search?${params}`);
+    return found.files;
   },
 
   async loadChats(projectId) {

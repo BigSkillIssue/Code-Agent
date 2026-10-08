@@ -1,0 +1,203 @@
+{
+ "items": [
+  {
+   "seq": 1,
+   "item": {
+    "type": "user",
+    "text": "Please <img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+   }
+  },
+  {
+   "seq": 2,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "model_done",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "message": {
+      "role": "assistant",
+      "parts": [
+       {
+        "type": "text",
+        "text": "Here: <img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script> [click](javascript:window.hacked=3) ![x](javascript:alert(1))"
+       }
+      ],
+      "tool_calls": []
+     }
+    }
+   }
+  },
+  {
+   "seq": 3,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "todos_updated",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "todos": [
+      {
+       "content": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+       "status": "in_progress",
+       "active_form": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "seq": 4,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "tool_started",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "call": {
+      "id": "x1",
+      "name": "edit_file",
+      "arguments": {
+       "path": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>.py",
+       "old": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+       "new": "<b><img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script></b>"
+      }
+     }
+    }
+   }
+  },
+  {
+   "seq": 5,
+   "item": {
+    "type": "request",
+    "id": "r1",
+    "kind": "approval",
+    "payload": {
+     "call": {
+      "id": "x1",
+      "name": "edit_file",
+      "arguments": {
+       "path": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>.py",
+       "old": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+       "new": "<b><img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script></b>"
+      }
+     },
+     "reason": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+    }
+   }
+  },
+  {
+   "seq": 6,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "tool_finished",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "result": {
+      "call_id": "x1",
+      "ok": false,
+      "text": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+     }
+    }
+   }
+  },
+  {
+   "seq": 7,
+   "item": {
+    "type": "request",
+    "id": "r2",
+    "kind": "question",
+    "payload": {
+     "questions": [
+      {
+       "text": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+       "kind": "choice",
+       "options": [
+        "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+        "fine"
+       ],
+       "default": null,
+       "why": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "seq": 8,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "plan_updated",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "plan": {
+      "spec": {
+       "goal": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+      },
+      "steps": [
+       {
+        "id": "s1",
+        "title": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+        "status": "todo"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "seq": 9,
+   "item": {
+    "type": "event",
+    "event": {
+     "kind": "error",
+     "agent_id": "main",
+     "ts": 0,
+     "session_id": "s",
+     "message": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+    }
+   }
+  },
+  {
+   "seq": 10,
+   "item": {
+    "type": "command_result",
+    "command": "/help",
+    "text": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+   }
+  },
+  {
+   "seq": 11,
+   "item": {
+    "type": "turn",
+    "prompt": "x",
+    "ok": false,
+    "summary": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+    "report": "# Report\n<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>",
+    "files_changed": [
+     "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+    ],
+    "manual_checks": [
+     "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+    ],
+    "assumptions": [],
+    "usage": {
+     "input_tokens": 1,
+     "output_tokens": 1,
+     "cached_tokens": 0,
+     "cost_usd": 0.01
+    },
+    "seconds": 1,
+    "cancelled": false,
+    "error": "<img src=x onerror=\"window.hacked=1\"><script>window.hacked=2</script>"
+   }
+  }
+ ]
+}

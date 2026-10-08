@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W10b
+Next step: W11
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -16,7 +16,8 @@ Next step: W10b
 | W08a | 2026-10-08 | 26e3d1a | forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py, forge_web/{audit,user_cli,startup,services,settings,app,cli,projects,ws}.py, forge_web/chats/api.py, forge_web/gateway/{api,proxy}.py, forge_web/db/{models.py,migrations/versions/0003_accounts.py}, frontend/src/{App.tsx,api/client.ts,pages/Auth.tsx,components/Sidebar.tsx,lib/i18n.ts}, tests/{support,test_auth,test_user_cli,test_server,test_docker_driver,test_gateway_e2e,test_dev_chat}.py | real accounts: argon2id, hashed server-side sessions, CSRF value per session, Origin checks (API + WebSocket), first-admin setup link, invite/approval/open sign-up, one-time links, rate limits, audit log, user CLI; checked in Chromium |
 | W08b | 2026-10-08 | 97d1229 | forge_web/{members,app}.py, forge_web/auth/admin.py, forge_web/gateway/api.py, tests/{support,test_auth,test_access}.py, AGENTS.md | project members (owner / editor / viewer; a project keeps one owner; removed or demoted members' running turns stop); admin API for accounts, invites, reset links and the audit log; a user's own sessions; the access test walks every API route as stranger, outsider, viewer and owner |
 | W09 | 2026-10-08 | b53ffa9 | forge_web/auth/{oauth,oauth_providers,git_credentials,routes,ratelimit}.py, forge_web/{settings,services,startup,app}.py, forge_web/db/{models.py,migrations/versions/0004_identities.py}, frontend/src/{pages/Auth.tsx,pages/Auth.test.tsx,lib/i18n.ts}, tests/{support,test_oauth,test_access,test_settings}.py, README.md | Google (OIDC), GitHub (OAuth) and any OpenID Connect issuer; state, PKCE (S256) and nonce in a signed HttpOnly flow cookie; accounts link only by verified email (both sides) or on purpose while signed in; GitHub repository grant and personal tokens stored encrypted |
-| W10a | 2026-10-08 | (next) | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
+| W10a | 2026-10-08 | 8eaa9ff | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
+| W10b | 2026-10-08 | (next) | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -95,6 +96,12 @@ Next step: W10b
 - W10a: `/api/models` maps catalog models to vendors by name prefix (claude → anthropic, gpt → openai, gemini → google, deepseek, llama → groq), because Forge's catalog lists models without providers; models of keyless local providers (Ollama, …) are typed by hand.
 - W10a: `docker run --pull never`: a missing sandbox image is an error, never something fetched from a registry.
 - W10a: `frontend/tsconfig.tsbuildinfo` (a build cache) is no longer tracked.
+
+- W10b: the worker sends each Forge event while it is published (a bus that forwards), instead of from a separate task; before, an approval request reached the UI ahead of the tool it was about. Found with the recorded fixtures.
+- W10b: UI fixtures are recorded from a real development server with the fake model (`uv run python tests/record_ui_fixtures.py`), so the cards are tested on what the server really sends; a hand-written `xss.json` puts hostile text in every field.
+- W10b: todo_write, submit_plan, update_plan and ask_user get no tool card (the todo list, the plan card and the question card show them); a failed call still shows as an error. The final reviewer's JSON verdict is shown only in the report card.
+- W10b: Forge sends the plan for approval as a checklist in the request's reason (`[ ] s1 Title`); the approval card shows those lines as the steps.
+- W10b: a sub-agent's events are put into the card of the `spawn_agent` call that started it (the oldest card still waiting, or the id in the call's result).
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).

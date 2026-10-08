@@ -1,6 +1,7 @@
 // How a tool call is summed up in one line.
 
 import type { ToolCall } from "../api/types";
+import { language } from "./i18n";
 
 const MAIN_ARGUMENT: Record<string, string> = {
   read_file: "path",
@@ -42,11 +43,36 @@ const LABEL: Record<string, string> = {
   ask_user: "Question",
 };
 
+const LABEL_DE: Record<string, string> = {
+  read_file: "Lesen",
+  write_file: "Schreiben",
+  edit_file: "Ändern",
+  apply_patch: "Patch",
+  list_dir: "Auflisten",
+  bash: "Ausführen",
+  powershell: "Ausführen",
+  grep: "Suchen",
+  glob: "Finden",
+  web_fetch: "Abrufen",
+  web_search: "Websuche",
+  research: "Recherche",
+  spawn_agent: "Unteragent",
+  todo_write: "Aufgaben",
+  submit_plan: "Plan",
+  update_plan: "Plan",
+  finish_step: "Schritt fertig",
+  ask_user: "Frage",
+};
+
 export function toolLabel(call: ToolCall): string {
-  return LABEL[call.name] ?? call.name;
+  return (language === "de" ? LABEL_DE[call.name] : undefined) ?? LABEL[call.name] ?? call.name;
 }
 
 export function toolSummary(call: ToolCall): string {
+  if (call.name === "apply_patch") {
+    const files = [...String(call.arguments.patch ?? "").matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)];
+    return files.map((m) => m[1]).join(", ");
+  }
   const key = MAIN_ARGUMENT[call.name];
   const value = key ? call.arguments[key] : Object.values(call.arguments).find((v) => typeof v === "string");
   const text = typeof value === "string" ? value : "";
@@ -55,5 +81,5 @@ export function toolSummary(call: ToolCall): string {
 }
 
 export function isEdit(call: ToolCall): boolean {
-  return call.name === "edit_file" || call.name === "write_file";
+  return call.name === "edit_file" || call.name === "write_file" || call.name === "apply_patch";
 }

@@ -1,3 +1,5 @@
+import type { SlashCommand } from "../lib/completion";
+
 // The shapes the server sends. They mirror forge_web (ProjectOut, ChatOut) and the chat items
 // described in docs/PROTOCOL.md.
 
@@ -84,7 +86,7 @@ export interface ForgeEvent {
 
 export type ChatItem =
   | { type: "user"; text: string }
-  | { type: "ready"; session_id: string }
+  | { type: "ready"; session_id: string; commands?: SlashCommand[] }
   | { type: "status"; state: "running" | "idle" }
   | { type: "event"; event: ForgeEvent }
   | {
@@ -103,6 +105,7 @@ export type ChatItem =
       report: string;
       files_changed: string[];
       manual_checks: string[];
+      assumptions?: string[];
       usage: Usage;
       seconds: number;
       cancelled: boolean;
@@ -132,3 +135,13 @@ export type ServerMessage =
   | { type: "chat_state"; chat_id: string; state: ChatState; title: string }
   | { type: "error"; chat_id?: string; message: string }
   | { type: "pong" };
+
+export interface Model {
+  id: string; // "anthropic/claude-sonnet-5-5"
+  provider: string;
+  model: string;
+  key: "own" | "server";
+  cost_in: number;
+  cost_out: number;
+  context_window: number;
+}

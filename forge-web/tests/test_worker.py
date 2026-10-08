@@ -20,10 +20,12 @@ class Collector:
 
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
+        self.log: list[dict[str, Any]] = []  # everything, in the order it was sent
         self._new = asyncio.Event()
 
     async def send(self, message: dict[str, Any]) -> None:
         self.messages.append(message)
+        self.log.append(message)
         self._new.set()
 
     async def wait_for(
@@ -116,6 +118,10 @@ async def test_approval_round_trip_allows_the_change(root: Path, home: Path) -> 
     worker.submit("Create hello.txt")
     request = await out.wait_for("request", kind="approval")
     assert request["payload"]["call"]["name"] == "write_file"
+    # The request comes after the events that led to it, so the UI shows it below its tool.
+    tools = [m for m in out.log if m["type"] == "event" and m["event"]["kind"] == "tool_started"]
+    assert tools and tools[-1]["event"]["call"]["name"] == "write_file"
+    assert out.log.index(tools[-1]) < out.log.index(request)
     assert worker.renderer.resolve(request["id"], {"allow": True})
     turn = await out.wait_for("turn")
     assert turn["ok"] and (root / "hello.txt").read_text() == "hi\n"

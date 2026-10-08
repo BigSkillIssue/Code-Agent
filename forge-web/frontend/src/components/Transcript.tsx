@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Entry } from "../state/transcript";
+import { AgentCard } from "./cards/AgentCard";
 import { ApprovalCard, type Answer } from "./cards/ApprovalCard";
 import { Notice, PlanCard, StructuredCard, TurnCard } from "./cards/Cards";
 import { QuestionCard } from "./cards/QuestionCard";
@@ -28,6 +29,8 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer?: Answer }) {
       return <StructuredCard entry={entry} />;
     case "tool":
       return <ToolCard entry={entry} />;
+    case "agent":
+      return <AgentCard entry={entry} render={(inner) => <EntryView entry={inner} onAnswer={onAnswer} />} />;
     case "approval":
       return <ApprovalCard entry={entry} onAnswer={onAnswer} />;
     case "question":
@@ -49,7 +52,7 @@ export function Transcript({ entries, onAnswer }: { entries: Entry[]; onAnswer?:
     end.current?.scrollIntoView?.({ block: "end" });
   }, [entries.length, lastLength]);
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
       {entries.map((entry) => (
         <EntryView key={entry.key} entry={entry} onAnswer={onAnswer} />
       ))}

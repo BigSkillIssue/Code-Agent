@@ -16,7 +16,6 @@ import json
 import os
 import sys
 import time
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +72,21 @@ def build_config(root: Path, options: ChatOptions) -> ForgeConfig:
     return cfg
 
 
+class ForwardingBus(MemoryBus):
+    """Forge's event bus, which also sends each event to the daemon as it is published: a
+    request (sent straight away) then never overtakes the events that led to it."""
+
+    def __init__(self, out: "Outbox") -> None:
+        super().__init__()
+        self.out = out
+
+    async def publish(self, event: Event) -> None:
+        """Deliver to subscribers, then send to the daemon."""
+        await super().publish(event)
+        with contextlib.suppress(OSError):  # the daemon is gone; the worker ends on its own
+            await self.out.send({"type": "event", "event": event.model_dump(mode="json")})
+
+
 class ChatWorker:
     """Runs a chat's turns on one Forge session."""
 
@@ -83,14 +97,12 @@ class ChatWorker:
         self.home = forge_home()
         self.state = ChatState.load(self.home, chat_id)
         self.renderer = PipeRenderer(out.send, auto_plans=options.mode == "auto")
-        self.bus = MemoryBus()
+        self.bus = ForwardingBus(out)
         self.ctx: Ctx | None = None
         self.task: asyncio.Task[None] | None = None
-        self._events: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        """Open (or reopen) the chat's Forge session and start forwarding its events."""
-        self._events = asyncio.create_task(self._forward(self.bus.subscribe("*")))
+        """Open (or reopen) the chat's Forge session; its events go to the daemon as they happen."""
         cfg = build_config(self.root, self.options)
         store = SqliteStore(self.home / "forge.db")
         session = None
@@ -106,10 +118,6 @@ class ChatWorker:
             "type": "ready", "session_id": self.ctx.session.id, "turns": len(self.state.turns),
             "commands": slash_commands(self.root),
         })  # fmt: skip
-
-    async def _forward(self, events: AsyncIterator[Event]) -> None:
-        async for event in events:
-            await self.out.send({"type": "event", "event": event.model_dump(mode="json")})
 
     def submit(self, text: str) -> bool:
         """Start a turn; False while another one runs."""
@@ -169,8 +177,6 @@ class ChatWorker:
         await self.cancel()
         if self.ctx is not None:
             await close_session(self.ctx)
-        if self._events is not None:
-            self._events.cancel()
 
 
 def slash_commands(root: Path) -> list[dict[str, Any]]:

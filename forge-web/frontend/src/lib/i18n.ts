@@ -68,6 +68,25 @@ const en = {
   needAccount: "No account yet? Create one",
   or: "or",
   continueWith: "Continue with",
+  searchPlaceholder: "Search projects and chats",
+  noMatches: "Nothing found",
+  menu: "Menu",
+  todos: "Todos",
+  subAgent: "Sub-agent",
+  report: "Report",
+  manualChecks: "Check by hand",
+  assumptions: "Assumptions",
+  approvePlan: "Approve plan",
+  rejectPlan: "Reject plan",
+  planToApprove: "Forge proposes this plan",
+  defaultModel: "Default model",
+  ownKey: "own key",
+  serverKey: "server key",
+  commandsHint: "Commands",
+  filesHint: "Files",
+  mode: "Mode",
+  model: "Model",
+  data: "Data",
 };
 
 type Texts = typeof en;
@@ -141,6 +160,25 @@ const de: Texts = {
   needAccount: "Noch kein Konto? Anlegen",
   or: "oder",
   continueWith: "Weiter mit",
+  searchPlaceholder: "Projekte und Chats suchen",
+  noMatches: "Nichts gefunden",
+  menu: "Menü",
+  todos: "Aufgaben",
+  subAgent: "Unteragent",
+  report: "Bericht",
+  manualChecks: "Selbst prüfen",
+  assumptions: "Annahmen",
+  approvePlan: "Plan freigeben",
+  rejectPlan: "Plan ablehnen",
+  planToApprove: "Forge schlägt diesen Plan vor",
+  defaultModel: "Standardmodell",
+  ownKey: "eigener Schlüssel",
+  serverKey: "Server-Schlüssel",
+  commandsHint: "Befehle",
+  filesHint: "Dateien",
+  mode: "Modus",
+  model: "Modell",
+  data: "Daten",
 };
 
 export type TextKey = keyof Texts;
@@ -151,6 +189,9 @@ function pick(): Texts {
 }
 
 const texts = pick();
+
+/** "de" or "en": the language the texts are in. */
+export const language: "de" | "en" = texts === de ? "de" : "en";
 
 export function t(key: TextKey): string {
   return texts[key];

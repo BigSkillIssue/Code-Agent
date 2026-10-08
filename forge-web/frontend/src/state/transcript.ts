@@ -46,11 +46,24 @@ export type Entry =
     }
   | { kind: "plan"; key: string; goal: string; steps: PlanStep[] }
   | {
+      kind: "agent";
+      key: string;
+      agent: string; // the sub-agent's id ("" until its first event)
+      role: string;
+      task: string;
+      status: "running" | "ok" | "failed";
+      summary: string;
+      entries: Entry[];
+    }
+  | {
       kind: "turn";
       key: string;
       ok: boolean;
       summary: string;
+      report: string;
       filesChanged: string[];
+      manualChecks: string[];
+      assumptions: string[];
       usage: Usage;
       seconds: number;
       cancelled: boolean;
@@ -70,7 +83,27 @@ interface Builder {
   requests: Map<string, number>; // request id -> entry index
   plan: number | null;
   todos: Todo[];
+  hidden: Set<string>; // calls shown elsewhere (todo list, plan, question cards)
+  agents: Map<string, { index: number; builder: Builder }>; // sub-agent id -> its card
+  spawns: number[]; // sub-agent cards still waiting for their agent's first event
+  nested: boolean;
 }
+
+// Tools whose effect has its own card: the todo list, the plan, the question.
+const SHOWN_ELSEWHERE = new Set(["todo_write", "submit_plan", "update_plan", "ask_user"]);
+const AGENT_IN_RESULT = /\bagent (\w[\w-]*) \(/;
+
+const newBuilder = (nested = false): Builder => ({
+  entries: [],
+  tools: new Map(),
+  requests: new Map(),
+  plan: null,
+  todos: [],
+  hidden: new Set(),
+  agents: new Map(),
+  spawns: [],
+  nested,
+});
 
 export function messageText(message: unknown): string {
   const parts = (message as { parts?: { type?: string; text?: string }[] })?.parts ?? [];
@@ -78,6 +111,11 @@ export function messageText(message: unknown): string {
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text)
     .join("");
+}
+
+/** The final reviewer's verdict: its summary and checks are the turn's report. */
+export function isReviewVerdict(data: Record<string, unknown>): boolean {
+  return typeof data.ok === "boolean" && typeof data.summary === "string" && !("goal" in data);
 }
 
 /** A reply that is one JSON object (the task spec, a review) is shown as data, not as text. */
@@ -94,14 +132,78 @@ export function structuredReply(text: string): Record<string, unknown> | null {
   }
 }
 
+/** The builder of a sub-agent's card: the oldest card still waiting for its agent, or a new one. */
+function agentBuilder(b: Builder, agent: string, key: string): Builder {
+  const known = b.agents.get(agent);
+  if (known) return known.builder;
+  let index = b.spawns.shift();
+  if (index === undefined) {
+    index = b.entries.length;
+    b.entries.push({ kind: "agent", key, agent, role: "", task: "", status: "running", summary: "", entries: [] });
+  } else {
+    b.entries[index] = { ...(b.entries[index] as Extract<Entry, { kind: "agent" }>), agent };
+  }
+  const builder = newBuilder(true);
+  b.agents.set(agent, { index, builder });
+  return builder;
+}
+
+function startTool(b: Builder, key: string, agent: string, call: ToolCall): void {
+  if (SHOWN_ELSEWHERE.has(call.name)) {
+    b.hidden.add(call.id);
+    return;
+  }
+  b.tools.set(call.id, b.entries.length);
+  if (call.name === "spawn_agent" && !b.nested) {
+    b.spawns.push(b.entries.length);
+    const args = call.arguments as { role?: unknown; task?: unknown };
+    b.entries.push({
+      kind: "agent", key, agent: "", role: String(args.role ?? ""), task: String(args.task ?? ""),
+      status: "running", summary: "", entries: [],
+    });
+    return;
+  }
+  b.entries.push({ kind: "tool", key, agent, call, status: "running", output: [] });
+}
+
+function finishTool(b: Builder, key: string, agent: string, result: ToolResult): void {
+  const status = result.ok ? "ok" : "failed";
+  const index = b.tools.get(result.call_id);
+  if (index === undefined && b.hidden.has(result.call_id)) {
+    if (!result.ok) b.entries.push({ kind: "notice", key, tone: "error", text: result.text });
+    return;
+  }
+  if (index === undefined) {
+    const call = { id: result.call_id, name: "tool", arguments: {} };
+    b.entries.push({ kind: "tool", key, agent, call, status, result, output: [] });
+    return;
+  }
+  const entry = b.entries[index];
+  if (entry.kind === "agent") {
+    const named = AGENT_IN_RESULT.exec(result.text)?.[1];
+    if (!entry.agent && named && !b.agents.has(named)) {
+      b.spawns = b.spawns.filter((i) => i !== index);
+      b.agents.set(named, { index, builder: newBuilder(true) });
+    }
+    b.entries[index] = { ...entry, agent: entry.agent || named || "", status, summary: result.text };
+  } else if (entry.kind === "tool") {
+    b.entries[index] = { ...entry, status, result };
+  }
+}
+
 function addEvent(b: Builder, seq: number, event: Record<string, unknown>): void {
   const agent = String(event.agent_id ?? "main");
   const key = `e${seq}`;
+  if (agent !== "main" && !b.nested && event.kind !== "agent_finished") {
+    addEvent(agentBuilder(b, agent, key), seq, event);
+    return;
+  }
   switch (event.kind) {
     case "model_done": {
       const text = messageText(event.message);
       if (!text.trim()) return;
       const data = structuredReply(text);
+      if (data && isReviewVerdict(data)) return; // the turn's report card shows it
       b.entries.push(
         data
           ? { kind: "structured", key, agent, data }
@@ -109,25 +211,12 @@ function addEvent(b: Builder, seq: number, event: Record<string, unknown>): void
       );
       return;
     }
-    case "tool_started": {
-      const call = event.call as ToolCall;
-      b.tools.set(call.id, b.entries.length);
-      b.entries.push({ kind: "tool", key, agent, call, status: "running", output: [] });
+    case "tool_started":
+      startTool(b, key, agent, event.call as ToolCall);
       return;
-    }
-    case "tool_finished": {
-      const result = event.result as ToolResult;
-      const index = b.tools.get(result.call_id);
-      const status = result.ok ? "ok" : "failed";
-      if (index === undefined) {
-        const call = { id: result.call_id, name: "tool", arguments: {} };
-        b.entries.push({ kind: "tool", key, agent, call, status, result, output: [] });
-      } else {
-        const entry = b.entries[index] as Extract<Entry, { kind: "tool" }>;
-        b.entries[index] = { ...entry, status, result };
-      }
+    case "tool_finished":
+      finishTool(b, key, agent, event.result as ToolResult);
       return;
-    }
     case "plan_updated": {
       const plan = event.plan as { spec?: { goal?: string }; steps?: PlanStep[] };
       const entry: Entry = {
@@ -153,14 +242,15 @@ function addEvent(b: Builder, seq: number, event: Record<string, unknown>): void
     case "compacted":
       b.entries.push({ kind: "notice", key, tone: "info", text: "The conversation was compacted." });
       return;
-    case "agent_finished":
-      b.entries.push({
-        kind: "notice",
-        key,
-        tone: "info",
-        text: `Sub-agent ${agent} (${String(event.role)}) finished: ${String(event.status)}`,
-      });
+    case "agent_finished": {
+      const card = b.agents.get(agent);
+      const entry = card ? b.entries[card.index] : undefined;
+      if (entry?.kind === "agent") {
+        const status = event.status === "done" ? "ok" : "failed";
+        b.entries[card!.index] = { ...entry, role: entry.role || String(event.role ?? ""), status };
+      }
       return;
+    }
     default:
       return;
   }
@@ -201,7 +291,10 @@ function addItem(b: Builder, seq: number, item: ChatItem): void {
         key,
         ok: item.ok,
         summary: repeatsLastReply(b, item.summary) ? "" : item.summary,
+        report: item.report ?? "",
         filesChanged: item.files_changed ?? [],
+        manualChecks: item.manual_checks ?? [],
+        assumptions: item.assumptions ?? [],
         usage: item.usage,
         seconds: item.seconds,
         cancelled: item.cancelled,
@@ -248,9 +341,20 @@ function resolve(b: Builder, item: Extract<ChatItem, { type: "request_resolved" 
   }
 }
 
+/** Put each sub-agent's own entries into its card. */
+function attachAgents(b: Builder): void {
+  for (const { index, builder } of b.agents.values()) {
+    const entry = b.entries[index];
+    // Inside its card a sub-agent's entries need no agent label of their own.
+    const entries = builder.entries.map((e) => ("agent" in e ? { ...e, agent: "main" } : e));
+    if (entry.kind === "agent") b.entries[index] = { ...entry, entries };
+  }
+}
+
 export function buildTranscript(items: StoredItem[], live?: LiveState): Transcript {
-  const b: Builder = { entries: [], tools: new Map(), requests: new Map(), plan: null, todos: [] };
+  const b = newBuilder();
   for (const { seq, item } of items) addItem(b, seq, item);
+  attachAgents(b);
   if (live) {
     for (const [callId, lines] of Object.entries(live.outputs)) {
       const index = b.tools.get(callId);

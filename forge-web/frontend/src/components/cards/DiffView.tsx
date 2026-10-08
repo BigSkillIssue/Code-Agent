@@ -19,3 +19,19 @@ export function DiffView({ before, after }: { before: string; after: string }) {
     </pre>
   );
 }
+
+/** A patch (Forge's or a unified diff) with added and removed lines coloured. */
+export function PatchView({ patch }: { patch: string }) {
+  return (
+    <pre className="max-h-96 overflow-x-auto rounded-md bg-code p-2 font-mono text-xs">
+      {patch.split("\n").map((line, index) => {
+        const tone = line.startsWith("+") ? "text-ok" : line.startsWith("-") ? "text-bad" : line.startsWith("***") || line.startsWith("@@") ? "text-accent" : "text-muted";
+        return (
+          <div key={index} className={tone}>
+            {line || " "}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}

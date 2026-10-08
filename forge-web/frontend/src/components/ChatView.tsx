@@ -1,11 +1,13 @@
 import { Loader2, Trash2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Chat, ChatMode } from "../api/types";
+import type { Chat, ChatMode, StoredItem } from "../api/types";
+import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
 import { buildTranscript } from "../state/transcript";
 import { Composer } from "./Composer";
+import { TodoPanel } from "./TodoPanel";
 import { Transcript } from "./Transcript";
 
 const MODES: { value: ChatMode; label: string }[] = [
@@ -14,9 +16,43 @@ const MODES: { value: ChatMode; label: string }[] = [
   { value: "auto", label: t("modeAuto") },
 ];
 
+/** The slash commands the chat's worker announced last (its own and the project's). */
+export function chatCommands(items: StoredItem[]): SlashCommand[] {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i].item;
+    if (item.type === "ready" && item.commands && item.commands.length > 0) return item.commands;
+  }
+  return BUILTIN_COMMANDS;
+}
+
+function ModelPicker({ chat, onChange }: { chat: Chat; onChange: (model: string) => void }) {
+  const { models, loadModels } = useStore();
+  useEffect(() => {
+    if (models === null) void loadModels().catch(() => undefined);
+  }, [models, loadModels]);
+  const known = (models ?? []).some((m) => m.id === chat.model);
+  return (
+    <select
+      aria-label={t("model")}
+      className="max-w-[11rem] min-w-0 rounded-md border border-line bg-card px-2 py-1 text-sm"
+      value={chat.model}
+      disabled={!chat.mine}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{t("defaultModel")}</option>
+      {!known && chat.model && <option value={chat.model}>{chat.model}</option>}
+      {(models ?? []).map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.model} ({m.key === "own" ? t("ownKey") : t("serverKey")})
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function ChatView({ chat }: { chat: Chat }) {
   const data = useStore((s) => s.chatData[chat.id]);
-  const { openChat, closeChat, send, answer, cancel, updateChat, deleteChat, setError } = useStore();
+  const { openChat, closeChat, send, answer, cancel, updateChat, deleteChat, setError, searchFiles } = useStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,10 +60,9 @@ export function ChatView({ chat }: { chat: Chat }) {
     return () => closeChat(chat.id);
   }, [chat.id, openChat, closeChat]);
 
-  const transcript = useMemo(
-    () => buildTranscript(data?.items ?? [], data?.live),
-    [data?.items, data?.live],
-  );
+  const transcript = useMemo(() => buildTranscript(data?.items ?? [], data?.live), [data?.items, data?.live]);
+  const commands = useMemo(() => chatCommands(data?.items ?? []), [data?.items]);
+  const findFiles = useCallback((query: string) => searchFiles(chat.project_id, query), [searchFiles, chat.project_id]);
   const running = chat.state === "running" || chat.state === "waiting";
   const guard = async (work: () => Promise<unknown>) => {
     try {
@@ -39,8 +74,8 @@ export function ChatView({ chat }: { chat: Chat }) {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <header className="flex items-center gap-3 border-b border-line px-4 py-2">
-        <h1 className="truncate font-medium" data-testid="chat-title">
+      <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
+        <h1 className="min-w-0 flex-1 truncate font-medium" data-testid="chat-title">
           {chat.title}
         </h1>
         {running && (
@@ -50,7 +85,8 @@ export function ChatView({ chat }: { chat: Chat }) {
           </span>
         )}
         <select
-          className="ml-auto rounded-md border border-line bg-card px-2 py-1 text-sm"
+          aria-label={t("mode")}
+          className="min-w-0 rounded-md border border-line bg-card px-2 py-1 text-sm"
           value={chat.mode}
           disabled={!chat.mine}
           onChange={(e) => void guard(() => updateChat(chat, { mode: e.target.value as ChatMode }))}
@@ -61,6 +97,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             </option>
           ))}
         </select>
+        <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />
         {chat.mine && (
           <button
             type="button"
@@ -80,14 +117,14 @@ export function ChatView({ chat }: { chat: Chat }) {
         )}
       </header>
       <main className="flex-1 overflow-y-auto">
-        <Transcript
-          entries={transcript.entries}
-          onAnswer={chat.mine ? (id, value) => answer(chat.id, id, value) : undefined}
-        />
+        <Transcript entries={transcript.entries} onAnswer={chat.mine ? (id, value) => answer(chat.id, id, value) : undefined} />
       </main>
+      <TodoPanel todos={transcript.todos} />
       {chat.mine && (
         <Composer
           running={running}
+          commands={commands}
+          searchFiles={findFiles}
           onSend={(text) => guard(() => send(chat.id, text)).then(() => undefined)}
           onStop={() => guard(() => cancel(chat.id)).then(() => undefined)}
         />

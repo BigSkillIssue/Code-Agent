@@ -12,7 +12,7 @@ export function StructuredCard({ entry }: { entry: Extract<Entry, { kind: "struc
   return (
     <details className="rounded-lg border border-line bg-card px-3 py-2 text-sm">
       <summary className="cursor-pointer">
-        <span className="font-medium">{goal ? t("taskUnderstood") : "Data"}</span>
+        <span className="font-medium">{goal ? t("taskUnderstood") : t("data")}</span>
         {goal && <span className="text-muted">: {goal}</span>}
       </summary>
       {criteria.length > 0 && (
@@ -67,10 +67,32 @@ export function TurnCard({ entry }: { entry: Extract<Entry, { kind: "turn" }> })
           {t("filesChanged")}: <span className="font-mono">{entry.filesChanged.join(", ")}</span>
         </div>
       )}
+      <ListOf title={t("manualChecks")} items={entry.manualChecks} />
+      <ListOf title={t("assumptions")} items={entry.assumptions} />
+      {entry.report && entry.report.trim() !== entry.summary.trim() && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs text-muted">{t("report")}</summary>
+          <Markdown text={entry.report} />
+        </details>
+      )}
       <div className="mt-1 text-xs text-muted">
         {t("cost")}: ${entry.usage.cost_usd.toFixed(4)} · {entry.usage.input_tokens + entry.usage.output_tokens} tokens ·{" "}
         {entry.seconds.toFixed(1)} s
       </div>
+    </div>
+  );
+}
+
+function ListOf({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-1 text-xs">
+      <div className="text-muted">{title}:</div>
+      <ul className="list-disc pl-5">
+        {items.map((item, index) => (
+          <li key={index}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }

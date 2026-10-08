@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Entry } from "../../state/transcript";
 import { t } from "../../lib/i18n";
 import { isEdit, toolLabel, toolSummary } from "../../lib/tools";
-import { DiffView } from "./DiffView";
+import { DiffView, PatchView } from "./DiffView";
 
 type ToolEntry = Extract<Entry, { kind: "tool" }>;
 
@@ -38,6 +38,7 @@ export function ToolCard({ entry }: { entry: ToolEntry }) {
         <div className="space-y-2 border-t border-line px-3 py-2">
           {call.name === "edit_file" && <DiffView before={args.old ?? ""} after={args.new ?? ""} />}
           {call.name === "write_file" && <DiffView before="" after={args.content ?? ""} />}
+          {call.name === "apply_patch" && <PatchView patch={args.patch ?? ""} />}
           {!isEdit(call) && (
             <details>
               <summary className="cursor-pointer text-xs text-muted">{t("arguments")}</summary>

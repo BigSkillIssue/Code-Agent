@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { api } from "./api/client";
@@ -68,10 +68,26 @@ function ChatPage() {
 
 function Shell() {
   const { chatId } = useParams();
+  const [menu, setMenu] = useState(false); // the sidebar on small screens
   return (
     <div className="flex h-full">
-      <Sidebar activeChat={chatId} />
-      <Outlet />
+      {menu && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMenu(false)} />}
+      <div
+        className={`fixed inset-y-0 left-0 z-40 transition-transform md:static md:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <Sidebar activeChat={chatId} onNavigate={() => setMenu(false)} />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2 border-b border-line px-3 py-2 md:hidden">
+          <button type="button" aria-label={t("menu")} onClick={() => setMenu(true)}>
+            <Menu className="size-5" />
+          </button>
+          <span className="font-semibold">{t("appName")}</span>
+        </div>
+        <div className="flex min-h-0 flex-1">
+          <Outlet />
+        </div>
+      </div>
     </div>
   );
 }
