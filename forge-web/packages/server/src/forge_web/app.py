@@ -24,6 +24,7 @@ from forge_web.hub import Hub
 from forge_web.projects import projects_router
 from forge_web.services import Services
 from forge_web.settings import SettingsError, WebSettings
+from forge_web.webui import SecurityHeaders, mount_web_ui
 from forge_web.ws import ws_router
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,8 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     )
     for router in (health_router(), dev_router(), projects_router(), chats_router(), ws_router()):
         app.include_router(router)
+    app.add_middleware(SecurityHeaders, https=settings.base_url().startswith("https://"))
+    mount_web_ui(app)  # last: it answers every path the API does not
     return app
 
 

@@ -1,0 +1,99 @@
+import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { api } from "./api/client";
+import type { Chat } from "./api/types";
+import { ChatView } from "./components/ChatView";
+import { Sidebar } from "./components/Sidebar";
+import { t } from "./lib/i18n";
+import { Login } from "./pages/Login";
+import { useStore } from "./state/store";
+
+function ErrorBar() {
+  const { error, setError } = useStore();
+  if (!error) return null;
+  return (
+    <div className="fixed right-4 bottom-4 z-50 flex max-w-md items-start gap-2 rounded-lg border border-bad bg-card p-3 text-sm text-bad shadow-lg" role="alert">
+      <span className="flex-1">{error}</span>
+      <button type="button" onClick={() => setError("")}>
+        <X className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+function Empty() {
+  return <div className="flex flex-1 items-center justify-center p-8 text-muted">{t("pickChat")}</div>;
+}
+
+function ProjectPage() {
+  const { projectId = "" } = useParams();
+  const chats = useStore((s) => s.chats[projectId]);
+  const { createChat, setError } = useStore();
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted">
+      <p>{chats && chats.length > 0 ? t("pickChat") : t("noChats")}</p>
+      <button
+        type="button"
+        className="rounded-md bg-accent px-4 py-2 font-medium text-on-accent"
+        onClick={() =>
+          createChat(projectId)
+            .then((chat) => navigate(`/c/${chat.id}`))
+            .catch((err) => setError(String(err)))
+        }
+      >
+        {t("newChat")}
+      </button>
+    </div>
+  );
+}
+
+function ChatPage() {
+  const { chatId = "" } = useParams();
+  const chat = useStore((s) => Object.values(s.chats).flat().find((c) => c.id === chatId));
+  const { loadChats } = useStore();
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    if (chat) return;
+    api
+      .get<Chat>(`/api/chats/${chatId}`)
+      .then((found) => loadChats(found.project_id))
+      .catch(() => setMissing(true));
+  }, [chat, chatId, loadChats]);
+  if (missing) return <Empty />;
+  if (!chat) return <div className="flex-1" />;
+  return <ChatView key={chat.id} chat={chat} />;
+}
+
+function Shell() {
+  const { chatId } = useParams();
+  return (
+    <div className="flex h-full">
+      <Sidebar activeChat={chatId} />
+      <Outlet />
+    </div>
+  );
+}
+
+export function App() {
+  const { user, signedOut, init } = useStore();
+  useEffect(() => {
+    void init();
+  }, [init]);
+  if (signedOut) return <Login />;
+  if (!user) return null;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Shell />}>
+          <Route index element={<Empty />} />
+          <Route path="p/:projectId" element={<ProjectPage />} />
+          <Route path="c/:chatId" element={<ChatPage />} />
+          <Route path="*" element={<Empty />} />
+        </Route>
+      </Routes>
+      <ErrorBar />
+    </BrowserRouter>
+  );
+}

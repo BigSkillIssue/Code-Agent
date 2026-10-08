@@ -1,0 +1,40 @@
+{
+  "name": "forge-web-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "diff": "8.0.2",
+    "highlight.js": "11.11.1",
+    "lucide-react": "0.511.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-markdown": "10.1.0",
+    "react-router-dom": "7.6.2",
+    "rehype-highlight": "7.0.2",
+    "remark-gfm": "4.0.1",
+    "zustand": "5.0.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.8",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.3.0",
+    "@types/react": "19.1.6",
+    "@types/react-dom": "19.1.6",
+    "@vitejs/plugin-react": "4.5.2",
+    "jsdom": "26.1.0",
+    "tailwindcss": "4.1.8",
+    "typescript": "5.8.3",
+    "vite": "6.3.5",
+    "vitest": "3.2.4"
+  },
+  "overrides": {
+    "rollup": "4.44.1"
+  }
+}

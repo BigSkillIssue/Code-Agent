@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Colours are tokens: light by default, dark when the system asks for it. */
+:root {
+  --bg: #fbfaf8;
+  --panel: #f3f1ec;
+  --card: #ffffff;
+  --border: #e3dfd6;
+  --text: #1f1e1c;
+  --muted: #6f6b63;
+  --accent: #c2622d;
+  --accent-text: #ffffff;
+  --ok: #2f7d4a;
+  --warn: #a86a12;
+  --bad: #b3372b;
+  --code: #f4f2ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1b19;
+    --panel: #23221f;
+    --card: #292825;
+    --border: #3a3834;
+    --text: #ecebe7;
+    --muted: #a19d94;
+    --accent: #e0814a;
+    --accent-text: #1c1b19;
+    --ok: #6cc28a;
+    --warn: #e2b04f;
+    --bad: #ef7a6c;
+    --code: #2f2e2a;
+  }
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-card: var(--card);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--accent-text);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-code: var(--code);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.prose-forge p {
+  margin: 0.5rem 0;
+}
+.prose-forge pre {
+  background: var(--code);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+.prose-forge code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+.prose-forge :not(pre) > code {
+  background: var(--code);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+}
+.prose-forge ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-forge ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.prose-forge a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.prose-forge table {
+  border-collapse: collapse;
+}
+.prose-forge th,
+.prose-forge td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+}

@@ -13,9 +13,13 @@ the Claude Code desktop app. Every project runs in its own hardened container, s
 ```bash
 cd forge-web
 uv sync
-uv run forge-web --version
-uv run forge-web serve            # http://127.0.0.1:8420
+(cd frontend && npm ci && npm run build)   # the web UI, into forge_web/static
+uv run forge-web serve --dev --fake        # prints a login link; the fake model needs no API key
+uv run forge-web dev-chat --fake           # or chat in the terminal
 ```
+
+`--dev` runs every project's sandbox as a local process (no Docker) with one local admin; it is
+for trying Forge Web on your own machine, not for other people.
 
 Forge Web lives next to Forge and never changes it: `forge-web/` is a separate uv workspace that uses Forge
 as a library.

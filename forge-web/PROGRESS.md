@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W05b
+Next step: W06
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -9,7 +9,8 @@ Next step: W05b
 | W02 | 2026-10-07 | 95b2709 | forge_sandbox/{frames,protocol,mux,rpc}.py, docs/PROTOCOL.md, tests/support.py, tests/test_frames.py, tests/test_mux.py | 9-byte header frames, 1 MiB credit window per channel, management + control frames first, CLOSE stays behind data; RPC with generic `internal` errors |
 | W03 | 2026-10-08 | d20353b | forge_sandbox/{daemon,attach,fsops,methods,procs,pty,netinfo,gitinfo,forward,streams,cli}.py, forge_web/containers/{__init__,driver,local}.py, forge_web/sandbox_client.py, tests/test_fsops.py, tests/test_daemon.py, AGENTS.md | daemon state outlives connections (newest connection wins); fs ops walk with O_NOFOLLOW per component; programs, terminals and git run as the workspace owner; forward out (listen → `forward` channel) and in (`connect` channel); LocalDriver spawns `--stdio` daemons with a clean environment |
 | W04 | 2026-10-08 | aa2e751 | forge_sandbox/{worker,pipe_renderer,chats,history,prompts,methods,daemon,cli,streams}.py, forge_web/{dev_chat,cli}.py, forge_web/containers/local.py, tests/{support,test_worker,test_chats,test_dev_chat,test_daemon}.py, docs/PROTOCOL.md | one worker process per chat (python -I, protocol on private fds, non-dumpable); numbered chat buffer with replay after `seq`; first answer wins; a crashed worker is replaced on the next message and reopens the same Forge session; follow-ups carry the last 10 turns; `forge-web dev-chat --fake` |
-| W05a | 2026-10-08 | (next) | forge_web/db/{__init__,engine,models,writer}.py, forge_web/db/migrations/{env.py,script.py.mako,versions/0001_initial.py}, forge_web/chats/{api,runs,items}.py, forge_web/{hub,ws,projects,access,services,fake,app,cli,settings,dev_chat}.py, forge_web/auth/{__init__,dev}.py, forge_sandbox/{daemon,gitinfo}.py, tests/{support,test_server}.py, docs/STEPS.md | single-user server: projects, chats, event log with gapless numbers, WebSocket replay without gaps or repeats, first answer wins across tabs; `serve --dev [--fake]` |
+| W05a | 2026-10-08 | 389b90c | forge_web/db/{__init__,engine,models,writer}.py, forge_web/db/migrations/{env.py,script.py.mako,versions/0001_initial.py}, forge_web/chats/{api,runs,items}.py, forge_web/{hub,ws,projects,access,services,fake,app,cli,settings,dev_chat}.py, forge_web/auth/{__init__,dev}.py, forge_sandbox/{daemon,gitinfo}.py, tests/{support,test_server}.py, docs/STEPS.md | single-user server: projects, chats, event log with gapless numbers, WebSocket replay without gaps or repeats, first answer wins across tabs; `serve --dev [--fake]` |
+| W05b | 2026-10-08 | (next) | frontend/ (package.json, vite.config.ts, tsconfig.json, index.html, public/favicon.svg, src/{main,App}.tsx, src/api/{types,client,socket}.ts, src/state/{store,transcript}.ts, src/components/{Sidebar,ChatView,Transcript,Composer,Markdown}.tsx, src/components/cards/*.tsx, src/lib/{i18n,tools}.ts, src/pages/Login.tsx, src/styles.css, tests), forge_web/{webui,app}.py, tests/test_webui.py, ../.github/workflows/forge-web.yml, README.md | React 19 + Vite 6 + Tailwind 4 app: sidebar of projects and chats, streaming transcript with tool, approval, question, plan and report cards, German/English, light/dark; served with an SPA fallback and a strict CSP; checked end to end in Chromium |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -42,6 +43,11 @@ Next step: W05b
 - W05a: a WebSocket without a valid session is refused during the handshake (HTTP 403).
 - W05a: projects use 16-hex ids, chats 32-hex ids; both fit the sandbox id pattern.
 - W05a: the server tests start a real uvicorn server in a thread and talk HTTP + WebSocket to it with timeouts.
+
+- W05b: rollup is pinned to 4.44.1 through `overrides`: npm resolved vite's `^4` to rollup 4.64.2 (released the day before), whose tree-shaking hangs on react-dom.
+- W05b: the built UI is not committed; `npm run build` writes it into `forge_web/static/` (git-ignored) and the CI job builds it. Without a build, the server shows how to build it.
+- W05b: replies that are one JSON object (Forge's task spec, reviews) are shown as a folded "task understood" card; a trivial task's summary is not repeated under its reply.
+- W05b: the server module is `webui.py`, not `static.py`, so it cannot clash with the `static/` folder it serves.
 
 ## Open issues
 - (none)
