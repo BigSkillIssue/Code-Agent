@@ -28,6 +28,7 @@ PUBLIC = {
     "POST /api/auth/signup", "POST /api/auth/reset", "POST /api/auth/forgot",
     "POST /api/auth/verify", "GET /api/auth/oauth/{name}/start",
     "GET /api/auth/oauth/{name}/callback", "POST /api/auth/totp/verify",
+    "GET /api/preview/allowed-host",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {

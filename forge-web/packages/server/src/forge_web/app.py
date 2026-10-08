@@ -20,7 +20,7 @@ from forge_web.files_api import files_router
 from forge_web.gateway.api import keys_router
 from forge_web.git_api import git_router
 from forge_web.members import members_router
-from forge_web.preview import preview_router
+from forge_web.preview import preview_hosts_router, preview_router
 from forge_web.preview_auth import preview_base
 from forge_web.preview_proxy import PreviewRouter
 from forge_web.projects import projects_router
@@ -53,7 +53,8 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         health_router(), auth_router(), second_factor_router(), oauth_router(), admin_router(),
         admin_api_router(), settings_router(), dev_router(),
         projects_router(), members_router(), chats_router(), files_router(), git_router(),
-        sources_router(), terminals_router(), preview_router(), keys_router(),
+        sources_router(), terminals_router(), preview_router(), preview_hosts_router(),
+        keys_router(),
         git_credentials_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):

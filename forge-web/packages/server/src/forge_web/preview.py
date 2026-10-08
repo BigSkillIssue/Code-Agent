@@ -14,10 +14,11 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 
 from forge_web.auth.sessions import CurrentUser, session_token, token_id
+from forge_web.db.models import Project
 from forge_web.files_api import allowed
-from forge_web.preview_auth import ENTER_PATH, preview_base
+from forge_web.preview_auth import ENTER_PATH, preview_base, preview_target
 from forge_web.sandbox_calls import result_dict, sandbox_call
-from forge_web.services import Services
+from forge_web.services import Services, services_of
 
 PROGRAM_ID = re.compile(r"^p[0-9a-f]{8}$")
 NODE_SCRIPTS = ("dev", "start", "serve", "preview")
@@ -96,6 +97,26 @@ def preview_router() -> APIRouter:
 def objects(found: Any) -> list[dict[str, Any]]:
     """The objects in a list from the sandbox (anything else is dropped)."""
     return [item for item in found if isinstance(item, dict)] if isinstance(found, list) else []
+
+
+def preview_hosts_router() -> APIRouter:
+    """`GET /api/preview/allowed-host?domain=`: may the reverse proxy get a certificate for this
+    host? (Caddy's on-demand TLS asks before it does.) Yes only for preview hosts of projects
+    that exist, so nobody can make the server request certificates for made-up names."""
+    router = APIRouter()
+
+    @router.get("/api/preview/allowed-host")
+    async def allowed_host(request: Request, domain: str = "") -> dict[str, bool]:
+        services = services_of(request)
+        base = preview_base(services.settings)
+        target = preview_target(base, domain) if base is not None else None
+        if target is not None:
+            async with services.db.session() as session:
+                if await session.get(Project, target.project_id) is not None:
+                    return {"ok": True}
+        raise HTTPException(404, "not a preview host")
+
+    return router
 
 
 def listening(services: Services, found: Any) -> list[dict[str, Any]]:

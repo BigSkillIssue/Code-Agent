@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     from forge_web import user_cli
 
     user_cli.add_arguments(commands.add_parser("user", help="manage accounts"))
+    commands.add_parser("doctor", help="check what the server needs and how to fix it")
     return parser
 
 
@@ -60,6 +61,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from forge_web import sandbox_cli
 
         return sandbox_cli.run(settings, args)
+    if args.command == "doctor":
+        from forge_web.doctor import doctor
+
+        return doctor(settings)
     if args.command == "dev-chat":
         from forge_web.dev_chat import dev_chat
 

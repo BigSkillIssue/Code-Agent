@@ -416,3 +416,16 @@ async def test_previews_are_off_on_a_public_server_without_a_domain(world: World
         assert health.status_code == 200 and health.json()["ok"]  # just Forge, not a preview
     finally:
         server.host = "127.0.0.1"
+
+
+@POSIX_ONLY
+@on_shared_loop
+async def test_certificates_only_for_preview_hosts_of_real_projects(world: World) -> None:
+    async def asks(domain: str) -> int:
+        async with httpx.AsyncClient(base_url=world.server.url) as caddy:
+            found = await caddy.get("/api/preview/allowed-host", params={"domain": domain})
+        return found.status_code
+
+    assert await asks(world.host(world.project_a).split(":")[0]) == 200
+    assert await asks(f"p3000-{'0' * 16}.localhost") == 404  # no such project
+    assert await asks("evil.example.com") == 404 and await asks("") == 404

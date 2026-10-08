@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W16
+Next step: W16b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -27,7 +27,8 @@ Next step: W16
 | W14a | 2026-10-08 | 0771bbf | forge_web/{preview,preview_auth,preview_headers,preview_upstream,preview_proxy,preview_ws,settings,services,startup,app,webui}.py, forge_sandbox/forward.py, tests/{test_preview,preview_app,test_access,test_daemon,test_docker_driver}.py, README.md, docs/{PROTOCOL,STEPS}.md | live previews on hosts of their own: tickets, cookie, HTTP + WebSocket proxy through `connect` channels, preview API |
 | W14b | 2026-10-08 | 66097f5 | frontend/src/panels/{Preview,preview.test,ProjectPanel}.tsx, frontend/src/{api/project,lib/i18n}.ts, forge_sandbox/{netinfo,methods,daemon}.py, forge_web/preview.py, tests/test_daemon.py | the Preview tab: dev-server suggestions, programs with output, ports, the app in a sandboxed frame or a new tab |
 | W15a | 2026-10-08 | 61c310a | forge_web/{admin_api,settings_api,settings,startup,app}.py, forge_web/auth/{totp,second_factor,accounts,routes,oauth,sessions,ratelimit}.py, forge_web/chats/api.py, forge_web/db/{models.py,migrations/versions/0005_settings.py}, tests/{test_totp,test_admin,test_oauth,test_access}.py | two-factor sign-in, profile and password, default model, admin settings at run time, usage of everyone |
-| W15b | 2026-10-08 | (next) | frontend/src/pages/{Settings,SettingsAccess,Admin,AdminServer,parts,Auth,account.test,Auth.test}.tsx, frontend/src/api/account.ts, frontend/src/{App,components/Sidebar}.tsx, frontend/src/{state/store,lib/i18n}.ts | the Settings and Admin pages and the code step at sign-in |
+| W15b | 2026-10-08 | 3aa6a8c | frontend/src/pages/{Settings,SettingsAccess,Admin,AdminServer,parts,Auth,account.test,Auth.test}.tsx, frontend/src/api/account.ts, frontend/src/{App,components/Sidebar}.tsx, frontend/src/{state/store,lib/i18n}.ts | the Settings and Admin pages and the code step at sign-in |
+| W16a | 2026-10-08 | (next) | forge_web/{doctor,cli,preview,app}.py, packages/server/pyproject.toml, tests/{test_doctor,test_preview,test_access}.py | `forge-web doctor`, the on-demand TLS check for preview hosts, the web UI in the wheel |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -159,6 +160,10 @@ Next step: W16
 - W15b: Settings (`/settings`): profile and default model, password, two-factor (the key in groups of four plus an `otpauth://` link that phones open in their authenticator app; recovery codes shown once), linked sign-ins, own API keys, git access, signed-in browsers, usage this month. Admin (`/admin`, admins only): users (role, status, approval, reset link, turning off a lost second factor, server-key grant and monthly limit), invites, server keys, usage of everyone, server settings (only changed fields are sent), audit log. Links to both sit at the bottom of the sidebar.
 - W15b: sign-in pages go to `/login?second_factor=1` when the server answers `totp_required` (password, reset, email confirmation) or a provider sign-in lands there; the code field accepts recovery codes too.
 - W15b: checked in Chromium with a development server: set a password, turn on two-factor with the shown key, see the recovery codes, change a server setting, sign out, sign in with password and code.
+- W16: split into W16a (`forge-web doctor`, what the server needs for deployment) and W16b (images, compose with Caddy, service templates, release workflow, German setup guide).
+- W16a: `forge-web doctor` reads the settings like `serve` and checks the data folder, the built web UI, the event loop (Windows), isolation against the listening address, HTTPS for servers on the network, sign-in providers' secrets, Docker CLI and daemon, the sandbox image, gVisor, and preview DNS; it prints OK/WARN/FAIL with a fix for each and exits 1 on any FAIL. It changes nothing.
+- W16a: `GET /api/preview/allowed-host?domain=` answers 200 only for preview hosts of existing projects; Caddy's on-demand TLS asks it before requesting a certificate, so made-up names never cause certificate requests.
+- W16a: the wheel takes `forge_web/static/**` as hatch artifacts, so the built UI is in it although git ignores the folder; a test builds the wheel (with a stand-in page when the UI is not built) and looks for it.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
