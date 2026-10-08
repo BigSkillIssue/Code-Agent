@@ -27,6 +27,7 @@ def test_run_arguments_harden_the_container() -> None:
     for expected in (
         "--network none", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges",
         "--cpus 1.5", "--memory 2g", "--pids-limit 256", "--runtime runsc", "--init",
+        "--pull never",
         "source=forge-web-abc123-workspace,target=/workspace",
         "source=forge-web-abc123-home,target=/home/forge",
     ):  # fmt: skip

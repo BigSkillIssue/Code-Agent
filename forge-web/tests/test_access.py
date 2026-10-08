@@ -36,8 +36,11 @@ OWN = {
     "GET /api/keys", "POST /api/keys", "DELETE /api/keys/{key_id}", "GET /api/providers",
     "GET /api/usage", "GET /api/auth/identities", "DELETE /api/auth/identities/{provider}",
     "GET /api/git/credentials", "POST /api/git/credentials",
-    "DELETE /api/git/credentials/{credential_id}",
+    "DELETE /api/git/credentials/{credential_id}", "GET /api/models",
 }  # fmt: skip
+# These reach into the project's sandbox, which the access tests do not start: once access is
+# granted they answer 503 here.
+NEEDS_SANDBOX = {"GET /api/projects/{project_id}/files/search"}
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -212,7 +215,7 @@ async def test_viewers_only_read(shared: World) -> None:
         elif kind == "project" and method in UNSAFE:
             assert status in (403, 404), f"{method} {path} answered {status}"
         elif kind == "project":
-            assert status == 200, f"{method} {path} answered {status}"
+            assert status == granted(method, path), f"{method} {path} answered {status}"
 
 
 @on_shared_loop
@@ -221,7 +224,12 @@ async def test_the_owner_reads_every_project_route(shared: World) -> None:
     for method, path, model in api_routes(world.server.app):
         if rule(method, path) == "project" and method == "GET":
             status = await call(world.owner, method, filled(path, world), model)
-            assert status == 200, f"{method} {path} answered {status}"
+            assert status == granted(method, path), f"{method} {path} answered {status}"
+
+
+def granted(method: str, path: str) -> int:
+    """What a permitted read answers in these tests."""
+    return 503 if f"{method} {path}" in NEEDS_SANDBOX else 200
 
 
 @on_shared_loop

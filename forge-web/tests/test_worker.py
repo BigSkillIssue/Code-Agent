@@ -221,6 +221,23 @@ async def test_slash_commands_answer_without_a_model(root: Path, home: Path) -> 
     await worker.close()
 
 
+async def test_ready_lists_the_slash_commands(root: Path, home: Path) -> None:
+    commands = root / ".forge" / "commands"
+    commands.mkdir(parents=True)
+    (commands / "review.md").write_text(
+        "---\ndescription: Review the code\n---\nReview $ARGUMENTS\n"
+    )
+    out = Collector()
+    worker = ChatWorker(root, "c1", ChatOptions(fake_script=fake_script()), out)  # type: ignore[arg-type]
+    await worker.start()
+    ready = await out.wait_for("ready")
+    listed = {c["name"]: c for c in ready["commands"]}
+    assert listed["/compact"]["usage"] == "/compact [hard]" and listed["/plan"]["help"]
+    assert listed["/review"] == {"name": "/review", "usage": "/review [arguments]",
+                                 "help": "Review the code", "custom": True}  # fmt: skip
+    await worker.close()
+
+
 def test_history_block_is_bounded() -> None:
     assert with_history("hi", []) == "hi"
     turns = [

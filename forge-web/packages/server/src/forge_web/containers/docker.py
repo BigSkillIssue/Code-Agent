@@ -52,7 +52,8 @@ class DockerDriver:
         s = self.settings
         workspace, home = self.volumes(project_id)
         args = [
-            "run", "--detach", "--init", "--name", self.container(project_id),
+            # --pull never: a missing image is an error, never something fetched from a registry.
+            "run", "--detach", "--init", "--pull", "never", "--name", self.container(project_id),
             "--label", f"{LABEL}={project_id}",
             "--network", "none",
             "--read-only",

@@ -105,6 +105,13 @@ class GitDiffParams(Params):
     limit: int = Field(default=800_000, ge=1, le=READ_LIMIT)
 
 
+class GitFilesParams(Params):
+    """git.files: the project's files (without ignored ones), best matches for `query` first."""
+
+    query: str = Field(default="", max_length=200)
+    limit: int = Field(default=50, ge=1, le=1000)
+
+
 class EmptyParams(Params):
     """A method without parameters."""
 

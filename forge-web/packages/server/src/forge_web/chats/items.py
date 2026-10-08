@@ -5,6 +5,7 @@ event models, ToolCall, Question, Usage) and rebuilt from them; anything else is
 """
 
 import json
+import re
 from typing import Any
 
 from forge.events import parse_event
@@ -16,6 +17,8 @@ from pydantic import BaseModel, Field, ValidationError
 # (model_done) and the tool result (tool_finished) carry the same content and are stored.
 LIVE_ONLY_EVENTS = frozenset({"model_delta", "tool_output"})
 MAX_TEXT = 100_000
+COMMAND_NAME = re.compile(r"^/[a-z0-9][a-z0-9-]{0,63}$")
+MAX_COMMANDS = 200
 
 
 class ApprovalPayload(BaseModel):
@@ -108,6 +111,29 @@ def _turn(item: dict[str, Any]) -> dict[str, Any]:
     return {"type": "turn", **fields.model_dump(mode="json")}
 
 
+def _command(entry: Any) -> dict[str, Any] | None:
+    """One slash command the worker offers, or None."""
+    if not isinstance(entry, dict):
+        return None
+    name = entry.get("name")
+    if not isinstance(name, str) or not COMMAND_NAME.match(name):
+        return None
+    usage = short(entry.get("usage"), 200)
+    return {
+        "name": name,
+        "usage": usage if usage.startswith(name) else name,
+        "help": short(entry.get("help"), 300),
+        "custom": entry.get("custom") is True,
+    }
+
+
+def _ready(item: dict[str, Any]) -> dict[str, Any]:
+    raw = item.get("commands")
+    found = [_command(entry) for entry in (raw[:MAX_COMMANDS] if isinstance(raw, list) else [])]
+    return {"type": "ready", "session_id": short(item.get("session_id"), 64),
+            "commands": [c for c in found if c is not None]}  # fmt: skip
+
+
 def _status(item: dict[str, Any]) -> dict[str, Any] | None:
     state = item.get("state")
     return {"type": "status", "state": state} if state in ("running", "idle") else None
@@ -120,7 +146,7 @@ _CHECKS: dict[str, Any] = {
     "turn": _turn,
     "status": _status,
     "user": lambda i: {"type": "user", "text": short(i.get("text"))},
-    "ready": lambda i: {"type": "ready", "session_id": short(i.get("session_id"), 64)},
+    "ready": _ready,
     "command_result": lambda i: {
         "type": "command_result",
         "command": short(i.get("command"), 1000),

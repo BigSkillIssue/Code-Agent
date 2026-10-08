@@ -85,6 +85,7 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `forward.listen` | `target`, `port` (0 = any) | `{target, port}` on 127.0.0.1 inside the sandbox |
 | `ports.list` | — | listening ports `{port, address}` (without the daemon's own) |
 | `git.status` / `git.diff` | — / `path`, `staged`, `limit` | `{repo, branch, upstream, ahead, behind, files}` / `{diff, truncated}` |
+| `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |
 | `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |
 | `chat.send` | `chat_id`, `text` (a prompt, or a `/command`) | chat info; `busy` while a turn runs |
 | `chat.answer` | `chat_id`, `request_id`, `answer` | `{accepted}` — only the first answer is accepted |
@@ -112,7 +113,7 @@ Every item a chat produces gets the next `seq` (1, 2, 3, …) and stays in the d
 | `type` | From | Fields |
 | --- | --- | --- |
 | `user` | daemon | `text` — a message the user sent |
-| `ready` | worker | `session_id`, `turns` — the Forge session is open |
+| `ready` | worker | `session_id`, `turns`, `commands` (`name`, `usage`, `help`, `custom`) — the Forge session is open; the slash commands it understands |
 | `status` | worker | `state`: `running` or `idle` |
 | `event` | worker | `event` — a Forge event (`kind` = `model_delta`, `tool_started`, …) |
 | `request` | worker | `id`, `kind` (`approval` \| `question`), `payload` (`call` + `reason`, or `questions`) |

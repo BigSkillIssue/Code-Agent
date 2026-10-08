@@ -64,7 +64,11 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: Authlib with PKCE, state and nonce; Google OIDC (`email_verified` required); GitHub OAuth with the verified primary email; link accounts only by verified email; "connect GitHub for repositories" as a separate grant (or a personal token), stored encrypted.
     - Tests (mocked identity providers): sign-in creates or links the right user; an unverified email is not linked; state or nonce mismatch rejected.
     - Verify: `uv run pytest tests/test_oauth.py -q`
-- [ ] **W10 — Complete chat UI**
+- [x] **W10a — What the chat UI needs from the server and the sandbox**
+    - Files: `forge_sandbox/{gitinfo,methods,worker}.py`, `forge_web/{files_api,app}.py`, `forge_web/gateway/api.py`, `forge_web/chats/items.py`, `tests/{test_daemon,test_worker,test_items,test_models,test_access}.py`
+    - Build: `git.files` (files not ignored by git, fuzzy search) and `GET /api/projects/{id}/files/search` for @-mentions; the worker's `ready` item lists the slash commands (Forge's and custom ones), checked by the server; `GET /api/models` (catalog models of the providers a user may use).
+    - Verify: `uv run pytest tests/test_models.py tests/test_items.py -q`
+- [ ] **W10b — Complete chat UI**
     - Files: `frontend/src/**`, `frontend/src/**/*.test.tsx`, `frontend/src/fixtures/*.json`
     - Build: sidebar (projects → chats, search, status), transcript with streaming Markdown (no raw HTML), tool cards (diffs for edits, live shell output, sub-agents, todos), plan card, approval and question cards, report card with cost, composer with slash and @file completion, model and mode pickers, German and English, light and dark, mobile layout.
     - Tests (Vitest): recorded event fixtures render the expected cards; an XSS fixture renders inert; approval buttons send the right answer.

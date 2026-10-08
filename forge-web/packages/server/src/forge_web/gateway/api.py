@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from forge.providers.catalog import PRESETS
+from forge.providers.catalog import KNOWN_MODELS, PRESETS
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -35,6 +35,24 @@ def key_view(key: ApiKey) -> dict[str, Any]:
     """A stored key without its secret."""
     return {"id": key.id, "provider": key.provider, "name": key.name, "hint": key.hint,
             "created_at": key.created_at, "last_used_at": key.last_used_at}  # fmt: skip
+
+
+# Which vendor serves a catalog model (the catalog lists models without their provider).
+MODEL_VENDORS = {"claude-": "anthropic", "gpt-": "openai", "gemini-": "google",
+                 "deepseek-": "deepseek", "llama-": "groq"}  # fmt: skip
+
+
+def model_provider(model: str) -> str | None:
+    """The provider that serves a catalog model, or None."""
+    return next((p for prefix, p in MODEL_VENDORS.items() if model.startswith(prefix)), None)
+
+
+async def key_sources(services: Services, user: User) -> tuple[set[str], set[str]]:
+    """Providers the user has an own key for, and those they may use the server's key for."""
+    own = {k.provider for k in await list_keys(services.db, user.id)}
+    limit = await server_key_limit(services.db, user, services.settings.gateway)
+    server = {k.provider for k in await list_keys(services.db, "")} if limit is not None else set()
+    return own, server
 
 
 def supported(provider: str) -> bool:
@@ -73,12 +91,7 @@ def keys_router() -> APIRouter:
 
     @router.get("/api/providers")
     async def providers(request: Request, user: CurrentUser) -> list[dict[str, Any]]:
-        services = services_of(request)
-        own = {k.provider for k in await list_keys(services.db, user.id)}
-        limit = await server_key_limit(services.db, user, services.settings.gateway)
-        server = (
-            {k.provider for k in await list_keys(services.db, "")} if limit is not None else set()
-        )
+        own, server = await key_sources(services_of(request), user)
         return [
             {
                 "name": name,
@@ -90,6 +103,21 @@ def keys_router() -> APIRouter:
             for name, preset in sorted(PRESETS.items())
             if preset.kind in KINDS
         ]
+
+    @router.get("/api/models")
+    async def models(request: Request, user: CurrentUser) -> list[dict[str, Any]]:
+        own, server = await key_sources(services_of(request), user)
+        found = []
+        for model, caps in KNOWN_MODELS.items():
+            provider = model_provider(model)
+            if provider is None or provider not in own | server:
+                continue
+            found.append({
+                "id": f"{provider}/{model}", "provider": provider, "model": model,
+                "key": "own" if provider in own else "server", "cost_in": caps.cost_in,
+                "cost_out": caps.cost_out, "context_window": caps.context_window,
+            })  # fmt: skip
+        return found
 
     @router.get("/api/usage")
     async def usage(request: Request, user: CurrentUser) -> dict[str, Any]:

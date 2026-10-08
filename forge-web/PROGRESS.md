@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W10
+Next step: W10b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -15,7 +15,8 @@ Next step: W10
 | W07 | 2026-10-08 | e70f4bb | forge_web/gateway/{__init__,tokens,upstreams,meter,keys,proxy,api}.py, forge_web/{egress,vault,startup,app,services,settings}.py, forge_web/chats/runs.py, forge_web/containers/docker.py, forge_web/db/models.py, forge_web/db/migrations/versions/0002_gateway.py, tests/{test_gateway,test_gateway_e2e,test_egress,test_docker_driver}.py | model calls go sandbox → daemon forward → private gateway (unix socket) → provider with the real key; signed run tokens valid only while their chat works; only model endpoints; output capped; usage from the upstream's reply (estimate if aborted); user keys win, server keys need a grant and a monthly limit; egress CONNECT proxy with an allow list and public addresses only; e2e test with Forge's real Anthropic client |
 | W08a | 2026-10-08 | 26e3d1a | forge_web/auth/{passwords,sessions,onetime,origin,ratelimit,mail,routes,dev}.py, forge_web/{audit,user_cli,startup,services,settings,app,cli,projects,ws}.py, forge_web/chats/api.py, forge_web/gateway/{api,proxy}.py, forge_web/db/{models.py,migrations/versions/0003_accounts.py}, frontend/src/{App.tsx,api/client.ts,pages/Auth.tsx,components/Sidebar.tsx,lib/i18n.ts}, tests/{support,test_auth,test_user_cli,test_server,test_docker_driver,test_gateway_e2e,test_dev_chat}.py | real accounts: argon2id, hashed server-side sessions, CSRF value per session, Origin checks (API + WebSocket), first-admin setup link, invite/approval/open sign-up, one-time links, rate limits, audit log, user CLI; checked in Chromium |
 | W08b | 2026-10-08 | 97d1229 | forge_web/{members,app}.py, forge_web/auth/admin.py, forge_web/gateway/api.py, tests/{support,test_auth,test_access}.py, AGENTS.md | project members (owner / editor / viewer; a project keeps one owner; removed or demoted members' running turns stop); admin API for accounts, invites, reset links and the audit log; a user's own sessions; the access test walks every API route as stranger, outsider, viewer and owner |
-| W09 | 2026-10-08 | (next) | forge_web/auth/{oauth,oauth_providers,git_credentials,routes,ratelimit}.py, forge_web/{settings,services,startup,app}.py, forge_web/db/{models.py,migrations/versions/0004_identities.py}, frontend/src/{pages/Auth.tsx,pages/Auth.test.tsx,lib/i18n.ts}, tests/{support,test_oauth,test_access,test_settings}.py, README.md | Google (OIDC), GitHub (OAuth) and any OpenID Connect issuer; state, PKCE (S256) and nonce in a signed HttpOnly flow cookie; accounts link only by verified email (both sides) or on purpose while signed in; GitHub repository grant and personal tokens stored encrypted |
+| W09 | 2026-10-08 | b53ffa9 | forge_web/auth/{oauth,oauth_providers,git_credentials,routes,ratelimit}.py, forge_web/{settings,services,startup,app}.py, forge_web/db/{models.py,migrations/versions/0004_identities.py}, frontend/src/{pages/Auth.tsx,pages/Auth.test.tsx,lib/i18n.ts}, tests/{support,test_oauth,test_access,test_settings}.py, README.md | Google (OIDC), GitHub (OAuth) and any OpenID Connect issuer; state, PKCE (S256) and nonce in a signed HttpOnly flow cookie; accounts link only by verified email (both sides) or on purpose while signed in; GitHub repository grant and personal tokens stored encrypted |
+| W10a | 2026-10-08 | (next) | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -88,6 +89,14 @@ Next step: W10
 - W09: the git credentials module is `auth/git_credentials.py` (the card said `github_repos.py`): it stores tokens for any git host; the GitHub grant (`intent=repos`, scope `repo`) is one way to fill it, a personal token the other.
 - W09: avatars from providers are not shown: the CSP allows only this site's images, so model output cannot load tracking images either.
 
+- W10: W10 split into W10a (server and sandbox support) and W10b (the UI).
+- W10a: @-mention search uses `git ls-files --cached --others --exclude-standard`, so it follows the project's .gitignore; ranking: file name starts with the query, then name contains it, then path contains it, then its letters in order.
+- W10a: the slash commands come from the chat's worker (`ready`), which already imports Forge; the server never imports `forge.commands` (2-3 s of SDK imports). Until a chat's worker has started, the UI uses a built-in list.
+- W10a: `/api/models` maps catalog models to vendors by name prefix (claude → anthropic, gpt → openai, gemini → google, deepseek, llama → groq), because Forge's catalog lists models without providers; models of keyless local providers (Ollama, …) are typed by hand.
+- W10a: `docker run --pull never`: a missing sandbox image is an error, never something fetched from a registry.
+- W10a: `frontend/tsconfig.tsbuildinfo` (a build cache) is no longer tracked.
+
 ## Open issues
-- W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned with the chat UI, W10).
+- W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
 - W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
+- W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.

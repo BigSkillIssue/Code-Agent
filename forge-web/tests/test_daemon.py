@@ -181,6 +181,33 @@ async def test_git_status_and_diff(tmp_path: Path) -> None:
         assert "-a = 1" in diff["diff"] and "+a = 2" in diff["diff"]
 
 
+async def test_git_files_lists_and_finds_project_files(tmp_path: Path) -> None:
+    async with sandbox(tmp_path) as (_daemon, client):
+        assert (await client.call("git.files", {}))["files"] == []  # not a repository yet
+        git(tmp_path, "init", "-q", "-b", "main")
+        for name in ("src/app.py", "src/utils/helpers.py", "docs/apple.md", "README.md",
+                     "build/out.js", "debug.log", "has space.txt"):  # fmt: skip
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text("x\n")
+        (tmp_path / ".gitignore").write_text("build/\n*.log\n")
+        listed = await client.call("git.files", {})
+        assert set(listed["files"]) == {
+            ".gitignore",
+            "README.md",
+            "docs/apple.md",
+            "has space.txt",
+            "src/app.py",
+            "src/utils/helpers.py",
+        }
+        found = await client.call("git.files", {"query": "app"})
+        assert found["files"][:2] == ["src/app.py", "docs/apple.md"]  # names before paths
+        assert (await client.call("git.files", {"query": "suh"}))["files"] == [
+            "src/utils/helpers.py"
+        ]  # letters in order
+        limited = await client.call("git.files", {"limit": 2})
+        assert len(limited["files"]) == 2 and limited["total"] == 6
+
+
 @LINUX_ONLY
 async def test_listening_ports_leave_out_the_daemons_own(tmp_path: Path) -> None:
     server, port = await echo_server()

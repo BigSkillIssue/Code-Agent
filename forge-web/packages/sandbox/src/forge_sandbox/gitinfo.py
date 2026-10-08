@@ -8,12 +8,39 @@ from collections.abc import Mapping
 from typing import Any
 
 from forge_sandbox.fsops import Workspace, split_path
-from forge_sandbox.methods import EmptyParams, GitDiffParams, method
+from forge_sandbox.methods import EmptyParams, GitDiffParams, GitFilesParams, method
 from forge_sandbox.procs import run_program
 from forge_sandbox.rpc import Handler, RpcError
 
+MAX_FILES = 50_000  # files git.files looks at
 SAFE_GIT = ["git", "-c", "core.fsmonitor=", "-c", "color.ui=false", "-c", "core.quotepath=false"]
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat"}
+
+
+def match_rank(path: str, query: str) -> int | None:
+    """How well a path matches a search (lower is better), or None. Case does not matter."""
+    lower, name = path.lower(), path.lower().rsplit("/", 1)[-1]
+    if not query:
+        return 0
+    if name.startswith(query):
+        return 0
+    if query in name:
+        return 1
+    if query in lower:
+        return 2
+    position = 0
+    for char in query:  # the letters in order, with gaps
+        position = lower.find(char, position) + 1
+        if position == 0:
+            return None
+    return 3
+
+
+def best_matches(paths: list[str], query: str, limit: int) -> list[str]:
+    """The paths that match, best first (then shorter, then alphabetical)."""
+    query = query.strip().lower()
+    ranked = [(rank, len(p), p) for p in paths if (rank := match_rank(p, query)) is not None]
+    return [p for _rank, _length, p in sorted(ranked)[:limit]]
 
 
 def parse_branch(header: str) -> dict[str, Any]:
@@ -70,6 +97,7 @@ class GitInfo:
             "git.status": method(EmptyParams, self.status),
             "git.diff": method(GitDiffParams, self.diff),
             "git.init": method(EmptyParams, self.init),
+            "git.files": method(GitFilesParams, self.files),
         }
 
     async def _git(self, *args: str, timeout: float = 30) -> tuple[int, str, str]:
@@ -116,3 +144,11 @@ class GitInfo:
             raise RpcError("git_failed", err.strip()[:500] or "git diff failed")
         truncated = len(out) > params.limit
         return {"diff": out[: params.limit], "truncated": truncated}
+
+    async def files(self, params: GitFilesParams) -> dict[str, Any]:
+        """Tracked and untracked files that are not ignored; empty outside a repository."""
+        code, out, _ = await self._git(
+            "ls-files", "--cached", "--others", "--exclude-standard", "--deduplicate", "-z"
+        )
+        paths = [p for p in out.split("\0") if p][:MAX_FILES] if code == 0 else []
+        return {"files": best_matches(paths, params.query, params.limit), "total": len(paths)}

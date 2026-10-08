@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from forge.commands import handle_command
+from forge.commands import HELP, custom_commands, handle_command
 from forge.config import ConfigError, ForgeConfig, forge_home, load_config
 from forge.ctx import Ctx
 from forge.events import Event
@@ -102,9 +102,10 @@ class ChatWorker:
         )
         self.state.session_id = self.ctx.session.id
         self.state.save(self.home)
-        await self.out.send(
-            {"type": "ready", "session_id": self.ctx.session.id, "turns": len(self.state.turns)}
-        )
+        await self.out.send({
+            "type": "ready", "session_id": self.ctx.session.id, "turns": len(self.state.turns),
+            "commands": slash_commands(self.root),
+        })  # fmt: skip
 
     async def _forward(self, events: AsyncIterator[Event]) -> None:
         async for event in events:
@@ -170,6 +171,19 @@ class ChatWorker:
             await close_session(self.ctx)
         if self._events is not None:
             self._events.cancel()
+
+
+def slash_commands(root: Path) -> list[dict[str, Any]]:
+    """Forge's slash commands and the custom ones of the user and the project, for completion."""
+    found = [{"name": usage.split()[0], "usage": usage, "help": text, "custom": False}
+             for usage, text in HELP.items()]  # fmt: skip
+    try:
+        custom = custom_commands(root)
+    except (OSError, UnicodeDecodeError):  # an unreadable command file must not stop the chat
+        custom = {}
+    found += [{"name": f"/{c.name}", "usage": f"/{c.name} [arguments]",
+               "help": c.description, "custom": True} for c in custom.values()]  # fmt: skip
+    return found
 
 
 def report_fields(report: Report) -> dict[str, Any]:
