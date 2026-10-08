@@ -33,14 +33,17 @@ HEADERS = {
 class SecurityHeaders(BaseHTTPMiddleware):
     """Adds the headers above to every response (HSTS too when served over HTTPS)."""
 
-    def __init__(self, app: object, *, https: bool) -> None:
+    def __init__(self, app: object, *, https: bool, frame_src: str = "") -> None:
         super().__init__(app)  # type: ignore[arg-type]
         self.https = https
+        # Forge's pages may frame live previews (their own hosts), nothing else.
+        self.headers = {**HEADERS, "Content-Security-Policy": f"{CSP}; frame-src {frame_src}"
+                        if frame_src else CSP}  # fmt: skip
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Add the headers."""
         response = await call_next(request)
-        for name, value in HEADERS.items():
+        for name, value in self.headers.items():
             response.headers.setdefault(name, value)
         if self.https:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")

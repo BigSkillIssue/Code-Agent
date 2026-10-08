@@ -53,3 +53,25 @@ the Forge account's email is confirmed too; otherwise people link providers in t
 signed in. Sign-up rules (`auth.signup`: invite, approval or open, and `auth.allowed_domains`) apply to
 provider sign-ins as well. GitHub can also be connected for repositories (clone, pull, push); that grant
 is separate from signing in and is stored encrypted.
+
+## Live previews
+
+A dev server started in a project (`npm run dev`, `python3 -m http.server`, …) opens in the Preview tab.
+Every preview gets a host of its own, `p<port>-<project>.<preview domain>`, so the app in it is another
+site than Forge: it never sees Forge's cookies and cannot use Forge's API as you. Forge opens a preview
+with a one-time ticket that becomes a cookie for that host only; other sites may link to a preview but
+not fetch from it.
+
+On your own machine nothing needs setting up: a server that listens only on `127.0.0.1` serves previews
+on `http://p<port>-<project>.localhost:<port>` (Chrome, Edge and Firefox resolve `*.localhost` by
+themselves). A server other people reach needs a domain of its own with wildcard DNS (and a wildcard
+certificate on the reverse proxy) pointing at Forge Web:
+
+```toml
+[preview]
+domain = "preview.example.net"   # *.preview.example.net → this server; not a subdomain of Forge's
+# https = true                   # default: like server.public_url
+# port = 8443                    # only if previews are not on the scheme's default port
+```
+
+Without a domain, previews are off on such a server.

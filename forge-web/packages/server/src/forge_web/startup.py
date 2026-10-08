@@ -24,6 +24,7 @@ from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.gateway.tokens import TOKEN_ENV
 from forge_web.gateway.upstreams import worker_providers
 from forge_web.hub import Hub
+from forge_web.preview_auth import PreviewAccess
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
@@ -108,6 +109,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
+        previews=PreviewAccess(vault.derive("preview")),
     )  # fmt: skip
     await after_start(services, docker)
     return services

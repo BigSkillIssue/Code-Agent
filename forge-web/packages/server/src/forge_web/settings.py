@@ -99,6 +99,19 @@ class GitSettings(_Strict):
     allow_local_remotes: bool = False
 
 
+class PreviewSettings(_Strict):
+    """Live previews of dev servers: each on its own host, `p<port>-<project>.<domain>`.
+
+    The domain needs wildcard DNS to this server and should be a registrable domain of its own
+    (not a subdomain of Forge's), so previews are other sites. Without a domain, a server that
+    listens only on loopback serves previews on `*.localhost` (browsers resolve those locally).
+    """
+
+    domain: str = ""  # e.g. preview.example.net
+    https: bool | None = None  # None: like public_url
+    port: int | None = Field(default=None, ge=1, le=65535)  # in preview URLs; None: the default
+
+
 class SmtpSettings(_Strict):
     """Outgoing mail for verification and reset links (optional)."""
 
@@ -161,6 +174,7 @@ class WebSettings(_Strict):
     egress: EgressSettings = EgressSettings()
     git: GitSettings = GitSettings()
     quotas: QuotaSettings = QuotaSettings()
+    preview: PreviewSettings = PreviewSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

@@ -174,6 +174,33 @@ async def test_connect_into_the_sandbox(tmp_path: Path) -> None:
         assert forbidden.value.info.code == "forbidden"
 
 
+def ipv6_loopback() -> bool:
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET6) as probe:
+            probe.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not ipv6_loopback(), reason="needs IPv6 on loopback")
+async def test_connect_reaches_programs_on_ipv6_loopback(tmp_path: Path) -> None:
+    async def echo(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        writer.write(await reader.read(100))
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(echo, "::1", 0)  # like Vite on "localhost"
+    port = int(server.sockets[0].getsockname()[1])
+    async with sandbox(tmp_path) as (_daemon, client):
+        channel = await client.open("connect", {"port": port})
+        await channel.send(b"over ::1")
+        assert await asyncio.wait_for(channel.read(), 5) == b"over ::1"
+    server.close()
+
+
 async def test_sandbox_may_only_open_forward_channels(tmp_path: Path) -> None:
     async with sandbox(tmp_path) as (daemon, _client):
         with pytest.raises(OpenFailed) as err:

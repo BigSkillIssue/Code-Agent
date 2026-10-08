@@ -19,6 +19,7 @@ from forge_sandbox.streams import pump
 
 Opener = Callable[[str, dict[str, Any]], Awaitable[Channel]]
 LOOPBACK = "127.0.0.1"
+LOCAL_ADDRESSES = (LOOPBACK, "::1")
 
 
 class Forwards:
@@ -71,10 +72,14 @@ class Forwards:
         port = parse_params(ConnectArgs, channel.args).port
         if port in self.ports():
             raise OpenRefused("forbidden", "that port belongs to the daemon")
-        try:
-            reader, writer = await asyncio.open_connection(LOOPBACK, port)
-        except OSError:
-            raise OpenRefused("connect_failed", f"nothing listens on port {port}") from None
+        for address in LOCAL_ADDRESSES:  # dev servers such as Vite may listen on ::1 only
+            try:
+                reader, writer = await asyncio.open_connection(address, port)
+                break
+            except OSError:
+                continue
+        else:
+            raise OpenRefused("connect_failed", f"nothing listens on port {port}")
         await channel.accept()
         await pump(channel, reader, writer)
 

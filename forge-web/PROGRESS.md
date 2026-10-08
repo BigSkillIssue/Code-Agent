@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W14
+Next step: W14b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -24,6 +24,7 @@ Next step: W14
 | W12a | 2026-10-08 | befb1c8 | forge_sandbox/{unzip,usage,fsops,gitops,methods,daemon}.py, forge_web/{projects,sources,quotas,gitsync,files_api,startup,settings,services,app,sandbox_calls}.py, forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/chats/api.py, tests/{test_unzip,test_projects,test_docker_driver,test_access}.py, docs/{PROTOCOL,STEPS}.md | projects from git URLs, ZIP uploads and server folders; quotas for projects per user and disk per project |
 | W12b | 2026-10-08 | f532536 | frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx, frontend/src/{api/project,state/store,lib/i18n}.ts | the new-project dialog with every source |
 | W13 | 2026-10-08 | c187090 | forge_web/{terminals,app}.py, forge_web/chats/runs.py, forge_sandbox/pty.py, frontend/src/panels/{Terminal,XtermView,ProjectPanel,terminal.test}.tsx, frontend/src/{api/project,lib/i18n}.ts, tests/{test_terminals,test_daemon,test_docker_driver,test_access}.py, docs/PROTOCOL.md | terminals in the browser: tabs, resize, reconnect; a terminal that ends closes its channels |
+| W14a | 2026-10-08 | (next) | forge_web/{preview,preview_auth,preview_headers,preview_upstream,preview_proxy,preview_ws,settings,services,startup,app,webui}.py, forge_sandbox/forward.py, tests/{test_preview,preview_app,test_access,test_daemon,test_docker_driver}.py, README.md, docs/{PROTOCOL,STEPS}.md | live previews on hosts of their own: tickets, cookie, HTTP + WebSocket proxy through `connect` channels, preview API |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -137,6 +138,12 @@ Next step: W14
 - W13: a terminal that ends (its program exited, or `pty.close`) now closes every attached `pty` channel after the last output, so viewers learn about it instead of waiting forever (`forge_sandbox/pty.py`, outside the card's files).
 - W13: typing in a terminal counts as activity for the idle stop (`RunManager.touch`); an open but unused terminal does not keep a sandbox running.
 - W13: xterm.js 6.0.0 + addon-fit 0.11.0 load only when the terminal tab opens (own chunk, like the code editor); the tab list loads on the first visit and opens a shell if there is none, sized to the panel so the prompt does not wrap twice; terminals stay connected while the panel is open, also on other tabs.
+- W14: split into W14a (server: preview hosts, tickets, proxy, API) and W14b (the Preview tab). The proxy is split by responsibility into `preview_auth` (hosts, tickets, cookies), `preview_headers` (rewriting), `preview_upstream` (connections into the sandbox), `preview_proxy` (routing, HTTP) and `preview_ws` (WebSockets); the card named only `preview.py` and `preview_proxy.py`.
+- W14: a preview lives on `p<port>-<project>.<preview.domain>`; `PreviewRouter` is the outermost middleware, so preview hosts never reach Forge's routes. Without `preview.domain`, a server listening on loopback uses `*.localhost` on its own port (the single-port mode for local installs); any other server has no previews until a domain is set.
+- W14: the UI asks `POST /api/projects/{id}/preview/{port}/open` for a ticket URL (one minute, one use, bound to the user's session, the project and the port); the preview host turns it into `__Host-forge_preview` (signed, 12 h, Secure, HttpOnly, SameSite=None, Partitioned so it works inside Forge's iframe across sites). Every use checks the signature, the host and, at most every 30 s, that the session is live and the user still a member. Viewers may open previews; only editors start and stop programs.
+- W14: requests from other sites (or other previews) are refused unless they are GET/HEAD navigations (`Sec-Fetch-Site`/`Sec-Fetch-Mode`); a preview WebSocket needs the preview's own Origin. To the app, Host and Origin/Referer are `localhost:<port>`, Forge's cookies and X-Forwarded headers are removed; from the app, `Set-Cookie` loses `Domain`, cookies named like Forge's are dropped, local redirects become relative, and `frame-ancestors` allows only Forge's origins. Forge's own pages allow previews in `frame-src`.
+- W14: connections to apps use `httpcore` (httpx's own transport) over `connect` channels and `websockets`' sans-I/O protocol (it comes with `uvicorn[standard]`); both were installed already, nothing new is added. No connection is kept alive.
+- W14: `connect` channels try 127.0.0.1 and then ::1 (Vite on "localhost" often listens on ::1 only). In local mode the port list leaves out Forge's own port.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
@@ -146,3 +153,5 @@ Next step: W14
 - W12a: a cloned repository's `.forge/config.toml` (hooks, MCP servers) is loaded by Forge inside the sandbox like any project config; it cannot leave the sandbox, but it could run commands without asking. Review with W17 whether chats should ignore project hooks/MCP until the owner trusts the project.
 - W13: Docker Hub answered the sandbox image build with 429 (rate limit for this network); the base image was pulled from `mirror.gcr.io/library/python:3.12-slim-bookworm` and tagged locally. Worth a `--build-arg` for the base image in W16 so installs behind a mirror work.
 - W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a.
+- W14a: the ::1 test is skipped on this machine (no IPv6 at all); it runs where loopback has IPv6 (CI).
+- W14a: whether Chromium accepts the Secure, Partitioned preview cookie on plain-http `*.localhost` (inside Forge's iframe) is checked with the UI in W14b.

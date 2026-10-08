@@ -69,7 +69,7 @@ needs_docker = [
 async def driver() -> AsyncIterator[DockerDriver]:
     created = DockerDriver(SandboxSettings(image=IMAGE, cpus=1, memory="1g", pids=256))
     yield created
-    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d", "dtest-t"):
+    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d", "dtest-t", "dtest-p"):
         await created.remove(project_id)
 
 
@@ -326,5 +326,36 @@ async def test_a_terminal_runs_as_the_project_user(driver: DockerDriver) -> None
             seen += data
         assert b"who-1000-/workspace" in seen  # not root, in the workspace
         assert b"exited with code 7" in seen
+    finally:
+        await client.close()
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_a_preview_reaches_a_server_in_the_container(driver: DockerDriver) -> None:
+    import httpcore
+
+    from forge_web.preview_upstream import SandboxBackend
+
+    client = await client_for(driver, "dtest-p")
+    try:
+        await client.call("fs.write", {"path": "index.html", "text": "<h1>from the box</h1>"})
+        server = "python3 -m http.server 8000 --bind 127.0.0.1"
+        await client.call("procs.start", {"command": server})
+
+        async def open_port(port: int) -> Any:
+            return await client.open("connect", {"port": port})
+
+        backend = SandboxBackend(open_port)
+        for _ in range(100):
+            if 8000 in [p["port"] for p in await client.call("ports.list")]:
+                break
+            await asyncio.sleep(0.1)
+        origin = httpcore.Origin(b"http", b"localhost", 8000)
+        async with httpcore.AsyncHTTPConnection(origin, network_backend=backend) as connection:
+            response = await connection.request(
+                "GET", "http://localhost:8000/index.html", headers={"Host": "localhost:8000"}
+            )
+        assert response.status == 200 and b"from the box" in response.content
     finally:
         await client.close()

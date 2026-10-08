@@ -109,7 +109,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: PTY sessions through the daemon, one WebSocket per terminal, xterm.js with tabs and resize.
     - Tests: echo and resize; an output flood does not stall chat events on the same connection.
     - Verify: `uv run pytest tests/test_terminals.py -q`
-- [ ] **W14 — Live preview**
+- [ ] **W14 — Live preview** (split: [x] W14a server, proxy and API; [ ] W14b the Preview tab)
     - Files: `forge_web/preview.py`, `forge_web/preview_proxy.py`, `frontend/src/panels/Preview.tsx`, `tests/test_preview.py`
     - Build: suggested dev commands (package.json scripts, Python servers), start/stop, detected ports; an HTTP + WebSocket proxy on `<project>.<preview domain>` (a separate registrable domain with wildcard DNS) with one-time tokens exchanged for a subdomain cookie, app cookies never forwarded, Host and Origin rewritten to `localhost:<port>`; a single-port mode for local single-user installs only.
     - Tests: preview of project A cannot read B (different origin, cookie scoped); the app session cookie is never forwarded; a WebSocket upgrade passes through.

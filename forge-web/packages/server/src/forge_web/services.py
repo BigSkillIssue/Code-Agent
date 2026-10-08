@@ -14,6 +14,7 @@ from forge_web.db.writer import EventWriter
 from forge_web.egress import Egress
 from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.hub import Hub
+from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
 from forge_web.vault import Vault
 
@@ -33,6 +34,7 @@ class Services:
     gateway_server: PrivateServer
     egress: Egress
     sign_in: SignIn
+    previews: PreviewAccess
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

