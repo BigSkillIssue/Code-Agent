@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from forge_web.access import require_project
 from forge_web.auth.sessions import CurrentUser
+from forge_web.quotas import disk_room
 from forge_web.sandbox_calls import result_dict, sandbox_call
 from forge_web.services import Services, services_of
 
@@ -163,7 +164,13 @@ def transfer_routes(router: APIRouter) -> None:
         if not path:
             raise HTTPException(400, "which file?")
         limit = services.settings.server.max_upload_mb * 1024 * 1024
-        return await receive(services, project_id, path, request.stream(), limit)
+        room = await disk_room(services, project_id)
+        if room is not None and room < limit:
+            limit = room
+        try:
+            return await receive(services, project_id, path, request.stream(), limit)
+        finally:
+            services.disk_use.pop(project_id, None)
 
     @router.get("/raw")
     async def download(
@@ -198,7 +205,9 @@ async def receive(
             buffer += chunk
             total += len(chunk)
             if total > limit:
-                raise HTTPException(413, f"files may have at most {limit // (1024 * 1024)} MB")
+                raise HTTPException(
+                    413, f"this upload may have at most {limit // (1024 * 1024)} MB"
+                )
             while len(buffer) >= PART:
                 await write_part(services, project_id, path, upload, bytes(buffer[:PART]), False)
                 del buffer[:PART]

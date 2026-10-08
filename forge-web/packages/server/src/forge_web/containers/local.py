@@ -55,7 +55,7 @@ class LocalDriver:
     ) -> None:
         self.projects = data_dir / "projects"
         self.python = python
-        self.folders = dict(folders or {})  # project id -> an existing folder to work in
+        self.folders: dict[str, Path] = dict(folders or {})  # project id -> a server folder
         self._running: dict[str, set[asyncio.subprocess.Process]] = {}
 
     def project_dir(self, project_id: str) -> Path:
@@ -111,6 +111,7 @@ class LocalDriver:
     async def remove(self, project_id: str) -> None:
         """Stop the daemons and delete the project's folder (never a server folder)."""
         await self.stop(project_id)
+        self.folders.pop(project_id, None)
         await asyncio.to_thread(shutil.rmtree, self.project_dir(project_id), True)
 
     async def run_git_job(self, project_id: str, job: GitJob) -> tuple[int, str]:

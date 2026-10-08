@@ -69,7 +69,7 @@ needs_docker = [
 async def driver() -> AsyncIterator[DockerDriver]:
     created = DockerDriver(SandboxSettings(image=IMAGE, cpus=1, memory="1g", pids=256))
     yield created
-    for project_id in ("dtest-a", "dtest-b", "dtest-c"):
+    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d"):
         await created.remove(project_id)
 
 
@@ -282,5 +282,32 @@ async def test_a_git_job_pushes_from_its_own_container(driver: DockerDriver) -> 
         assert await command_output(client, *remote_log) == "first"
         grep = ["grep", "-r", "-l", "ghp_secret", "/workspace", "/home/forge"]
         assert await command_output(client, *grep) == "none"  # the token stayed in the job
+    finally:
+        await client.close()
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_a_git_job_clones_into_a_project(driver: DockerDriver) -> None:
+    from forge_web.containers.gitjob import GitJob
+
+    client = await client_for(driver, "dtest-d")
+    try:
+        await client.call("git.init")
+        script = (
+            "git init -q -b trunk /workspace/up && cd /workspace/up && echo hi > hello.txt"
+            " && git add . && git -c user.name=U -c user.email=u@x.y commit -q -m init"
+        )
+        started = await client.call("procs.start", {"command": script})
+        for _ in range(100):
+            if not (await client.call("procs.output", {"id": started["id"]}))["running"]:
+                break
+            await asyncio.sleep(0.05)
+        job = GitJob("clone", "file:///workspace/up", "main", "", local_remotes=True)
+        code, output = await driver.run_git_job("dtest-d", job)
+        assert code == 0, output
+        cloned = await client.call("git.bundle_clone", {"url": "https://example.com/up.git"})
+        assert cloned == {"branch": "trunk"}
+        assert (await client.call("fs.read", {"path": "hello.txt"}))["text"] == "hi\n"
     finally:
         await client.close()

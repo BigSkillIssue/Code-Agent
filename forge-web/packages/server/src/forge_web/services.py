@@ -39,6 +39,7 @@ class Services:
     limits: AuthLimits = field(default_factory=AuthLimits)
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
     git_locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one git job per project
+    disk_use: dict[str, tuple[float, int]] = field(default_factory=dict)  # project -> (when, bytes)
 
 
 def services_of(connection: Request | WebSocket) -> Services:

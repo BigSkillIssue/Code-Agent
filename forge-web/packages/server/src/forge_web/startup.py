@@ -4,6 +4,7 @@ import asyncio
 import logging
 import secrets
 import sys
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select, update
@@ -15,7 +16,7 @@ from forge_web.containers.docker import DockerDriver
 from forge_web.containers.driver import ContainerDriver
 from forge_web.containers.local import LocalDriver
 from forge_web.db.engine import Database
-from forge_web.db.models import Chat, User
+from forge_web.db.models import Chat, Project, User
 from forge_web.db.writer import EventWriter
 from forge_web.egress import Egress, EgressPolicy
 from forge_web.fake import fake_script
@@ -112,8 +113,20 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     return services
 
 
+async def load_folders(services: Services) -> None:
+    """Tell the driver which projects are server folders."""
+    async with services.db.session() as session:
+        rows = await session.execute(
+            select(Project.id, Project.folder).where(Project.source == "folder")
+        )
+        for project_id, folder in rows:
+            if folder:
+                services.driver.folders[project_id] = Path(folder)
+
+
 async def after_start(services: Services, docker: bool) -> None:
     """Resume or reset chats, start background work, set up development sign-in."""
+    await load_folders(services)
     if not docker:
         # Local sandboxes end with the server, so nothing can still be running.
         async with services.db.session() as session, session.begin():

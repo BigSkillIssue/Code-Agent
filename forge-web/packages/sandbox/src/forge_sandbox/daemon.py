@@ -35,6 +35,7 @@ from forge_sandbox.methods import (
     PathParams,
     ReadParams,
     RenameParams,
+    UnzipParams,
     WriteParams,
     WritePartParams,
     method,
@@ -45,6 +46,8 @@ from forge_sandbox.procs import Procs
 from forge_sandbox.pty import Ptys
 from forge_sandbox.rpc import Handler, Rpc, RpcError
 from forge_sandbox.streams import stdio_streams
+from forge_sandbox.unzip import UnzipLimits, unzip
+from forge_sandbox.usage import disk_usage
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +135,17 @@ class Daemon:
         async def fs_rename(p: RenameParams) -> Any:
             return await asyncio.to_thread(ws.rename, p.src, p.dst)
 
+        async def fs_unzip(p: UnzipParams) -> Any:
+            limits = UnzipLimits()
+            if p.max_bytes is not None:
+                limits = UnzipLimits(max_total=min(limits.max_total, p.max_bytes))
+            return await asyncio.to_thread(
+                lambda: unzip(ws, p.path, p.dest, strip_root=p.strip_root, limits=limits)
+            )
+
+        async def fs_usage(_p: EmptyParams) -> Any:
+            return await asyncio.to_thread(disk_usage, ws)
+
         async def fs_delete(p: DeleteParams) -> Any:
             return await asyncio.to_thread(lambda: ws.delete(p.path, recursive=p.recursive))
 
@@ -141,6 +155,8 @@ class Daemon:
             "fs.read": method(ReadParams, fs_read),
             "fs.write": method(WriteParams, fs_write),
             "fs.write_part": method(WritePartParams, fs_write_part),
+            "fs.unzip": method(UnzipParams, fs_unzip),
+            "fs.usage": method(EmptyParams, fs_usage),
             "fs.mkdir": method(PathParams, fs_mkdir),
             "fs.rename": method(RenameParams, fs_rename),
             "fs.delete": method(DeleteParams, fs_delete),

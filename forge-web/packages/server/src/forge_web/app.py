@@ -20,6 +20,7 @@ from forge_web.git_api import git_router
 from forge_web.members import members_router
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
+from forge_web.sources import sources_router
 from forge_web.startup import start_services, stop_services
 from forge_web.webui import SecurityHeaders, mount_web_ui
 from forge_web.ws import ws_router
@@ -44,7 +45,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     routers = (
         health_router(), auth_router(), oauth_router(), admin_router(), dev_router(),
         projects_router(), members_router(), chats_router(), files_router(), git_router(),
-        keys_router(), git_credentials_router(),
+        sources_router(), keys_router(), git_credentials_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

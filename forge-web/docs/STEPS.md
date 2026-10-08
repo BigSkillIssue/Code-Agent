@@ -91,7 +91,12 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: tree, read, write, search, upload, download through the daemon; status, diff, stage, commit, branches; push, pull and clone in a throwaway git container with a credential helper on stdin and hooks disabled; the Files panel (CodeMirror) and the Changes panel.
     - Tests: no token in `.git/config` or in the project container; a malicious hook never runs; viewers cannot write.
     - Verify: `uv run pytest tests/test_files_api.py tests/test_git_api.py -q`
-- [ ] **W12 — Project sources**
+- [x] **W12a — Project sources and quotas (server and sandbox)**
+    - Files: `forge_sandbox/{unzip,usage,fsops,gitops,methods,daemon}.py`, `forge_web/{projects,sources,quotas,gitsync,files_api,startup,settings,services,app,sandbox_calls}.py`, `forge_web/containers/{gitjob,driver,docker,local}.py`, `forge_web/chats/api.py`, `tests/{test_unzip,test_projects,test_docker_driver,test_access}.py`
+    - Build: projects from a git URL (a clone job, then the bundle checked out in the sandbox), from a ZIP upload (unpacked in the sandbox), or from a server folder (admins, under `sandbox.folder_roots`, bind-mounted in Docker, never deleted); projects per user and disk per project limited.
+    - Tests: zip-slip, links, devices, bombs, too many entries and broken archives refused; folders outside the roots or around the data folder refused; quotas enforced; clone in Docker.
+    - Verify: `uv run pytest tests/test_projects.py tests/test_unzip.py -q`
+- [ ] **W12 — Project sources** (rest: W12b the new-project dialog)
     - Files: `forge_web/projects.py`, `forge_sandbox/unzip.py`, `tests/test_projects.py`, `tests/test_unzip.py`
     - Build: empty project, git URL (public or with the user's token), ZIP upload unpacked inside the container, server folder (admins only, under allowed roots); quotas (projects per user, disk); delete with container and volumes.
     - Tests: zip-slip, symlink entries, device entries and zip bombs rejected; a server folder outside the allowlist rejected; quota enforced.

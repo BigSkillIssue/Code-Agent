@@ -48,6 +48,14 @@ class WriteParams(PathParams):
     expected_mtime: float | None = None
 
 
+class UnzipParams(PathParams):
+    """fs.unzip: the archive (`path`), where to unpack it, and whether to drop one top folder."""
+
+    dest: str = ""
+    strip_root: bool = True
+    max_bytes: int | None = Field(default=None, ge=0)  # unpack at most this much
+
+
 class DeleteParams(PathParams):
     """fs.delete: also non-empty directories?"""
 
@@ -148,6 +156,12 @@ class GitBranchParams(Params):
     """git.bundle_out, git.bundle_in: which branch."""
 
     branch: str = Field(min_length=1, max_length=200)
+
+
+class GitCloneParams(Params):
+    """git.bundle_clone: the URL `origin` gets."""
+
+    url: str = Field(min_length=1, max_length=2000)
 
 
 class GitLogParams(Params):

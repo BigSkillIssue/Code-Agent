@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W12
+Next step: W12b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -20,7 +20,8 @@ Next step: W12
 | W10b | 2026-10-08 | e80226d | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
 | W11a | 2026-10-08 | 76e7dc1 | forge_sandbox/{fsops,gitops,methods,daemon}.py, forge_web/{files_api,git_api,sandbox_calls,settings,app}.py, tests/{test_fsops,test_files_api,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | files (list, read, save, folders, rename, delete, uploads and downloads of any size in parts) and local git actions (status, diff, stage, unstage, discard, commit, branches, log, remote) |
 | W11b | 2026-10-08 | b2fc642 | forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/{gitsync,git_api,settings,services}.py, forge_sandbox/{gitops,methods}.py, tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | push and pull through a git job outside the project: bundles in, bundles out, the token only in the job |
-| W11c | 2026-10-08 | (next) | frontend/src/panels/*, frontend/src/api/{client,project}.ts, frontend/src/components/ChatView.tsx, frontend/src/lib/i18n.ts, frontend/package.json, forge_sandbox/gitinfo.py, tests/test_git_api.py | file tree, editor and changes panel beside the chat; Forge's working files excluded from git; patched react-router and diff |
+| W11c | 2026-10-08 | 5d6980f | frontend/src/panels/*, frontend/src/api/{client,project}.ts, frontend/src/components/ChatView.tsx, frontend/src/lib/i18n.ts, frontend/package.json, forge_sandbox/gitinfo.py, tests/test_git_api.py | file tree, editor and changes panel beside the chat; Forge's working files excluded from git; patched react-router and diff |
+| W12a | 2026-10-08 | (next) | forge_sandbox/{unzip,usage,fsops,gitops,methods,daemon}.py, forge_web/{projects,sources,quotas,gitsync,files_api,startup,settings,services,app,sandbox_calls}.py, forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/chats/api.py, tests/{test_unzip,test_projects,test_docker_driver,test_access}.py, docs/{PROTOCOL,STEPS}.md | projects from git URLs, ZIP uploads and server folders; quotas for projects per user and disk per project |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -123,8 +124,15 @@ Next step: W12
 - W11c: `git.init` (when a project is created) adds Forge's working files (`.forge/audit.log`, `undo/`, `out/`, `cache/`, `worktrees/`) to `.git/info/exclude`; the project's Forge config (`.forge/config.toml`, commands, agents, skills) stays visible to git.
 - W11c: npm audit found holes in shipped libraries from W05b: react-router-dom 7.6.2 → 7.18.4 (open redirects, XSS) and diff 8.0.2 → 8.0.4 (DoS); the built app now has no known vulnerabilities. Dev tools moved to vite 6.4.3, vitest 3.2.7 and rollup 4.63.4 (the 4.44.1 pin from W05b is no longer needed: the build finishes in 6 s).
 
+- W12: W12 split into W12a (server and sandbox) and W12b (the new-project dialog). Source logic that is not the project lifecycle lives in `sources.py` and `quotas.py` (the card named only `projects.py`).
+- W12a: cloning is a third git-job action: the job lists the remote's default branch, fetches every branch into its own repository and leaves `clone.bundle` + `clone.head`; the sandbox checks the default branch out and sets `origin`. A failed clone deletes the new project.
+- W12a: ZIP archives are unpacked inside the sandbox: every entry is checked before anything is written (relative paths only, no links, devices, pipes or encrypted entries), at most 50 000 entries, and the unpacked bytes are counted while unpacking (total limit, and at most 200:1 for files above 1 MB); one top folder (as in GitHub downloads) is dropped by default.
+- W12a: server folders need `sandbox.folder_roots`; the folder must exist, be inside a root and neither be nor contain Forge Web's data folder; only admins can open one; it is bind-mounted as /workspace in Docker (the server and Docker must see the same path), is not made a git repository, and stays when the project is deleted.
+- W12a: quotas: `quotas.projects_per_user` (default 20, admins exempt) and `quotas.project_disk_mb` (default 10 000), measured with `fs.usage` (cached for a minute). Uploads and ZIP imports may only use the room that is left; a clone over the limit is deleted; a full project refuses new chat messages.
+
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
 - W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
 - W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+, a major upgrade for a later step.
+- W12a: a cloned repository's `.forge/config.toml` (hooks, MCP servers) is loaded by Forge inside the sandbox like any project config; it cannot leave the sandbox, but it could run commands without asking. Review with W17 whether chats should ignore project hooks/MCP until the owner trusts the project.

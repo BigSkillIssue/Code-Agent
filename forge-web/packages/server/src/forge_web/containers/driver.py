@@ -4,6 +4,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from forge_sandbox.mux import Writer
@@ -29,6 +30,7 @@ class ContainerDriver(Protocol):
     """Starts, connects to, stops and removes project sandboxes."""
 
     name: str
+    folders: dict[str, Path]  # project id -> a server folder used as its files
 
     async def connect(self, project_id: str) -> SandboxLink:
         """A new stream to the project's daemon, starting the sandbox if needed."""

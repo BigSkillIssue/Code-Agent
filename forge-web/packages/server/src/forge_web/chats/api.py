@@ -16,6 +16,7 @@ from forge_web.access import require_chat, require_project
 from forge_web.auth.sessions import CurrentUser
 from forge_web.containers.driver import SandboxError
 from forge_web.db.models import Chat, ChatEvent, User
+from forge_web.quotas import check_disk
 from forge_web.services import Services, services_of
 
 MAX_PAGE = 5000
@@ -186,6 +187,7 @@ def chats_router() -> APIRouter:
         services = services_of(request)
         async with services.db.session() as session:
             chat, _ = await require_chat(session, user, chat_id, write=True)
+        await check_disk(services, chat.project_id)
         try:
             await services.runs.send(chat, body.text)
         except (RpcError, ChannelClosed, SandboxError, OSError, TimeoutError) as err:

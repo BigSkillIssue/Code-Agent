@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from forge_web.audit import audit
 from forge_web.auth.git_credentials import credential_for
-from forge_web.containers.gitjob import GitJob
+from forge_web.containers.gitjob import GitJob, JobAction
 from forge_web.db.models import User
 from forge_web.egress import Denied, EgressPolicy, resolve
 from forge_web.sandbox_calls import result_dict, sandbox_call
@@ -72,6 +72,11 @@ async def remote_target(services: Services, project_id: str) -> tuple[str, str, 
     url = found.get("url")
     if not isinstance(url, str) or not url:
         raise HTTPException(409, "the project has no remote yet; set one first")
+    return await check_remote(services, url)
+
+
+async def check_remote(services: Services, url: str) -> tuple[str, str, str | None]:
+    """A remote URL, its host and the checked address to use; 4xx if it may not be used."""
     if local_remotes(services) and url.startswith("file://"):
         return url, "", None
     problem = remote_problem(url)
@@ -101,7 +106,7 @@ async def run(
     services: Services,
     project_id: str,
     user: User,
-    action: str,
+    action: JobAction,
     branches: tuple[str, str],
     target: tuple[str, str, str | None],
 ) -> str:
@@ -110,7 +115,7 @@ async def run(
     branch, remote_branch = branches
     credential = await credential_for(services, user.id, host) if host else None
     job = GitJob(
-        "push" if action == "push" else "fetch", url, branch, remote_branch,
+        action, url, branch, remote_branch,
         credentials=store_line(host, credential),
         pin=(host, address) if host and address else None,
         local_remotes=local_remotes(services), timeout=services.settings.git.timeout_s,
@@ -153,3 +158,17 @@ async def pull(
                                                 {"branch": branch}))  # fmt: skip
     await audit(services.db, "git_pull", user_id=user.id, target=project_id, ip=ip, branch=branch)
     return {"ok": True, **merged, "output": output}
+
+
+async def clone(
+    services: Services, project_id: str, user: User, url: str, ip: str
+) -> dict[str, Any]:
+    """Fill a new project from a git URL (its default branch checked out, `origin` set)."""
+    target = await check_remote(services, url)
+    async with project_lock(services, project_id):
+        await run(services, project_id, user, "clone", ("main", ""), target)
+        cloned = result_dict(await sandbox_call(services, project_id, "git.bundle_clone",
+                                                {"url": url}))  # fmt: skip
+    await audit(services.db, "git_clone", user_id=user.id, target=project_id, ip=ip,
+                host=target[1])  # fmt: skip
+    return cloned

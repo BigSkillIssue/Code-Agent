@@ -78,6 +78,8 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `fs.list` / `fs.stat` | `path` | entries `{name, type, size, mtime}` / one entry |
 | `fs.read` | `path`, `limit` (≤ 900 000), `offset` | `{path, size, mtime, offset, truncated, binary, text \| base64}` (parts after the first are always base64) |
 | `fs.write` | `path`, `text` or `base64`, `create_dirs`, `expected_mtime` | `{path, size, mtime}`; `conflict` if changed |
+| `fs.unzip` | `path` (the archive), `dest`, `strip_root`, `max_bytes` | `{files, bytes, root}`; `unsafe_archive` (paths that leave, links, devices), `bad_archive`, `too_large` (entries, unpacked bytes, compression ratio) |
+| `fs.usage` | — | `{bytes, files, complete}` — regular files only, links not followed |
 | `fs.write_part` | `path`, `upload` (16 hex), `base64`, `last`, `create_dirs`, `abort` | `{path, received, done: false}`, then `{path, size, mtime, done: true}`; parts go to a hidden file that the last part moves into place |
 | `fs.mkdir` / `fs.rename` / `fs.delete` | `path` / `src`, `dst` / `path`, `recursive` | `{path}` |
 | `procs.start` | `argv` or `command`, `cwd`, `env`, `name` | program info (`id`, `pid`, `running`, …) |
@@ -92,6 +94,7 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `git.log` | `limit` | `{commits: [{commit, author, email, time, subject}]}` |
 | `git.remote` / `git.set_remote` | — / `url` | `{url}` |
 | `git.bundle_out` | `branch` | `{bundle, head}` — packs the branch into `.git/forge-transfer/push.bundle` for a git job |
+| `git.bundle_clone` | `url` | `{branch}` — checks out what a clone job left (`clone.bundle`, `clone.head`) and points `origin` at `url` |
 | `git.bundle_in` | `branch` | `{merged, head \| reason}` — takes `.git/forge-transfer/fetch.bundle` as `origin/<branch>` and fast-forwards a checked-out branch |
 | `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |
 | `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |

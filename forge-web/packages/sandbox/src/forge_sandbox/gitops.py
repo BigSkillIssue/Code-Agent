@@ -14,6 +14,7 @@ from forge_sandbox.gitinfo import GIT_ENV, SAFE_GIT
 from forge_sandbox.methods import (
     EmptyParams,
     GitBranchParams,
+    GitCloneParams,
     GitCommitParams,
     GitLogParams,
     GitPathsParams,
@@ -56,6 +57,7 @@ class GitOps:
             "git.set_remote": method(GitRemoteParams, self.set_remote),
             "git.bundle_out": method(GitBranchParams, self.bundle_out),
             "git.bundle_in": method(GitBranchParams, self.bundle_in),
+            "git.bundle_clone": method(GitCloneParams, self.bundle_clone),
         }
 
     async def _git(self, *args: str, check: str = "") -> str:
@@ -216,3 +218,22 @@ class GitOps:
             env=self.env,
         )
         return code == 0
+
+    async def bundle_clone(self, params: GitCloneParams) -> dict[str, Any]:
+        """Check out what a clone job left (`clone.bundle`, `clone.head`) in this repository,
+        with `origin` pointing at the URL it came from."""
+        bundle, head_file = f"{TRANSFER}/clone.bundle", f"{TRANSFER}/clone.head"
+        try:
+            head = await asyncio.to_thread(lambda: self.workspace.read(head_file).get("text"))
+            branch = await self._branch(str(head or "").strip() or "main")
+            await self._git("fetch", "-q", "--no-tags", bundle,
+                            "+refs/heads/*:refs/remotes/origin/*",
+                            check="could not read the cloned repository")  # fmt: skip
+            await self._git("checkout", "-q", "-B", branch, f"refs/remotes/origin/{branch}",
+                            check=f"could not check out {branch}")  # fmt: skip
+        finally:
+            for name in (bundle, head_file):
+                await asyncio.to_thread(self._delete_new, name)
+        await self.set_remote(GitRemoteParams(url=params.url))
+        await self._git("branch", "-q", f"--set-upstream-to=origin/{branch}", branch)
+        return {"branch": branch}

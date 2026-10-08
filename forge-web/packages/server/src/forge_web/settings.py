@@ -53,6 +53,8 @@ class SandboxSettings(_Strict):
     pids: int = Field(default=1024, ge=64)
     nofile: int = Field(default=8192, ge=256)
     idle_minutes: float = Field(default=30, gt=0)  # stop a project's container after this long
+    # Folders on the server that admins may open as projects (empty = not allowed at all).
+    folder_roots: list[str] = []
 
 
 DEFAULT_EGRESS = [
@@ -79,6 +81,13 @@ class EgressSettings(_Strict):
     enabled: bool = True
     allow: list[str] = Field(default_factory=lambda: list(DEFAULT_EGRESS))  # "*" = any host
     allow_private: bool = False  # private and loopback addresses (only for tests)
+
+
+class QuotaSettings(_Strict):
+    """Limits per user and per project (0 = no limit); admins have no project limit."""
+
+    projects_per_user: int = Field(default=20, ge=0)
+    project_disk_mb: int = Field(default=10_000, ge=0)
 
 
 class GitSettings(_Strict):
@@ -151,6 +160,7 @@ class WebSettings(_Strict):
     gateway: GatewaySettings = GatewaySettings()
     egress: EgressSettings = EgressSettings()
     git: GitSettings = GitSettings()
+    quotas: QuotaSettings = QuotaSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

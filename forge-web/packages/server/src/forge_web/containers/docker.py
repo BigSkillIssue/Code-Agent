@@ -12,6 +12,7 @@ import json
 import logging
 import secrets
 import shutil
+from pathlib import Path
 from typing import Any
 
 from forge_sandbox.protocol import PROTOCOL_VERSION
@@ -40,6 +41,14 @@ class DockerDriver:
         self.binary = shutil.which(settings.docker) or settings.docker
         self._runtime: str | None = None
         self._locks: dict[str, asyncio.Lock] = {}
+        self.folders: dict[str, Path] = {}  # project id -> a server folder used as /workspace
+
+    def workspace_mount(self, project_id: str) -> str:
+        """The `--mount` value of the project's files: its volume, or its server folder."""
+        folder = self.folders.get(project_id)
+        if folder is not None:
+            return f"type=bind,source={folder},target=/workspace"
+        return f"type=volume,source={self.volumes(project_id)[0]},target=/workspace"
 
     def container(self, project_id: str) -> str:
         """The container's name."""
@@ -53,7 +62,7 @@ class DockerDriver:
     def run_args(self, project_id: str, runtime: str | None) -> list[str]:
         """`docker run` arguments of a project's container."""
         s = self.settings
-        workspace, home = self.volumes(project_id)
+        _, home = self.volumes(project_id)
         args = [
             # --pull never: a missing image is an error, never something fetched from a registry.
             "run", "--detach", "--init", "--pull", "never", "--name", self.container(project_id),
@@ -62,7 +71,7 @@ class DockerDriver:
             "--read-only",
             "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g",
             "--tmpfs", "/run/forge-sandbox:rw,nosuid,nodev,noexec,mode=0700,size=1m",
-            "--mount", f"type=volume,source={workspace},target=/workspace",
+            "--mount", self.workspace_mount(project_id),
             "--mount", f"type=volume,source={home},target=/home/forge",
             "--cap-drop", "ALL",
             *[arg for cap in CAPABILITIES for arg in ("--cap-add", cap)],
@@ -190,9 +199,11 @@ class DockerDriver:
         await self.docker("stop", "--time", "10", self.container(project_id), timeout=60)
 
     async def remove(self, project_id: str) -> None:
-        """Remove the container and both volumes."""
+        """Remove the container and its volumes (a server folder stays as it is)."""
         await self.docker("rm", "--force", self.container(project_id), timeout=60)
-        for volume in self.volumes(project_id):
+        workspace, home = self.volumes(project_id)
+        volumes = [home] if self.folders.pop(project_id, None) is not None else [workspace, home]
+        for volume in volumes:
             await self.docker("volume", "rm", "--force", volume, timeout=60)
 
     def git_job_args(
@@ -200,13 +211,12 @@ class DockerDriver:
     ) -> list[str]:
         """`docker run` arguments of a git job: a throwaway, hardened container with the
         workspace volume and network access, running only the job script."""
-        workspace, _ = self.volumes(project_id)
         args = [
             "run", "--rm", "-i", "--pull", "never", "--name", name,
             "--label", f"{LABEL}.gitjob={project_id}",
             "--user", PROJECT_USER, "--read-only",
             "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g",
-            "--mount", f"type=volume,source={workspace},target=/workspace",
+            "--mount", self.workspace_mount(project_id),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", "256", "--memory", "1g", "--cpus", "1",
             "--entrypoint", "sh",

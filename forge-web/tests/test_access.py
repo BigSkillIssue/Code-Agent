@@ -40,7 +40,10 @@ OWN = {
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
-SANDBOX_PATHS = ("/api/projects/{project_id}/files", "/api/projects/{project_id}/git/")
+SANDBOX_PATHS = (
+    "/api/projects/{project_id}/files", "/api/projects/{project_id}/git/",
+    "/api/projects/{project_id}/usage",
+)  # fmt: skip
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},

@@ -13,10 +13,12 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 TRANSFER = ".git/forge-transfer"
+JobAction = Literal["push", "fetch", "clone"]
 SCRIPT = r"""
 set -eu
 umask 077
 mkdir -p "$HOME"
+cd "$JOB_TMP"
 cat > "$JOB_TMP/credentials"
 transfer="$WORKSPACE/.git/forge-transfer"
 safe() {
@@ -38,6 +40,15 @@ case "$ACTION" in
     rm -f "$transfer/fetch.bundle"
     git -C "$JOB_TMP/repo" bundle create -q "$transfer/fetch.bundle" "refs/heads/$BRANCH"
     ;;
+  clone)
+    head=$(safe ls-remote --symref "$URL" HEAD \
+      | sed -n 's|^ref: refs/heads/\([^[:space:]]*\)[[:space:]]*HEAD$|\1|p' | head -n 1)
+    safe -C "$JOB_TMP/repo" fetch -q --no-tags "$URL" "+refs/heads/*:refs/heads/*"
+    mkdir -p "$transfer"
+    rm -f "$transfer/clone.bundle" "$transfer/clone.head"
+    printf '%s\n' "${head:-$BRANCH}" > "$transfer/clone.head"
+    git -C "$JOB_TMP/repo" bundle create -q "$transfer/clone.bundle" --branches
+    ;;
   *)
     echo "unknown action" >&2
     exit 2
@@ -50,7 +61,7 @@ esac
 class GitJob:
     """What one job does."""
 
-    action: Literal["push", "fetch"]
+    action: JobAction
     url: str
     branch: str  # the project's branch
     remote_branch: str  # the branch at the remote
@@ -73,6 +84,7 @@ class GitJob:
             "HOME": f"{tmp}/home",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CEILING_DIRECTORIES": tmp,  # never find a repository above the job folder
             "GIT_TERMINAL_PROMPT": "0",
             "GIT_EXTRA": "-c protocol.file.allow=always" if self.local_remotes else "",
             "LC_ALL": "C",

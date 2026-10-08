@@ -14,6 +14,7 @@ RPC_STATUS = {
     "not_found": 404, "conflict": 409, "exists": 409, "not_empty": 409, "busy": 409,
     "git_failed": 409, "nothing_staged": 409, "too_large": 413, "invalid_path": 400,
     "is_symlink": 400, "not_a_file": 400, "not_a_directory": 400, "bad_params": 400,
+    "unsafe_archive": 422, "bad_archive": 422,
 }  # fmt: skip
 
 

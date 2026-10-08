@@ -17,7 +17,7 @@ import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from forge_sandbox.rpc import RpcError
 
@@ -197,6 +197,20 @@ class Workspace:
             handle.seek(offset)
             data = handle.read(limit + 1)
         return self._content(rel, st, data, limit, offset)
+
+    def open_read(self, rel: str) -> BinaryIO:
+        """A regular file opened for reading, found without following links."""
+        if not FD_SAFE:
+            path = self._fallback_path(rel)
+            if not path.is_file() or path.is_symlink():
+                raise fs_error("not_found", f"{rel} is not a file")
+            return path.open("rb")
+        dir_fd, name, _ = self._parent(rel)
+        try:
+            fd = self._open_file(name, dir_fd, os.O_RDONLY)
+        finally:
+            os.close(dir_fd)
+        return os.fdopen(fd, "rb")
 
     def _open_file(self, name: str, dir_fd: int, flags: int) -> int:
         try:

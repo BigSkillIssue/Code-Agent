@@ -1,24 +1,34 @@
-"""Projects: create, list, rename and delete them (more sources follow in W12)."""
+"""Projects: create (empty, from a git URL, for a ZIP upload, or a server folder), list, rename
+and delete them."""
 
 import logging
 import secrets
 import time
+from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from forge_web.access import member_projects, require_project
-from forge_web.auth.sessions import CurrentUser
-from forge_web.db.models import Project, ProjectMember
-from forge_web.services import services_of
+from forge_web.audit import audit
+from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.db.models import Project, ProjectMember, User
+from forge_web.gitsync import check_remote, clone
+from forge_web.quotas import MB, check_project_count, disk_limit, disk_use
+from forge_web.services import Services, services_of
+from forge_web.sources import server_folder
 
 log = logging.getLogger(__name__)
 
 
 class ProjectIn(BaseModel):
-    """A new project."""
+    """A new project and where its files come from (a ZIP is uploaded once it exists)."""
 
     name: str = Field(min_length=1, max_length=100)
+    source: Literal["empty", "git", "zip", "folder"] = "empty"
+    url: str = Field(default="", max_length=2000)  # git
+    folder: str = Field(default="", max_length=4096)  # folder (admins)
 
 
 class ProjectPatch(BaseModel):
@@ -62,21 +72,31 @@ def projects_router() -> APIRouter:
     @router.post("", status_code=201)
     async def create_project(body: ProjectIn, request: Request, user: CurrentUser) -> ProjectOut:
         services = services_of(request)
+        await check_project_count(services, user)
+        folder = await chosen_source(services, user, body)
         now = time.time()
         project = Project(
             id=secrets.token_hex(8), name=body.name.strip(), owner_id=user.id,
-            created_at=now, updated_at=now,
+            source=body.source, source_url=body.url.strip() if body.source == "git" else "",
+            folder=str(folder or ""), created_at=now, updated_at=now,
         )  # fmt: skip
         async with services.db.session() as session, session.begin():
             session.add(project)
             await session.flush()
             session.add(ProjectMember(project_id=project.id, user_id=user.id, role="owner"))
+        if folder is not None:
+            services.driver.folders[project.id] = folder
         try:
-            await services.runs.call(project.id, "git.init")
+            await fill(services, project, user, client_ip(request))
+        except HTTPException:
+            await delete_project(request, project)
+            raise
         except Exception as err:
             log.warning("could not prepare the sandbox of project %s: %s", project.id, err)
             await delete_project(request, project)
             raise HTTPException(503, "the project's sandbox could not be started") from None
+        await audit(services.db, "project_created", user_id=user.id, target=project.id,
+                    ip=client_ip(request), source=body.source)  # fmt: skip
         return project_out(project, "owner")
 
     @router.get("/{project_id}")
@@ -114,3 +134,29 @@ async def delete_project(request: Request, project: Project) -> None:
         row = await session.get(Project, project.id)
         if row is not None:
             await session.delete(row)
+
+
+async def chosen_source(services: Services, user: User, body: ProjectIn) -> Path | None:
+    """Check the source before anything is created; the server folder, if that is the source."""
+    if body.source == "folder":
+        if user.role != "admin":
+            raise HTTPException(403, "only admins can open server folders as projects")
+        return server_folder(services.settings, body.folder)
+    if body.source == "git":
+        await check_remote(services, body.url.strip())
+    return None
+
+
+async def fill(services: Services, project: Project, user: User, ip: str) -> None:
+    """Prepare a new project's files: a git repository, cloned if it comes from a URL."""
+    if project.source == "folder":
+        return  # an admin's folder stays as it is
+    await services.runs.call(project.id, "git.init")
+    if project.source == "git":
+        await clone(services, project.id, user, project.source_url, ip)
+        limit = disk_limit(services)
+        used = await disk_use(services, project.id, fresh=True)
+        if limit is not None and used > limit:
+            raise HTTPException(
+                413, f"the repository needs {used // MB} MB; projects may use {limit // MB} MB"
+            )
