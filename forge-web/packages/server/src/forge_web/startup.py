@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 
+from forge_web.admin_api import load_saved_settings
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
 from forge_web.chats.runs import RunManager
@@ -80,6 +81,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.database_url())
     await db.migrate()
+    await load_saved_settings(db, settings)  # what admins changed in the web UI
     writer = EventWriter(db)
     writer.start()
     vault = Vault(load_master_key(settings.data_dir))
@@ -175,8 +177,8 @@ async def resume_active(services: Services) -> None:
 
 async def reap_idle(services: Services) -> None:
     """Stop project containers nobody used for a while."""
-    idle = services.settings.sandbox.idle_minutes * 60
     while True:
+        idle = services.settings.sandbox.idle_minutes * 60  # admins may change it
         await asyncio.sleep(min(60.0, idle / 2))
         try:
             await services.runs.reap(idle)

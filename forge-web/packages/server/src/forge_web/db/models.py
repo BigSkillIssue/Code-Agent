@@ -22,6 +22,11 @@ class User(Base):
     created_at: Mapped[float] = mapped_column(Float)
     password_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    default_model: Mapped[str] = mapped_column(String(200), default="")  # provider/model
+    totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)  # encrypted
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_last_step: Mapped[int] = mapped_column(Integer, default=0)  # no code is used twice
+    recovery_codes: Mapped[str] = mapped_column(Text, default="")  # SHA-256 hashes, one per line
 
 
 class Project(Base):
@@ -212,3 +217,14 @@ class GitCredential(Base):
     source: Mapped[str] = mapped_column(String(16), default="token")  # oauth | token
     scopes: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class ServerSetting(Base):
+    """A server setting an admin changed in the web UI (it wins over forge-web.toml)."""
+
+    __tablename__ = "server_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)  # e.g. auth.signup
+    value: Mapped[str] = mapped_column(Text)  # JSON
+    updated_at: Mapped[float] = mapped_column(Float)
+    updated_by: Mapped[str] = mapped_column(String(32), default="")

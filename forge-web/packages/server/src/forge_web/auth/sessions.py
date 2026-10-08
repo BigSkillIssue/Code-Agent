@@ -134,10 +134,14 @@ async def current_user(request: Request) -> User:
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
-async def require_admin(user: CurrentUser) -> User:
-    """The signed-in user, who must be an admin."""
+async def require_admin(request: Request, user: CurrentUser) -> User:
+    """The signed-in user, who must be an admin (with two-factor on if the server says so)."""
     if user.role != "admin":
         raise HTTPException(403, "only admins can do that")
+    if services_of(request).settings.auth.admin_two_factor and not user.totp_enabled:
+        raise HTTPException(
+            403, "this server requires two-factor sign-in for admins: turn it on in your settings"
+        )
     return user
 
 

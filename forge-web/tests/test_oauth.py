@@ -21,6 +21,7 @@ from forge_web.auth.oauth_providers import (
     load_providers,
     pkce_pair,
 )
+from forge_web.auth.totp import new_secret, secret_bytes, totp
 from forge_web.db.models import AuditEntry, GitCredential, Identity, User
 from forge_web.settings import ProviderSettings, load_settings
 from support import LiveServer, WebClient, person
@@ -291,6 +292,21 @@ async def test_disabled_accounts_cannot_sign_in(server: LiveServer, idp: FakeIdP
     await person(server, "ada", email_verified=True, status="disabled")
     async with WebClient(server) as web:
         assert "disabled" in error_of(await sign_in(web, idp, "google"))
+
+
+async def test_a_provider_sign_in_still_asks_for_the_second_factor(
+    server: LiveServer, idp: FakeIdP
+) -> None:
+    secret = new_secret()
+    await person(server, "ada", email_verified=True, totp_enabled=True,
+                 totp_secret=server.services.vault.encrypt(secret))  # fmt: skip
+    async with WebClient(server) as web:
+        back = await sign_in(web, idp, "google")
+        assert back.status_code == 302 and back.headers["location"] == "/login?second_factor=1"
+        assert (await web.get("/api/me")).status_code == 401  # no session before the code
+        code = totp(secret_bytes(secret), time.time())
+        assert (await web.post("/api/auth/totp/verify", {"code": code})).status_code == 200
+        assert (await web.get("/api/me")).json()["email"] == "ada@example.com"
 
 
 async def test_linking_and_unlinking(server: LiveServer, idp: FakeIdP) -> None:

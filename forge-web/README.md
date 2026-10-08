@@ -75,3 +75,10 @@ domain = "preview.example.net"   # *.preview.example.net → this server; not a 
 ```
 
 Without a domain, previews are off on such a server.
+
+## Two-factor sign-in and server settings
+
+Everyone can turn on two-factor sign-in in their settings (any authenticator app; ten recovery codes
+for a lost phone). With `auth.admin_two_factor = true`, admins must use it before they can administer.
+Admins change sign-up rules, quotas, sandbox limits and server-key rules on the Admin page; those
+values are kept in the database and win over `forge-web.toml`.

@@ -19,17 +19,18 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, select
 
 from forge_web.audit import audit
+from forge_web.auth.accounts import refuse_inactive
 from forge_web.auth.git_credentials import save_credential
 from forge_web.auth.oauth_providers import Identity as ProviderIdentity
 from forge_web.auth.oauth_providers import Provider, ProviderError, pkce_pair
-from forge_web.auth.routes import find_user, new_account, refuse_inactive
+from forge_web.auth.routes import find_user, new_account
+from forge_web.auth.second_factor import finish_sign_in
 from forge_web.auth.sessions import (
     CurrentUser,
     client_ip,
     is_https,
     load_session,
     session_token,
-    start_session,
 )
 from forge_web.db.models import Identity, User
 from forge_web.services import Services, services_of
@@ -187,8 +188,11 @@ async def finish(
     ip = client_ip(request)
     if flow.intent == "login":
         user = await sign_in_user(services, provider, identity, flow.invite)
-        await start_session(request, response, user)
-        await audit(services.db, "login", user_id=user.id, ip=ip, method=provider.name)
+        if user.totp_enabled:  # the UI asks for the code, then goes on
+            response = RedirectResponse("/login?second_factor=1", status_code=302)
+            response.delete_cookie(FLOW_COOKIE, path=FLOW_PATH)
+        if await finish_sign_in(request, response, user):
+            await audit(services.db, "login", user_id=user.id, ip=ip, method=provider.name)
         return response
     user_id = await same_user(request, services, flow)
     if flow.intent == "repos":

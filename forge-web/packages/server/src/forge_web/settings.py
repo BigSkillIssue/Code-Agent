@@ -149,6 +149,7 @@ class AuthSettings(_Strict):
     allowed_domains: list[str] = []  # for approval/open sign-up: only these email domains
     passwords: bool = True  # email + password accounts
     session_days: float = Field(default=30, gt=0)
+    admin_two_factor: bool = False  # admins must sign in with a second factor
     allowed_origins: list[str] = []  # extra origins for the browser (besides public_url)
     smtp: SmtpSettings = SmtpSettings()
     providers: dict[str, ProviderSettings] = {}  # name -> provider, e.g. google, github

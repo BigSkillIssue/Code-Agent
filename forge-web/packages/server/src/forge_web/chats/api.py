@@ -122,7 +122,8 @@ def chats_router() -> APIRouter:
             await require_project(session, user, project_id, "editor")
             chat = Chat(
                 id=secrets.token_hex(16), project_id=project_id, user_id=user.id,
-                title=body.title, mode=body.mode, model=body.model, state="idle",
+                title=body.title, mode=body.mode, model=body.model or user.default_model,
+                state="idle",
                 created_at=now, updated_at=now,
             )  # fmt: skip
             session.add(chat)

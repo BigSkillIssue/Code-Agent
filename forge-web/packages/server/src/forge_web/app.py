@@ -6,12 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from forge_web import __version__
+from forge_web.admin_api import admin_api_router
 from forge_web.auth.admin import admin_router
 from forge_web.auth.dev import dev_router
 from forge_web.auth.git_credentials import git_credentials_router
 from forge_web.auth.oauth import oauth_router
 from forge_web.auth.origin import OriginGuard
 from forge_web.auth.routes import auth_router
+from forge_web.auth.second_factor import second_factor_router
 from forge_web.chats.api import chats_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.files_api import files_router
@@ -23,6 +25,7 @@ from forge_web.preview_auth import preview_base
 from forge_web.preview_proxy import PreviewRouter
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
+from forge_web.settings_api import settings_router
 from forge_web.sources import sources_router
 from forge_web.startup import start_services, stop_services
 from forge_web.terminals import terminals_router
@@ -47,7 +50,8 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         docs_url=None, redoc_url=None, openapi_url=None,
     )  # fmt: skip
     routers = (
-        health_router(), auth_router(), oauth_router(), admin_router(), dev_router(),
+        health_router(), auth_router(), second_factor_router(), oauth_router(), admin_router(),
+        admin_api_router(), settings_router(), dev_router(),
         projects_router(), members_router(), chats_router(), files_router(), git_router(),
         sources_router(), terminals_router(), preview_router(), keys_router(),
         git_credentials_router(),

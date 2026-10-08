@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W15
+Next step: W15b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -25,7 +25,8 @@ Next step: W15
 | W12b | 2026-10-08 | f532536 | frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx, frontend/src/{api/project,state/store,lib/i18n}.ts | the new-project dialog with every source |
 | W13 | 2026-10-08 | c187090 | forge_web/{terminals,app}.py, forge_web/chats/runs.py, forge_sandbox/pty.py, frontend/src/panels/{Terminal,XtermView,ProjectPanel,terminal.test}.tsx, frontend/src/{api/project,lib/i18n}.ts, tests/{test_terminals,test_daemon,test_docker_driver,test_access}.py, docs/PROTOCOL.md | terminals in the browser: tabs, resize, reconnect; a terminal that ends closes its channels |
 | W14a | 2026-10-08 | 0771bbf | forge_web/{preview,preview_auth,preview_headers,preview_upstream,preview_proxy,preview_ws,settings,services,startup,app,webui}.py, forge_sandbox/forward.py, tests/{test_preview,preview_app,test_access,test_daemon,test_docker_driver}.py, README.md, docs/{PROTOCOL,STEPS}.md | live previews on hosts of their own: tickets, cookie, HTTP + WebSocket proxy through `connect` channels, preview API |
-| W14b | 2026-10-08 | (next) | frontend/src/panels/{Preview,preview.test,ProjectPanel}.tsx, frontend/src/{api/project,lib/i18n}.ts, forge_sandbox/{netinfo,methods,daemon}.py, forge_web/preview.py, tests/test_daemon.py | the Preview tab: dev-server suggestions, programs with output, ports, the app in a sandboxed frame or a new tab |
+| W14b | 2026-10-08 | 66097f5 | frontend/src/panels/{Preview,preview.test,ProjectPanel}.tsx, frontend/src/{api/project,lib/i18n}.ts, forge_sandbox/{netinfo,methods,daemon}.py, forge_web/preview.py, tests/test_daemon.py | the Preview tab: dev-server suggestions, programs with output, ports, the app in a sandboxed frame or a new tab |
+| W15a | 2026-10-08 | (next) | forge_web/{admin_api,settings_api,settings,startup,app}.py, forge_web/auth/{totp,second_factor,accounts,routes,oauth,sessions,ratelimit}.py, forge_web/chats/api.py, forge_web/db/{models.py,migrations/versions/0005_settings.py}, tests/{test_totp,test_admin,test_oauth,test_access}.py | two-factor sign-in, profile and password, default model, admin settings at run time, usage of everyone |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -148,6 +149,12 @@ Next step: W15
 - W14b: the Preview tab polls the overview every 2.5 s while it shows (an error is reported once, not on every poll) and stays mounted once opened, like the terminals. Each show, reload or path change fetches a fresh ticket (they work once) and lands on the path through the ticket's `next`. The frame is `sandbox`ed without `allow-top-navigation` (the app cannot navigate Forge's tab away) and sends no referrer; "open in a new tab" opens `about:blank` during the click, sets `opener = null`, then loads the ticket URL.
 - W14b: in local mode the host's other programs listen too, so `ports.list` takes `owned` and then lists only sockets of the daemon's own process tree (from `/proc/<pid>/fd`); Docker sandboxes list every port of the container as before.
 - W14b: checked in Chromium: the `Secure; SameSite=None; Partitioned` preview cookie is accepted on plain-http `*.localhost` inside Forge's iframe; the page loads, the app sees `Host: localhost:<port>` and no cookies, and a WebSocket from the preview passes through.
+- W15: split into W15a (server) and W15b (the Settings and Admin pages). The card's files plus `auth/second_factor.py` (the sign-in step and setting it up) and `auth/accounts.py` (`user_view` and `refuse_inactive`, moved out of `routes.py` so both sign-in modules can use them).
+- W15: two-factor is TOTP (RFC 6238: SHA-1, 6 digits, 30 s, one step early or late) plus ten one-time recovery codes (stored as SHA-256). The secret is encrypted with the vault. A code is only accepted for a step later than the last one used, claimed with a compare-and-set in the database (also for recovery codes), so a code works once even with two requests at the same time. Code attempts are limited to 10 per user per 15 minutes.
+- W15: with two-factor on, a right password, provider sign-in, reset link or email confirmation starts no session: it sets `forge_2fa` (signed, HttpOnly, 5 minutes, path /api/auth) and `/api/auth/totp/verify` starts the session once the code is right. Provider sign-ins go to `/login?second_factor=1`.
+- W15: `auth.admin_two_factor` makes every admin route answer 403 until the admin turned two-factor on (they cannot turn it off while it is required); an admin can turn off a member's lost second factor (`POST /api/admin/users/{id}/totp/reset`).
+- W15: admins change sign-up mode, allowed domains, password accounts, two-factor for admins, quotas, sandbox limits and server-key rules at run time (`/api/admin/settings`); the values are checked like the settings file, saved in `server_settings` and applied again at every start, winning over `forge-web.toml`. Sandbox limits apply to sandboxes started afterwards; the idle stop reads its setting on every round.
+- W15: `PATCH /api/me` changes name and default model (`provider/model`, used when a new chat names none); `POST /api/me/password` needs the current password (none for provider-only accounts), then ends the user's other sessions.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).

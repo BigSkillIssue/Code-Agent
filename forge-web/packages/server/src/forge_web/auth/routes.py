@@ -11,9 +11,11 @@ from sqlalchemy import func, select
 
 from forge_web.audit import audit
 from forge_web.auth import onetime
+from forge_web.auth.accounts import refuse_inactive, user_view
 from forge_web.auth.mail import mail_enabled, send_mail
 from forge_web.auth.passwords import hash_password, password_problem, verify_password
 from forge_web.auth.ratelimit import RateLimiter
+from forge_web.auth.second_factor import finish_sign_in
 from forge_web.auth.sessions import (
     CurrentUser,
     clear_cookies,
@@ -86,12 +88,6 @@ def limited(limiter: RateLimiter, key: str) -> None:
         raise HTTPException(429, "too many attempts; try again later")
 
 
-def user_view(user: User) -> dict[str, Any]:
-    """The signed-in user as the web UI sees them."""
-    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role,
-            "avatar_url": user.avatar_url}  # fmt: skip
-
-
 async def user_count(services: Services) -> int:
     """How many accounts exist."""
     async with services.db.session() as session:
@@ -128,8 +124,8 @@ def auth_router() -> APIRouter:
         }
 
     @router.get("/me")
-    async def me(user: CurrentUser) -> dict[str, Any]:
-        return user_view(user)
+    async def me(request: Request, user: CurrentUser) -> dict[str, Any]:
+        return user_view(user, services_of(request))
 
     @router.post("/auth/setup")
     async def setup(body: SetupIn, request: Request, response: Response) -> dict[str, Any]:
@@ -161,9 +157,10 @@ def auth_router() -> APIRouter:
             raise HTTPException(401, "wrong email or password")
         assert user is not None
         refuse_inactive(user)
-        await start_session(request, response, user)
+        if not await finish_sign_in(request, response, user):
+            return {"totp_required": True}  # the session starts with the code
         await audit(services.db, "login", user_id=user.id, ip=ip, method="password")
-        return user_view(user)
+        return user_view(user, services)
 
     @router.post("/auth/signup", status_code=201)
     async def signup(body: SignupIn, request: Request, response: Response) -> dict[str, Any]:
@@ -205,9 +202,10 @@ def auth_router() -> APIRouter:
             user.password_hash = new_hash
         await end_sessions(services, user.id)
         refuse_inactive(user)
-        await start_session(request, response, user)
         await audit(services.db, "password_reset", user_id=user.id, ip=client_ip(request))
-        return user_view(user)
+        if not await finish_sign_in(request, response, user):
+            return {"totp_required": True}
+        return user_view(user, services)
 
     @router.post("/auth/forgot", status_code=202)
     async def forgot(body: EmailIn, request: Request) -> dict[str, bool]:
@@ -235,9 +233,9 @@ def auth_router() -> APIRouter:
             user.email_verified = True
             if user.status == "unverified":
                 user.status = "pending" if services.settings.auth.signup == "approval" else "active"
-        if user.status == "active":
-            await start_session(request, response, user)
-        return {**user_view(user), "status": user.status}
+        if user.status == "active" and not await finish_sign_in(request, response, user):
+            return {"totp_required": True}
+        return {**user_view(user, services), "status": user.status}
 
     @router.get("/auth/invite/{token}")
     async def invite_info(token: str, request: Request) -> dict[str, Any]:
@@ -247,17 +245,6 @@ def auth_router() -> APIRouter:
         return {"email": row.email, "role": row.role}
 
     return router
-
-
-def refuse_inactive(user: User) -> None:
-    """403 with the reason for accounts that may not sign in."""
-    reasons = {
-        "pending": "your account is waiting for an admin to approve it",
-        "unverified": "please confirm your email address first (see the mail we sent)",
-        "disabled": "this account is disabled",
-    }
-    if user.status in reasons:
-        raise HTTPException(403, reasons[user.status])
 
 
 async def create_user(

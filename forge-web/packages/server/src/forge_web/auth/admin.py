@@ -42,6 +42,7 @@ def account_view(user: User) -> dict[str, Any]:
         "status": user.status,
         "created_at": user.created_at,
         "has_password": user.password_hash is not None,
+        "totp_enabled": user.totp_enabled,
     }
 
 
