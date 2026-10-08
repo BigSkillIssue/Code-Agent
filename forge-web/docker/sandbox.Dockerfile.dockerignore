@@ -1,0 +1,6 @@
+**
+!pyproject.toml
+!src/forge/**
+!forge-web/packages/sandbox/**
+**/__pycache__
+**/*.pyc

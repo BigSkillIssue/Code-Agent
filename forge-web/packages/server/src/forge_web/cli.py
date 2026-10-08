@@ -29,6 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     from forge_web.dev_chat import add_arguments
 
     add_arguments(commands.add_parser("dev-chat", help="chat with Forge in the terminal (local)"))
+    from forge_web import sandbox_cli
+
+    sandbox_cli.add_arguments(commands.add_parser("sandbox", help="manage the sandbox image"))
     return parser
 
 
@@ -46,6 +49,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     if args.command == "serve":
         return serve(settings)
+    if args.command == "sandbox":
+        from forge_web import sandbox_cli
+
+        return sandbox_cli.run(settings, args)
     if args.command == "dev-chat":
         from forge_web.dev_chat import dev_chat
 

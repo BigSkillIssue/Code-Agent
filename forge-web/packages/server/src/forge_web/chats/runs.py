@@ -96,6 +96,7 @@ class RunManager:
         self.links: dict[str, SandboxClient] = {}
         self.boots: dict[str, str] = {}
         self.lives: dict[str, LiveChat] = {}
+        self.last_active: dict[str, float] = {}  # project id -> last time it was used
         self._project_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._chat_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -103,6 +104,7 @@ class RunManager:
 
     async def link(self, project_id: str) -> SandboxClient:
         """The project's sandbox connection, (re)connecting when needed."""
+        self.last_active[project_id] = time.monotonic()
         async with self._project_locks[project_id]:
             client = self.links.get(project_id)
             if client is not None and not client.closed:
@@ -239,6 +241,7 @@ class RunManager:
     async def _handle(self, live: LiveChat, dseq: int, item: Any) -> None:
         checked = check_item(item)
         live.dseq = dseq
+        self.last_active[live.project_id] = time.monotonic()
         if checked is None:
             log.warning("dropped an invalid item from chat %s", live.chat_id)
             return
@@ -310,6 +313,25 @@ class RunManager:
             live.relay.cancel()
             await asyncio.gather(live.relay, return_exceptions=True)
             live.relay = None
+
+    def busy(self, project_id: str) -> bool:
+        """A chat of the project is running or waiting for an answer."""
+        return any(
+            live.project_id == project_id and live.state in ("running", "waiting")
+            for live in self.lives.values()
+        )
+
+    async def reap(self, idle_seconds: float) -> list[str]:
+        """Stop the sandboxes of projects unused for `idle_seconds`; returns their ids."""
+        now = time.monotonic()
+        stopped = []
+        for project_id in list(self.links):
+            if self.busy(project_id) or now - self.last_active.get(project_id, now) < idle_seconds:
+                continue
+            await self.forget_project(project_id)
+            await self.driver.stop(project_id)
+            stopped.append(project_id)
+        return stopped
 
     async def close(self) -> None:
         """Stop following every chat and close every sandbox connection."""

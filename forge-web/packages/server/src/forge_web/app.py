@@ -1,5 +1,6 @@
 """The FastAPI application: one factory that wires settings into every part."""
 
+import asyncio
 import logging
 import secrets
 import sys
@@ -8,12 +9,13 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, FastAPI
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from forge_web import __version__
 from forge_web.auth.dev import dev_router, ensure_dev_user
 from forge_web.chats.api import chats_router
 from forge_web.chats.runs import RunManager
+from forge_web.containers.docker import DockerDriver
 from forge_web.containers.driver import ContainerDriver
 from forge_web.containers.local import LocalDriver
 from forge_web.db.engine import Database
@@ -23,7 +25,7 @@ from forge_web.fake import fake_script
 from forge_web.hub import Hub
 from forge_web.projects import projects_router
 from forge_web.services import Services
-from forge_web.settings import SettingsError, WebSettings
+from forge_web.settings import WebSettings
 from forge_web.webui import SecurityHeaders, mount_web_ui
 from forge_web.ws import ws_router
 
@@ -56,7 +58,7 @@ def make_driver(settings: WebSettings) -> ContainerDriver:
     """The sandbox driver the settings ask for."""
     if settings.sandbox.isolation == "local":
         return LocalDriver(settings.data_dir)
-    raise SettingsError("Docker isolation is not available yet; use local isolation (--dev)")
+    return DockerDriver(settings.sandbox)
 
 
 def chat_options(settings: WebSettings) -> Any:
@@ -90,6 +92,9 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         # Local sandboxes end with the server, so nothing can still be running.
         async with db.session() as session, session.begin():
             await session.execute(update(Chat).where(Chat.state != "idle").values(state="idle"))
+    else:
+        services.tasks.append(asyncio.create_task(resume_active(services)))
+        services.tasks.append(asyncio.create_task(reap_idle(services)))
     if settings.dev.enabled:
         user = await ensure_dev_user(db)
         services.dev_token, services.dev_user_id = secrets.token_urlsafe(24), user.id
@@ -98,8 +103,34 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     return services
 
 
+async def resume_active(services: Services) -> None:
+    """After a restart, follow the chats that were still working (their containers kept going)."""
+    async with services.db.session() as session:
+        chats = list(
+            await session.scalars(select(Chat).where(Chat.state.in_(["running", "waiting"])))
+        )
+    for chat in chats:
+        try:
+            await services.runs.open(chat)
+        except Exception as err:
+            log.warning("could not resume chat %s: %s", chat.id, err)
+
+
+async def reap_idle(services: Services) -> None:
+    """Stop project containers nobody used for a while."""
+    idle = services.settings.sandbox.idle_minutes * 60
+    while True:
+        await asyncio.sleep(min(60.0, idle / 2))
+        try:
+            await services.runs.reap(idle)
+        except Exception:
+            log.exception("stopping idle sandboxes failed")
+
+
 async def stop_services(services: Services) -> None:
-    """Close everything in reverse order."""
+    """Close everything in reverse order (containers keep running)."""
+    for task in services.tasks:
+        task.cancel()
     await services.runs.close()
     await services.writer.close()
     await services.db.close()

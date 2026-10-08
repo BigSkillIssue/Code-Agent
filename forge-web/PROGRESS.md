@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W06
+Next step: W07
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -10,7 +10,8 @@ Next step: W06
 | W03 | 2026-10-08 | d20353b | forge_sandbox/{daemon,attach,fsops,methods,procs,pty,netinfo,gitinfo,forward,streams,cli}.py, forge_web/containers/{__init__,driver,local}.py, forge_web/sandbox_client.py, tests/test_fsops.py, tests/test_daemon.py, AGENTS.md | daemon state outlives connections (newest connection wins); fs ops walk with O_NOFOLLOW per component; programs, terminals and git run as the workspace owner; forward out (listen → `forward` channel) and in (`connect` channel); LocalDriver spawns `--stdio` daemons with a clean environment |
 | W04 | 2026-10-08 | aa2e751 | forge_sandbox/{worker,pipe_renderer,chats,history,prompts,methods,daemon,cli,streams}.py, forge_web/{dev_chat,cli}.py, forge_web/containers/local.py, tests/{support,test_worker,test_chats,test_dev_chat,test_daemon}.py, docs/PROTOCOL.md | one worker process per chat (python -I, protocol on private fds, non-dumpable); numbered chat buffer with replay after `seq`; first answer wins; a crashed worker is replaced on the next message and reopens the same Forge session; follow-ups carry the last 10 turns; `forge-web dev-chat --fake` |
 | W05a | 2026-10-08 | 389b90c | forge_web/db/{__init__,engine,models,writer}.py, forge_web/db/migrations/{env.py,script.py.mako,versions/0001_initial.py}, forge_web/chats/{api,runs,items}.py, forge_web/{hub,ws,projects,access,services,fake,app,cli,settings,dev_chat}.py, forge_web/auth/{__init__,dev}.py, forge_sandbox/{daemon,gitinfo}.py, tests/{support,test_server}.py, docs/STEPS.md | single-user server: projects, chats, event log with gapless numbers, WebSocket replay without gaps or repeats, first answer wins across tabs; `serve --dev [--fake]` |
-| W05b | 2026-10-08 | (next) | frontend/ (package.json, vite.config.ts, tsconfig.json, index.html, public/favicon.svg, src/{main,App}.tsx, src/api/{types,client,socket}.ts, src/state/{store,transcript}.ts, src/components/{Sidebar,ChatView,Transcript,Composer,Markdown}.tsx, src/components/cards/*.tsx, src/lib/{i18n,tools}.ts, src/pages/Login.tsx, src/styles.css, tests), forge_web/{webui,app}.py, tests/test_webui.py, ../.github/workflows/forge-web.yml, README.md | React 19 + Vite 6 + Tailwind 4 app: sidebar of projects and chats, streaming transcript with tool, approval, question, plan and report cards, German/English, light/dark; served with an SPA fallback and a strict CSP; checked end to end in Chromium |
+| W05b | 2026-10-08 | 853c351 | frontend/ (package.json, vite.config.ts, tsconfig.json, index.html, public/favicon.svg, src/{main,App}.tsx, src/api/{types,client,socket}.ts, src/state/{store,transcript}.ts, src/components/{Sidebar,ChatView,Transcript,Composer,Markdown}.tsx, src/components/cards/*.tsx, src/lib/{i18n,tools}.ts, src/pages/Login.tsx, src/styles.css, tests), forge_web/{webui,app}.py, tests/test_webui.py, ../.github/workflows/forge-web.yml, README.md | React 19 + Vite 6 + Tailwind 4 app: sidebar of projects and chats, streaming transcript with tool, approval, question, plan and report cards, German/English, light/dark; served with an SPA fallback and a strict CSP; checked end to end in Chromium |
+| W06 | 2026-10-08 | (next) | docker/sandbox.Dockerfile, docker/sandbox.Dockerfile.dockerignore, forge_web/containers/docker.py, forge_web/{sandbox_cli,settings,app,services,cli}.py, forge_web/chats/runs.py, tests/{support,test_docker_driver}.py, ../.github/workflows/forge-web.yml | one container per project: daemon as PID 1 under --init, volumes for /workspace and /home/forge, read-only root, no network, all capabilities dropped but six, no-new-privileges, CPU/memory/PID/nofile limits, gVisor when installed; attach over `docker exec`; chats resume after a server restart; idle containers stop; `forge-web sandbox build`; real-Docker tests pass locally (4) |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -48,6 +49,13 @@ Next step: W06
 - W05b: the built UI is not committed; `npm run build` writes it into `forge_web/static/` (git-ignored) and the CI job builds it. Without a build, the server shows how to build it.
 - W05b: replies that are one JSON object (Forge's task spec, reviews) are shown as a folded "task understood" card; a trivial task's summary is not repeated under its reply.
 - W05b: the server module is `webui.py`, not `static.py`, so it cannot clash with the `static/` folder it serves.
+
+- W06: inside the container the daemon runs as root with six capabilities (CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, KILL) so its socket stays out of reach of the agent's user (uid 1000) and it can start programs as that user; the test checks that the agent gets PermissionError on the socket. gVisor (`runsc`) is used automatically when Docker has it; SECURITY.md (W17) will recommend it and rootless Docker / userns-remap.
+- W06: Forge lives in /opt/forge (its own venv, not on the user's PATH), so a project's pip install never touches it; the image is about 1.8 GB (Python, node, git, ripgrep, build tools).
+- W06: the container has `--network none`; reaching models (W07) and package registries (W07 egress proxy) goes through the daemon's forward channels.
+- W06: a server shutdown closes only its `docker exec` connections: containers, chats and open approvals keep going, and the next server follows the chats that were running or waiting (`resume_active`).
+- W06: project containers stop after `sandbox.idle_minutes` without use (no chat running or waiting); their volumes stay.
+- W06: Docker tests are marked `docker` and need the image `forge-web-sandbox:dev` (or $FORGE_WEB_TEST_IMAGE); CI builds it first. In this environment the image builds with `--network host --build-arg HTTPS_PROXY=… --secret id=ca,src=<proxy CA>` (only HTTPS goes through the agent proxy).
 
 ## Open issues
 - (none)

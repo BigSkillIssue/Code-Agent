@@ -39,7 +39,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
 
 ## Phase B · Complete and safe
 
-- [ ] **W06 — Docker isolation**
+- [x] **W06 — Docker isolation**
     - Files: `docker/sandbox.Dockerfile`, `forge_web/containers/docker.py`, `forge_web/containers/lifecycle.py`, `forge_web/settings.py`, `tests/test_docker_driver.py`, `tests/docker/`
     - Build: Docker/Podman driver via the CLI; one container per project with the daemon as PID 1 (`--init`), volumes for `/workspace` and `FORGE_HOME`, non-root, `--cap-drop ALL`, `no-new-privileges`, read-only root with tmpfs, CPU/memory/PIDs/nofile limits, `--network none`, gVisor when available; start on demand, stop when idle (LRU); protocol version check recreates outdated containers; `forge-web sandbox build`.
     - Tests: the generated `docker run` arguments (offline); with Docker: daemon restart of the server mid-run keeps the run and re-sends the open approval; limits visible in `docker inspect`; host and metadata address unreachable.

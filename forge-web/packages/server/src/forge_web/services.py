@@ -1,6 +1,7 @@
 """Everything a request handler needs, built once per app and kept on `app.state`."""
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 
 from fastapi import Request, WebSocket
 
@@ -24,6 +25,7 @@ class Services:
     runs: RunManager
     dev_token: str = ""
     dev_user_id: str = ""
+    tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
 
 
 def services_of(connection: Request | WebSocket) -> Services:

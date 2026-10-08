@@ -145,15 +145,23 @@ class LiveServer:
         self.thread.join(30)
 
 
-def dev_settings(data_dir: Path, script: dict[str, Any] | None = None) -> Any:
+def dev_settings(
+    data_dir: Path,
+    script: dict[str, Any] | None = None,
+    *,
+    isolation: str = "local",
+    image: str | None = None,
+) -> Any:
     """Development settings in `data_dir`, with the fake model (and a script, if given)."""
     from forge_web.settings import load_settings
 
     overrides: dict[str, Any] = {
         "dev.enabled": True,
-        "sandbox.isolation": "local",
+        "sandbox.isolation": isolation,
         "dev.fake": True,
     }
+    if image is not None:
+        overrides["sandbox.image"] = image
     if script is not None:
         path = data_dir / "script.json"
         data_dir.mkdir(parents=True, exist_ok=True)

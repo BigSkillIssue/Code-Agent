@@ -44,6 +44,14 @@ class SandboxSettings(_Strict):
     """How projects are isolated from the host and from each other."""
 
     isolation: Literal["docker", "local"] = "docker"
+    docker: str = "docker"  # the container CLI: docker or podman
+    image: str = "forge-web-sandbox:latest"
+    runtime: Literal["auto", "runc", "runsc"] = "auto"  # auto: gVisor (runsc) when installed
+    cpus: float = Field(default=2.0, gt=0)
+    memory: str = "4g"
+    pids: int = Field(default=1024, ge=64)
+    nofile: int = Field(default=8192, ge=256)
+    idle_minutes: float = Field(default=30, gt=0)  # stop a project's container after this long
 
 
 class DevSettings(_Strict):
