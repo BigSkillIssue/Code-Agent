@@ -68,5 +68,64 @@ After that the control channel carries calls in both directions:
 ```
 
 A handler failure that is not an expected error is answered with code `internal` and no details, because
-the peer may be untrusted; the details go to the local log.
-The methods and channel kinds are listed with the daemon (step W03) and the worker (step W04).
+the peer may be untrusted; the details go to the local log. Parameters are validated by the models in
+`forge_sandbox/methods.py`; a bad one is answered with `bad_params` naming the field.
+
+## Daemon methods (server → daemon)
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `fs.list` / `fs.stat` | `path` | entries `{name, type, size, mtime}` / one entry |
+| `fs.read` | `path`, `limit` (≤ 900 000) | `{path, size, mtime, truncated, binary, text \| base64}` |
+| `fs.write` | `path`, `text` or `base64`, `create_dirs`, `expected_mtime` | `{path, size, mtime}`; `conflict` if changed |
+| `fs.mkdir` / `fs.rename` / `fs.delete` | `path` / `src`, `dst` / `path`, `recursive` | `{path}` |
+| `procs.start` | `argv` or `command`, `cwd`, `env`, `name` | program info (`id`, `pid`, `running`, …) |
+| `procs.list` / `procs.output` / `procs.stop` | — / `id`, `since`, `limit` / `id` | info / `{lines, from, next, …}` / info |
+| `pty.create` / `pty.list` / `pty.resize` / `pty.close` | `cols`, `rows`, `cwd`, `argv` / — / `id`, `cols`, `rows` / `id` | terminal info |
+| `forward.listen` | `target`, `port` (0 = any) | `{target, port}` on 127.0.0.1 inside the sandbox |
+| `ports.list` | — | listening ports `{port, address}` (without the daemon's own) |
+| `git.status` / `git.diff` | — / `path`, `staged`, `limit` | `{repo, branch, upstream, ahead, behind, files}` / `{diff, truncated}` |
+| `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |
+| `chat.send` | `chat_id`, `text` (a prompt, or a `/command`) | chat info; `busy` while a turn runs |
+| `chat.answer` | `chat_id`, `request_id`, `answer` | `{accepted}` — only the first answer is accepted |
+| `chat.cancel` / `chat.close` / `chat.list` | `chat_id` / `chat_id` / — | chat info / chat info / all chats |
+| `daemon.info` | — | the hello info |
+
+Notification (daemon → server): `procs.exited {id, exit_code}`.
+
+## Channel kinds
+
+| Kind | Opened by | Arguments | Carries |
+| --- | --- | --- | --- |
+| `chat` | server | `chat_id`, `after_seq` | messages: `hello` (chat info + `oldest`), `gap` (items before `oldest` are gone), then `{"type": "item", "seq", "item"}` in order |
+| `pty` | server | `id` | DATA both ways (output / keystrokes); a `{"type": "resize", "cols", "rows"}` message |
+| `connect` | server | `port` | DATA to and from 127.0.0.1:`port` inside the sandbox (live preview) |
+| `forward` | daemon | `target` | DATA to and from a server target (LLM gateway, egress proxy); unknown targets are refused |
+
+A sandbox may open nothing but `forward` channels.
+
+## Chat items
+
+Every item a chat produces gets the next `seq` (1, 2, 3, …) and stays in the daemon's buffer (the last
+20 000), so a server that comes back asks for everything after the last `seq` it stored.
+
+| `type` | From | Fields |
+| --- | --- | --- |
+| `user` | daemon | `text` — a message the user sent |
+| `ready` | worker | `session_id`, `turns` — the Forge session is open |
+| `status` | worker | `state`: `running` or `idle` |
+| `event` | worker | `event` — a Forge event (`kind` = `model_delta`, `tool_started`, …) |
+| `request` | worker | `id`, `kind` (`approval` \| `question`), `payload` (`call` + `reason`, or `questions`) |
+| `request_resolved` | daemon | `id`, and `answer` or `cancelled: true` |
+| `command_result` | worker | `command`, `text` |
+| `turn` | worker | `prompt`, `ok`, `summary`, `report`, `files_changed`, `usage`, `seconds`, maybe `cancelled`/`error` |
+| `error` | worker | `message` |
+| `worker_exited` | daemon | `exit_code` |
+| `oversized` | daemon | an item too large for one message (`original_type`, `event_kind`) |
+
+Answers: approvals `{"allow": bool, "remember": bool, "feedback": str}`; questions
+`{"answers": [{"question_index": 0, "values": ["…"]}]}` or `{"dismissed": true}`. An answer that does not
+fit counts as "no" (approvals) or "dismissed" (questions).
+
+Worker ↔ daemon (inside the sandbox) is one JSON object per line on the worker's stdin/stdout:
+`start {options}`, `prompt {text}`, `answer {id, answer}`, `cancel`, `shutdown` in; the items above out.

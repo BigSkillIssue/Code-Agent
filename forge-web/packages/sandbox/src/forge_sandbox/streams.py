@@ -76,7 +76,7 @@ class ThreadWriter:
                 self._loop.call_soon_threadsafe(self._idle.set)
 
 
-def _feed_from_thread(reader: asyncio.StreamReader, fd: int) -> None:
+def feed_from_thread(reader: asyncio.StreamReader, fd: int) -> None:
     loop = asyncio.get_running_loop()
 
     def run() -> None:
@@ -98,7 +98,7 @@ async def stdio_streams() -> tuple[asyncio.StreamReader, asyncio.StreamWriter | 
     reader = asyncio.StreamReader(limit=2**20)
     if sys.platform == "win32":
         # Proactor loops cannot do overlapped I/O on anonymous pipes: use threads instead.
-        _feed_from_thread(reader, sys.stdin.fileno())
+        feed_from_thread(reader, sys.stdin.fileno())
         return reader, ThreadWriter(sys.stdout.fileno())
     loop = asyncio.get_running_loop()
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin.buffer)

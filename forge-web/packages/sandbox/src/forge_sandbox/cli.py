@@ -29,6 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     daemon.add_argument("--owner", help="UID:GID that owns the workspace (when run as root)")
     attach = commands.add_parser("attach", help="relay stdin/stdout to the daemon's socket")
     attach.add_argument("--socket", type=Path, default=DEFAULT_SOCKET)
+    worker = commands.add_parser("worker", help="run one chat's Forge (started by the daemon)")
+    worker.add_argument("--workspace", type=Path, required=True)
+    worker.add_argument("--chat", required=True)
     return parser
 
 
@@ -52,6 +55,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from forge_sandbox.attach import relay
 
         return asyncio.run(relay(args.socket))
+    if args.command == "worker":
+        from forge_sandbox.worker import run_worker
+
+        return asyncio.run(run_worker(args.workspace, args.chat))
     parser.print_help(sys.stderr)
     return 0
 

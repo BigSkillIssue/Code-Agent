@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from forge_sandbox import __version__
+from forge_sandbox.chats import Chats
 from forge_sandbox.forward import Forwards
 from forge_sandbox.fsops import Owner, Workspace
 from forge_sandbox.gitinfo import GitInfo
@@ -65,6 +66,7 @@ class Daemon:
         self.ptys = Ptys(self.workspace, self.env)
         self.git = GitInfo(self.workspace, self.env)
         self.forwards = Forwards(self.open_to_server)
+        self.chats = Chats(self.workspace, self.env)
         self.connection: Connection | None = None
 
     def info(self) -> dict[str, Any]:
@@ -84,6 +86,7 @@ class Daemon:
             **self.ptys.handlers(),
             **self.git.handlers(),
             **self.forwards.handlers(),
+            **self.chats.handlers(),
             "ports.list": method(EmptyParams, self.ports),
             "daemon.info": method(EmptyParams, self.describe),
         }
@@ -139,7 +142,9 @@ class Daemon:
     async def on_open(self, channel: Channel) -> None:
         """Serve a channel the server opened."""
         try:
-            if channel.kind == "pty":
+            if channel.kind == "chat":
+                await self.chats.attach(channel)
+            elif channel.kind == "pty":
                 await self.ptys.attach(channel)
             elif channel.kind == "connect":
                 await self.forwards.connect(channel)
@@ -182,7 +187,8 @@ class Daemon:
             await mux.close()
 
     async def close(self) -> None:
-        """Stop programs, terminals and listeners."""
+        """Stop chats, programs, terminals and listeners."""
+        await self.chats.close()
         await self.procs.close()
         await self.ptys.close()
         await self.forwards.close()

@@ -21,7 +21,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: `forge-sandbox daemon` listening on a unix socket (TCP loopback + secret on Windows); `forge-sandbox attach` relays stdio to it; file operations confined to the workspace (no symlink escape, no device files); processes with logs; PTY sessions; tcp-forward both ways; listening ports; git status and diff; `LocalDriver` and `SandboxClient` on the server.
     - Tests: symlink and `..` escapes refused; write/read/rename/delete round trip; process start/output/stop; PTY echo (POSIX); TCP echo through a forward; git status of a changed file.
     - Verify: `uv run pytest tests/test_fsops.py tests/test_daemon.py -q`
-- [ ] **W04 — Forge worker and `forge-web dev-chat`**
+- [x] **W04 — Forge worker and `forge-web dev-chat`**
     - Files: `forge_sandbox/worker.py`, `forge_sandbox/pipe_renderer.py`, `forge_sandbox/history.py`, `forge_sandbox/prompts.py`, `forge_sandbox/chats.py`, `forge_web/dev_chat.py`, `tests/test_worker.py`, `tests/fixtures/fake/*.json`
     - Build: one worker process per chat started by the daemon; `PipeRenderer` turns ask/approve into request messages and waits for answers; follow-up prompts carry a "conversation so far" block; slash commands via Forge's `handle_command`; cancel; per-chat event buffer with `seq` and `resume(after_seq)`; chat options (model, mode) as config overrides; a terminal client for trying it out.
     - Tests: a FakeProvider script yields the expected events; an approval round trip; a question round trip; cancel during a tool call; worker killed → the chat resumes from Forge's store; replay after a reconnect has no gaps.

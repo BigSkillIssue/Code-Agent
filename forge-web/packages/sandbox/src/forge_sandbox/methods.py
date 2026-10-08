@@ -135,6 +135,55 @@ class PtyResize(BaseModel):
     rows: int = Field(ge=4, le=200)
 
 
+CHAT_ID = r"^[a-z0-9][a-z0-9-]{0,63}$"
+ChatMode = Literal["ask", "edits", "auto"]
+
+
+class ChatOptions(Params):
+    """How a chat's worker runs Forge: approvals, models, endpoints, limits."""
+
+    mode: ChatMode = "edits"  # ask: approve every change; edits: changes run, commands ask; auto
+    model: str | None = None  # "provider/model" for every role
+    roles: dict[str, list[str]] = Field(default_factory=dict)  # per-role fallback chains
+    providers: dict[str, dict[str, Any]] = Field(default_factory=dict)  # name -> ProviderConfig
+    sandbox_mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
+    max_cost_usd: float | None = Field(default=None, ge=0)
+    fake_script: dict[str, Any] | None = None  # FakeProvider turns (development and tests)
+
+
+class ChatParams(Params):
+    """A chat id."""
+
+    chat_id: str = Field(pattern=CHAT_ID)
+
+
+class ChatOpenParams(ChatParams):
+    """chat.open: start (or restart) a chat's worker with these options and extra variables."""
+
+    options: ChatOptions = Field(default_factory=ChatOptions)
+    env: dict[str, str] = Field(default_factory=dict, max_length=32)
+
+
+class ChatSendParams(ChatParams):
+    """chat.send: a prompt, or a slash command when it starts with '/'."""
+
+    text: str = Field(min_length=1, max_length=100_000)
+
+
+class ChatAnswerParams(ChatParams):
+    """chat.answer: the answer to an approval or a question the worker asked."""
+
+    request_id: str = Field(max_length=64)
+    answer: dict[str, Any]
+
+
+class ChatAttachArgs(Params):
+    """Arguments of a `chat` channel: which chat, and the last item the server already has."""
+
+    chat_id: str = Field(pattern=CHAT_ID)
+    after_seq: int = Field(default=0, ge=0)
+
+
 def method[M: Params](model: type[M], run: Callable[[M], Awaitable[Any]]) -> Handler:
     """A handler that validates its parameters with `model` before calling `run`."""
 

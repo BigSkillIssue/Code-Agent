@@ -9,6 +9,7 @@ import contextlib
 import os
 import shutil
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -43,9 +44,16 @@ class LocalDriver:
 
     name = "local"
 
-    def __init__(self, data_dir: Path, *, python: str = sys.executable) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        python: str = sys.executable,
+        folders: Mapping[str, Path] | None = None,
+    ) -> None:
         self.projects = data_dir / "projects"
         self.python = python
+        self.folders = dict(folders or {})  # project id -> an existing folder to work in
         self._running: dict[str, set[asyncio.subprocess.Process]] = {}
 
     def project_dir(self, project_id: str) -> Path:
@@ -53,19 +61,21 @@ class LocalDriver:
         return self.projects / check_project_id(project_id)
 
     def workspace(self, project_id: str) -> Path:
-        """The project's files."""
-        return self.project_dir(project_id) / "workspace"
+        """The project's files (an existing folder for server-folder projects)."""
+        folder = self.folders.get(project_id)
+        return folder if folder is not None else self.project_dir(project_id) / "workspace"
 
     async def connect(self, project_id: str) -> SandboxLink:
         """Start a daemon for the project and return its stdin/stdout."""
         base = self.project_dir(project_id)
-        for folder in (base / "workspace", base / "forge-home"):
+        workspace = self.workspace(project_id)
+        for folder in (workspace, base / "forge-home"):
             folder.mkdir(parents=True, exist_ok=True)
         log = (base / "daemon.log").open("ab")
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.python, "-m", "forge_sandbox", "daemon", "--stdio",
-                "--workspace", str(base / "workspace"),
+                self.python, "-I", "-m", "forge_sandbox", "daemon", "--stdio",
+                "--workspace", str(workspace),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=log,
@@ -97,6 +107,6 @@ class LocalDriver:
             await stop_tree(proc)
 
     async def remove(self, project_id: str) -> None:
-        """Stop the daemons and delete the project's folder."""
+        """Stop the daemons and delete the project's folder (never a server folder)."""
         await self.stop(project_id)
         await asyncio.to_thread(shutil.rmtree, self.project_dir(project_id), True)

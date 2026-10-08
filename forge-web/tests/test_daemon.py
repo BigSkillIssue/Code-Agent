@@ -4,8 +4,6 @@ import asyncio
 import os
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -15,50 +13,12 @@ from forge_sandbox.daemon import Daemon
 from forge_sandbox.mux import OpenFailed
 from forge_sandbox.protocol import Notify
 from forge_sandbox.rpc import RpcError
-from forge_web.containers.driver import SandboxLink
 from forge_web.containers.local import LocalDriver
-from forge_web.sandbox_client import ForwardTarget, SandboxClient
-from support import stream_pair
+from forge_web.sandbox_client import SandboxClient
+from support import connect, sandbox
 
 POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="needs a POSIX sandbox")
 LINUX_ONLY = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc/net")
-
-
-async def connect(
-    daemon: Daemon,
-    targets: Mapping[str, ForwardTarget] | None = None,
-    notes: asyncio.Queue[Notify] | None = None,
-) -> tuple[SandboxClient, asyncio.Task[None]]:
-    """A server-side client connected to `daemon` over an in-memory stream."""
-    (sr, sw), (dr, dw) = await stream_pair()
-    serving = asyncio.create_task(daemon.serve_connection(dr, dw))
-
-    async def close_link() -> None:
-        sw.close()
-
-    async def on_notify(message: Notify) -> None:
-        if notes is not None:
-            notes.put_nowait(message)
-
-    client = SandboxClient(SandboxLink(sr, sw, close_link), targets=targets, on_notify=on_notify)
-    await client.start()
-    return client, serving
-
-
-@asynccontextmanager
-async def sandbox(
-    root: Path,
-    targets: Mapping[str, ForwardTarget] | None = None,
-    notes: asyncio.Queue[Notify] | None = None,
-) -> AsyncIterator[tuple[Daemon, SandboxClient]]:
-    daemon = Daemon(root, env=dict(os.environ))
-    client, serving = await connect(daemon, targets, notes)
-    try:
-        yield daemon, client
-    finally:
-        await client.close()
-        serving.cancel()
-        await daemon.close()
 
 
 async def echo_server() -> tuple[asyncio.Server, int]:
