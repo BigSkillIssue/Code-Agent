@@ -132,6 +132,19 @@ const en = {
   history: "History",
   ahead: "ahead",
   behind: "behind",
+  newProjectTitle: "New project",
+  source: "Start from",
+  sourceEmpty: "Empty",
+  sourceGit: "Git repository",
+  sourceZip: "ZIP file",
+  sourceFolder: "Server folder",
+  gitUrl: "Repository URL (https://…)",
+  privateRepoHint: "For private repositories, connect the host in your settings first.",
+  zipFile: "ZIP file",
+  folderPath: "Folder on the server (absolute path)",
+  creating: "Creating…",
+  cloning: "Cloning the repository…",
+  unpacking: "Uploading and unpacking…",
 };
 
 type Texts = typeof en;
@@ -269,6 +282,19 @@ const de: Texts = {
   history: "Verlauf",
   ahead: "voraus",
   behind: "zurück",
+  newProjectTitle: "Neues Projekt",
+  source: "Starten mit",
+  sourceEmpty: "Leer",
+  sourceGit: "Git-Repository",
+  sourceZip: "ZIP-Datei",
+  sourceFolder: "Ordner auf dem Server",
+  gitUrl: "Repository-URL (https://…)",
+  privateRepoHint: "Für private Repositories verbinde zuerst den Anbieter in deinen Einstellungen.",
+  zipFile: "ZIP-Datei",
+  folderPath: "Ordner auf dem Server (absoluter Pfad)",
+  creating: "Wird angelegt …",
+  cloning: "Repository wird geklont …",
+  unpacking: "Wird hochgeladen und entpackt …",
 };
 
 export type TextKey = keyof Texts;

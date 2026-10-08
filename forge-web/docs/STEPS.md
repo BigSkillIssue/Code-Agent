@@ -96,7 +96,10 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: projects from a git URL (a clone job, then the bundle checked out in the sandbox), from a ZIP upload (unpacked in the sandbox), or from a server folder (admins, under `sandbox.folder_roots`, bind-mounted in Docker, never deleted); projects per user and disk per project limited.
     - Tests: zip-slip, links, devices, bombs, too many entries and broken archives refused; folders outside the roots or around the data folder refused; quotas enforced; clone in Docker.
     - Verify: `uv run pytest tests/test_projects.py tests/test_unzip.py -q`
-- [ ] **W12 — Project sources** (rest: W12b the new-project dialog)
+- [x] **W12b — The new-project dialog**
+    - Files: `frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx`, `frontend/src/{api/project,state/store,lib/i18n}.ts`
+    - Build: name and source (empty, git URL, ZIP file, server folder for admins); a ZIP is uploaded once the project exists and the project is removed again if unpacking fails.
+    - Verify: `cd frontend && npm run typecheck && npm test && npm run build`; checked in Chromium.
     - Files: `forge_web/projects.py`, `forge_sandbox/unzip.py`, `tests/test_projects.py`, `tests/test_unzip.py`
     - Build: empty project, git URL (public or with the user's token), ZIP upload unpacked inside the container, server folder (admins only, under allowed roots); quotas (projects per user, disk); delete with container and volumes.
     - Tests: zip-slip, symlink entries, device entries and zip bombs rejected; a server folder outside the allowlist rejected; quota enforced.

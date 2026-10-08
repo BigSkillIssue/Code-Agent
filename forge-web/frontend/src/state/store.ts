@@ -16,6 +16,13 @@ import type {
   User,
 } from "../api/types";
 
+export interface NewProject {
+  name: string;
+  source?: "empty" | "git" | "zip" | "folder";
+  url?: string;
+  folder?: string;
+}
+
 export interface ChatData {
   items: StoredItem[];
   lastSeq: number;
@@ -39,7 +46,8 @@ interface Store {
   loadModels: () => Promise<void>;
   searchFiles: (projectId: string, query: string) => Promise<string[]>;
   loadChats: (projectId: string) => Promise<void>;
-  createProject: (name: string) => Promise<Project>;
+  createProject: (body: NewProject) => Promise<Project>;
+  forgetProject: (projectId: string) => void;
   createChat: (projectId: string, mode?: ChatMode) => Promise<Chat>;
   updateChat: (chat: Chat, changes: Partial<Pick<Chat, "title" | "mode" | "model">>) => Promise<void>;
   deleteChat: (chat: Chat) => Promise<void>;
@@ -147,10 +155,14 @@ export const useStore = create<Store>((set, get) => ({
     set((s) => ({ chats: { ...s.chats, [projectId]: chats } }));
   },
 
-  async createProject(name) {
-    const project = await api.post<Project>("/api/projects", { name });
+  async createProject(body) {
+    const project = await api.post<Project>("/api/projects", body);
     set((s) => ({ projects: [project, ...s.projects], chats: { ...s.chats, [project.id]: [] } }));
     return project;
+  },
+
+  forgetProject(projectId) {
+    set((s) => ({ projects: s.projects.filter((p) => p.id !== projectId) }));
   },
 
   async createChat(projectId, mode = "edits") {

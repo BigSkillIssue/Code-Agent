@@ -109,7 +109,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     <div className="flex h-full min-w-0 flex-1">
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
-          <h1 className="min-w-0 flex-1 truncate font-medium" data-testid="chat-title">
+          <h1 className="min-w-[8rem] flex-1 truncate font-medium" data-testid="chat-title">
             {chat.title}
           </h1>
           {running && (

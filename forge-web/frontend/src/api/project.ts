@@ -63,6 +63,7 @@ export function projectApi(projectId: string) {
     remove: (path: string) => api.delete(`${base}/files?${q({ path, recursive: "true" })}`),
     upload: (path: string, file: Blob) => api.putBytes<{ path: string }>(`${base}/files/raw?${q({ path })}`, file),
     downloadUrl: (path: string) => `${base}/files/raw?${q({ path })}`,
+    importZip: (file: Blob) => api.putBytes<{ files: number; bytes: number }>(`${base}/import/zip`, file),
     status: () => api.get<GitStatus>(`${base}/git/status`),
     diff: (path: string, staged: boolean) =>
       api.get<{ diff: string; truncated: boolean }>(`${base}/git/diff?${q({ path, staged: String(staged) })}`),

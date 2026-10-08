@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Chat, Project } from "../api/types";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { NewProjectDialog } from "./NewProjectDialog";
 
 function StateDot({ chat }: { chat: Chat }) {
   if (chat.state === "running") return <span className="size-2 shrink-0 animate-pulse rounded-full bg-accent" />;
@@ -87,51 +88,31 @@ function ProjectItem({ project, chats, activeChat, searching, onNavigate }: Proj
 }
 
 export function Sidebar({ activeChat, onNavigate }: { activeChat?: string; onNavigate?: () => void }) {
-  const { projects, chats, createProject, user, setError } = useStore();
-  const [naming, setNaming] = useState(false);
-  const [name, setName] = useState("");
+  const { projects, chats, createProject, forgetProject, user } = useStore();
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const shown = searchSidebar(projects, chats, query);
   const navigate = useNavigate();
-  const create = async () => {
-    if (!name.trim()) return;
-    try {
-      const project = await createProject(name.trim());
-      setNaming(false);
-      setName("");
-      onNavigate?.();
-      navigate(`/p/${project.id}`);
-    } catch (err) {
-      setError(String(err));
-    }
-  };
   return (
     <aside className="flex h-full w-72 max-w-[85vw] shrink-0 flex-col border-r border-line bg-panel">
       <div className="flex items-center justify-between px-4 py-3">
         <span className="text-lg font-semibold">{t("appName")}</span>
-        <button type="button" title={t("newProject")} onClick={() => setNaming(true)}>
+        <button type="button" title={t("newProject")} onClick={() => setCreating(true)}>
           <FolderPlus className="size-5" />
         </button>
       </div>
-      {naming && (
-        <form
-          className="mx-3 mb-2 flex gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void create();
+      {creating && (
+        <NewProjectDialog
+          isAdmin={user?.role === "admin"}
+          create={createProject}
+          forget={forgetProject}
+          onClose={() => setCreating(false)}
+          onCreated={(project) => {
+            setCreating(false);
+            onNavigate?.();
+            navigate(`/p/${project.id}`);
           }}
-        >
-          <input
-            autoFocus
-            className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 text-sm"
-            placeholder={t("projectName")}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="rounded-md bg-accent px-2 text-sm text-on-accent">
-            {t("create")}
-          </button>
-        </form>
+        />
       )}
       <label className="mx-3 mb-2 flex items-center gap-2 rounded-md border border-line bg-card px-2 py-1">
         <Search className="size-4 shrink-0 text-muted" />
