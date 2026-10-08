@@ -48,7 +48,10 @@ def preview_router() -> APIRouter:
     async def overview(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
         services = await allowed(request, user, project_id)
         programs = await sandbox_call(services, project_id, "procs.list")
-        ports = await sandbox_call(services, project_id, "ports.list")
+        local = services.settings.sandbox.isolation == "local"  # the host's ports are there too
+        ports = await sandbox_call(
+            services, project_id, "ports.list", {"owned": True} if local else {}
+        )
         return {
             "enabled": preview_base(services.settings) is not None,
             "suggestions": await suggestions(services, project_id),

@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W14b
+Next step: W15
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -24,7 +24,8 @@ Next step: W14b
 | W12a | 2026-10-08 | befb1c8 | forge_sandbox/{unzip,usage,fsops,gitops,methods,daemon}.py, forge_web/{projects,sources,quotas,gitsync,files_api,startup,settings,services,app,sandbox_calls}.py, forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/chats/api.py, tests/{test_unzip,test_projects,test_docker_driver,test_access}.py, docs/{PROTOCOL,STEPS}.md | projects from git URLs, ZIP uploads and server folders; quotas for projects per user and disk per project |
 | W12b | 2026-10-08 | f532536 | frontend/src/components/{NewProjectDialog,NewProjectDialog.test,Sidebar,ChatView}.tsx, frontend/src/{api/project,state/store,lib/i18n}.ts | the new-project dialog with every source |
 | W13 | 2026-10-08 | c187090 | forge_web/{terminals,app}.py, forge_web/chats/runs.py, forge_sandbox/pty.py, frontend/src/panels/{Terminal,XtermView,ProjectPanel,terminal.test}.tsx, frontend/src/{api/project,lib/i18n}.ts, tests/{test_terminals,test_daemon,test_docker_driver,test_access}.py, docs/PROTOCOL.md | terminals in the browser: tabs, resize, reconnect; a terminal that ends closes its channels |
-| W14a | 2026-10-08 | (next) | forge_web/{preview,preview_auth,preview_headers,preview_upstream,preview_proxy,preview_ws,settings,services,startup,app,webui}.py, forge_sandbox/forward.py, tests/{test_preview,preview_app,test_access,test_daemon,test_docker_driver}.py, README.md, docs/{PROTOCOL,STEPS}.md | live previews on hosts of their own: tickets, cookie, HTTP + WebSocket proxy through `connect` channels, preview API |
+| W14a | 2026-10-08 | 0771bbf | forge_web/{preview,preview_auth,preview_headers,preview_upstream,preview_proxy,preview_ws,settings,services,startup,app,webui}.py, forge_sandbox/forward.py, tests/{test_preview,preview_app,test_access,test_daemon,test_docker_driver}.py, README.md, docs/{PROTOCOL,STEPS}.md | live previews on hosts of their own: tickets, cookie, HTTP + WebSocket proxy through `connect` channels, preview API |
+| W14b | 2026-10-08 | (next) | frontend/src/panels/{Preview,preview.test,ProjectPanel}.tsx, frontend/src/{api/project,lib/i18n}.ts, forge_sandbox/{netinfo,methods,daemon}.py, forge_web/preview.py, tests/test_daemon.py | the Preview tab: dev-server suggestions, programs with output, ports, the app in a sandboxed frame or a new tab |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -144,6 +145,9 @@ Next step: W14b
 - W14: requests from other sites (or other previews) are refused unless they are GET/HEAD navigations (`Sec-Fetch-Site`/`Sec-Fetch-Mode`); a preview WebSocket needs the preview's own Origin. To the app, Host and Origin/Referer are `localhost:<port>`, Forge's cookies and X-Forwarded headers are removed; from the app, `Set-Cookie` loses `Domain`, cookies named like Forge's are dropped, local redirects become relative, and `frame-ancestors` allows only Forge's origins. Forge's own pages allow previews in `frame-src`.
 - W14: connections to apps use `httpcore` (httpx's own transport) over `connect` channels and `websockets`' sans-I/O protocol (it comes with `uvicorn[standard]`); both were installed already, nothing new is added. No connection is kept alive.
 - W14: `connect` channels try 127.0.0.1 and then ::1 (Vite on "localhost" often listens on ::1 only). In local mode the port list leaves out Forge's own port.
+- W14b: the Preview tab polls the overview every 2.5 s while it shows (an error is reported once, not on every poll) and stays mounted once opened, like the terminals. Each show, reload or path change fetches a fresh ticket (they work once) and lands on the path through the ticket's `next`. The frame is `sandbox`ed without `allow-top-navigation` (the app cannot navigate Forge's tab away) and sends no referrer; "open in a new tab" opens `about:blank` during the click, sets `opener = null`, then loads the ticket URL.
+- W14b: in local mode the host's other programs listen too, so `ports.list` takes `owned` and then lists only sockets of the daemon's own process tree (from `/proc/<pid>/fd`); Docker sandboxes list every port of the container as before.
+- W14b: checked in Chromium: the `Secure; SameSite=None; Partitioned` preview cookie is accepted on plain-http `*.localhost` inside Forge's iframe; the page loads, the app sees `Host: localhost:<port>` and no cookies, and a WebSocket from the preview passes through.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
@@ -154,4 +158,4 @@ Next step: W14b
 - W13: Docker Hub answered the sandbox image build with 429 (rate limit for this network); the base image was pulled from `mirror.gcr.io/library/python:3.12-slim-bookworm` and tagged locally. Worth a `--build-arg` for the base image in W16 so installs behind a mirror work.
 - W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a.
 - W14a: the ::1 test is skipped on this machine (no IPv6 at all); it runs where loopback has IPv6 (CI).
-- W14a: whether Chromium accepts the Secure, Partitioned preview cookie on plain-http `*.localhost` (inside Forge's iframe) is checked with the UI in W14b.
+- W14b: Safari blocks third-party cookies even when partitioned in some versions; there the preview frame may show "This preview is private" and "open in a new tab" is the way (to check in W17 with WebKit).

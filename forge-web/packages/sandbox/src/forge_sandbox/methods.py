@@ -180,6 +180,13 @@ class EmptyParams(Params):
     """A method without parameters."""
 
 
+class PortsParams(Params):
+    """ports.list: with `owned`, only ports of programs the daemon started (in local mode the
+    host's other programs listen too)."""
+
+    owned: bool = False
+
+
 class ConnectArgs(Params):
     """Arguments of a `connect` channel: a port on the sandbox's loopback interface."""
 

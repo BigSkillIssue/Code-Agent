@@ -268,6 +268,34 @@ async def test_listening_ports_leave_out_the_daemons_own(tmp_path: Path) -> None
     server.close()
 
 
+LISTENER = (
+    "import socket, time\n"
+    "s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen()\n"
+    "print(s.getsockname()[1], flush=True); time.sleep(30)"
+)
+
+
+@LINUX_ONLY
+def test_only_ports_of_a_process_tree_when_asked() -> None:
+    from forge_sandbox.netinfo import listening_ports
+
+    mine, other = (
+        subprocess.Popen([sys.executable, "-c", LISTENER], stdout=subprocess.PIPE, text=True)
+        for _ in range(2)
+    )
+    try:
+        assert mine.stdout is not None and other.stdout is not None
+        my_port, other_port = int(mine.stdout.readline()), int(other.stdout.readline())
+        everything = {p["port"] for p in listening_ports()}
+        assert {my_port, other_port} <= everything
+        owned = {p["port"] for p in listening_ports(owned_by=mine.pid)}
+        assert my_port in owned and other_port not in owned  # a local daemon's own programs
+    finally:
+        for process in (mine, other):
+            process.kill()
+            process.wait()
+
+
 async def test_a_new_connection_replaces_the_old_and_state_survives(tmp_path: Path) -> None:
     daemon = Daemon(tmp_path, env=dict(os.environ))
     first, first_serving = await connect(daemon)

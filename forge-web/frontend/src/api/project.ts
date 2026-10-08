@@ -59,6 +59,31 @@ export interface TerminalInfo {
   attached: number;
 }
 
+export interface Program {
+  id: string;
+  name: string;
+  argv: string[];
+  cwd: string;
+  started_at: number;
+  running: boolean;
+  exit_code: number | null;
+  total_lines: number;
+}
+
+export interface PreviewOverview {
+  enabled: boolean; // false: this server has no preview domain
+  suggestions: { label: string; command: string }[];
+  programs: Program[];
+  ports: { port: number; address: string }[];
+}
+
+export interface ProgramOutput {
+  lines: string[];
+  from: number;
+  next: number;
+  running: boolean;
+}
+
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 function socketUrl(path: string): string {
@@ -100,6 +125,12 @@ export function projectApi(projectId: string) {
     openTerminal: (cols: number, rows: number) => api.post<TerminalInfo>(`${base}/terminals`, { cols, rows }),
     closeTerminal: (id: string) => api.delete(`${base}/terminals/${encodeURIComponent(id)}`),
     terminalUrl: (id: string) => socketUrl(`${base}/terminals/${encodeURIComponent(id)}/ws`),
+    preview: () => api.get<PreviewOverview>(`${base}/preview`),
+    startProgram: (command: string) => api.post<Program>(`${base}/preview/programs`, { command }),
+    stopProgram: (id: string) => api.delete(`${base}/preview/programs/${encodeURIComponent(id)}`),
+    programOutput: (id: string, since: number) =>
+      api.get<ProgramOutput>(`${base}/preview/programs/${encodeURIComponent(id)}/output?${q({ since: String(since) })}`),
+    openPreview: (port: number) => api.post<{ url: string }>(`${base}/preview/${port}/open`, {}),
   };
 }
 

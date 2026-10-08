@@ -1,4 +1,5 @@
-// The panel next to a chat: the project's files, its changes and (for editors) its terminals.
+// The panel next to a chat: the project's files, its changes, (for editors) its terminals and
+// the live preview.
 
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -7,9 +8,10 @@ import { t } from "../lib/i18n";
 import { Changes } from "./Changes";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
+import { PreviewPanel } from "./Preview";
 import { TerminalPanel } from "./Terminal";
 
-type Tab = "files" | "changes" | "terminal";
+type Tab = "files" | "changes" | "terminal" | "preview";
 
 interface Props {
   projectId: string;
@@ -24,15 +26,17 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
   const client = useMemo(() => api ?? projectApi(projectId), [api, projectId]);
   const [tab, setTab] = useState<Tab>("files");
   const [file, setFile] = useState<string | null>(null);
-  const [terminalsOpened, setTerminalsOpened] = useState(false); // stay connected once opened
+  // Terminals and the preview stay alive once opened, also while another tab shows.
+  const [opened, setOpened] = useState<Set<Tab>>(() => new Set());
   const tabs: [Tab, string][] = [
     ["files", t("files")],
     ["changes", t("changes")],
     ...(canEdit ? [["terminal", t("terminal")] as [Tab, string]] : []),
+    ["preview", t("preview")],
   ];
   const choose = (next: Tab) => {
     setTab(next);
-    if (next === "terminal") setTerminalsOpened(true);
+    setOpened((all) => (all.has(next) ? all : new Set(all).add(next)));
   };
   return (
     <aside className="flex h-full min-w-0 flex-col bg-card" aria-label={t("showPanel")}>
@@ -61,9 +65,14 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
             <FileTree api={client} canEdit={canEdit} refreshKey={refreshKey} onOpen={setFile} onError={onError} />
           ))}
         {tab === "changes" && <Changes api={client} canEdit={canEdit} refreshKey={refreshKey} onError={onError} />}
-        {canEdit && terminalsOpened && (
+        {canEdit && opened.has("terminal") && (
           <div className={tab === "terminal" ? "h-full" : "hidden"}>
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
+          </div>
+        )}
+        {opened.has("preview") && (
+          <div className={tab === "preview" ? "h-full" : "hidden"}>
+            <PreviewPanel api={client} canEdit={canEdit} active={tab === "preview"} onError={onError} />
           </div>
         )}
       </div>

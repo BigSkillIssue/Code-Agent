@@ -33,6 +33,7 @@ from forge_sandbox.methods import (
     DeleteParams,
     EmptyParams,
     PathParams,
+    PortsParams,
     ReadParams,
     RenameParams,
     UnzipParams,
@@ -97,7 +98,7 @@ class Daemon:
             **self.gitops.handlers(),
             **self.forwards.handlers(),
             **self.chats.handlers(),
-            "ports.list": method(EmptyParams, self.ports),
+            "ports.list": method(PortsParams, self.ports),
             "daemon.info": method(EmptyParams, self.describe),
         }
 
@@ -162,9 +163,10 @@ class Daemon:
             "fs.delete": method(DeleteParams, fs_delete),
         }
 
-    async def ports(self, _params: EmptyParams) -> list[dict[str, Any]]:
+    async def ports(self, params: PortsParams) -> list[dict[str, Any]]:
         """Ports programs in the sandbox listen on (the daemon's own are left out)."""
-        return listening_ports(exclude=self.forwards.ports())
+        owner = os.getpid() if params.owned else None
+        return await asyncio.to_thread(listening_ports, self.forwards.ports(), owner)
 
     async def describe(self, _params: EmptyParams) -> dict[str, Any]:
         """The daemon's hello info, on request."""

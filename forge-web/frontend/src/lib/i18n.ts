@@ -89,7 +89,7 @@ const en = {
   data: "Data",
   files: "Files",
   changes: "Changes",
-  showPanel: "Files, changes and terminal",
+  showPanel: "Files, changes, terminal and preview",
   close: "Close",
   newFile: "New file",
   newFolder: "New folder",
@@ -154,6 +154,20 @@ const en = {
   terminalEnded: "This terminal has ended.",
   terminalLost: "The connection to this terminal is lost.",
   reconnect: "Reconnect",
+  preview: "Preview",
+  devServer: "Dev server",
+  ownCommand: "Your own command, e.g. npm run dev",
+  startProgram: "Start",
+  stopProgram: "Stop",
+  running: "running",
+  ports: "Ports",
+  noPorts: "No program listens on a port yet. Start a dev server above.",
+  showPort: "Show port {port}",
+  openInTab: "Open in a new tab",
+  reloadPreview: "Reload",
+  path: "Path",
+  previewOff:
+    "Previews are not set up on this server: it needs a preview domain ([preview] domain in the settings). Ask your administrator.",
 };
 
 type Texts = typeof en;
@@ -248,7 +262,7 @@ const de: Texts = {
   data: "Daten",
   files: "Dateien",
   changes: "Änderungen",
-  showPanel: "Dateien, Änderungen und Terminal",
+  showPanel: "Dateien, Änderungen, Terminal und Vorschau",
   close: "Schließen",
   newFile: "Neue Datei",
   newFolder: "Neuer Ordner",
@@ -313,6 +327,20 @@ const de: Texts = {
   terminalEnded: "Dieses Terminal ist beendet.",
   terminalLost: "Die Verbindung zu diesem Terminal ist abgebrochen.",
   reconnect: "Neu verbinden",
+  preview: "Vorschau",
+  devServer: "Dev-Server",
+  ownCommand: "Eigener Befehl, z. B. npm run dev",
+  startProgram: "Starten",
+  stopProgram: "Stoppen",
+  running: "läuft",
+  ports: "Ports",
+  noPorts: "Noch lauscht kein Programm auf einem Port. Starte oben einen Dev-Server.",
+  showPort: "Port {port} anzeigen",
+  openInTab: "In neuem Tab öffnen",
+  reloadPreview: "Neu laden",
+  path: "Pfad",
+  previewOff:
+    "Die Vorschau ist auf diesem Server nicht eingerichtet: Es fehlt eine Vorschau-Domain ([preview] domain in den Einstellungen). Bitte wende dich an die Administration.",
 };
 
 export type TextKey = keyof Texts;
