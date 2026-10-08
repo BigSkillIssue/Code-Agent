@@ -78,3 +78,36 @@ jobs:
         run: uv sync
       - name: Docker tests
         run: uv run pytest -q -m docker
+
+  e2e:
+    name: end-to-end in Chromium (${{ matrix.isolation }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        isolation: [local, docker]
+    env:
+      FORGE_WEB_E2E_ISOLATION: ${{ matrix.isolation }}
+      FORGE_WEB_TEST_IMAGE: forge-web-sandbox:dev
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: forge-web/frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build the web UI
+        working-directory: forge-web/frontend
+        run: npm ci && npm run build
+      - name: Install
+        run: uv sync && uv run playwright install --with-deps chromium
+      - name: Build the sandbox image
+        if: matrix.isolation == 'docker'
+        working-directory: .
+        run: docker build -f forge-web/docker/sandbox.Dockerfile -t forge-web-sandbox:dev .
+      - name: End-to-end tests
+        run: uv run pytest -q -m e2e

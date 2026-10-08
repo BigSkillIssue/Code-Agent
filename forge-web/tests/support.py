@@ -108,7 +108,7 @@ def call(name: str, **arguments: Any) -> dict[str, Any]:
 class LiveServer:
     """A real Forge Web server on a free port, in a background thread (for HTTP + WebSocket)."""
 
-    def __init__(self, settings: Any) -> None:
+    def __init__(self, settings: Any, port: int = 0) -> None:
         import threading
 
         import uvicorn
@@ -119,7 +119,7 @@ class LiveServer:
         config = uvicorn.Config(
             self.app,
             host="127.0.0.1",
-            port=0,
+            port=port,  # 0: any free port
             log_level="warning",
             loop="asyncio",
             ws="websockets-sansio",
@@ -295,3 +295,34 @@ async def person(server: LiveServer, name: str, role: str = "member", **fields: 
     web.client.cookies.set("forge_session", token)
     web.client.cookies.set("forge_csrf", session_row.csrf)
     return Person(user.id, f"{name}@example.com", web)
+
+
+def free_port() -> int:
+    """A TCP port on 127.0.0.1 that is free right now."""
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def remove_docker_projects(data_dir: Path) -> None:
+    """Remove the containers and volumes of the projects in this test server's database."""
+    import sqlite3
+    import subprocess
+
+    database = data_dir / "forge-web.db"
+    if not database.exists():
+        return
+    with sqlite3.connect(database) as db:
+        ids = [row[0] for row in db.execute("SELECT id FROM projects")]
+    for project_id in ids:
+        found = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", f"label=org.forge-web.project={project_id}"],
+            capture_output=True, text=True,
+        ).stdout.split()  # fmt: skip
+        if found:
+            subprocess.run(["docker", "rm", "-f", *found], capture_output=True)
+    volumes = [f"forge-web-{i}-{kind}" for i in ids for kind in ("workspace", "home")]
+    if volumes:
+        subprocess.run(["docker", "volume", "rm", "-f", *volumes], capture_output=True)

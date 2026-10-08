@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W17
+Next step: W17b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -29,7 +29,8 @@ Next step: W17
 | W15a | 2026-10-08 | 61c310a | forge_web/{admin_api,settings_api,settings,startup,app}.py, forge_web/auth/{totp,second_factor,accounts,routes,oauth,sessions,ratelimit}.py, forge_web/chats/api.py, forge_web/db/{models.py,migrations/versions/0005_settings.py}, tests/{test_totp,test_admin,test_oauth,test_access}.py | two-factor sign-in, profile and password, default model, admin settings at run time, usage of everyone |
 | W15b | 2026-10-08 | 3aa6a8c | frontend/src/pages/{Settings,SettingsAccess,Admin,AdminServer,parts,Auth,account.test,Auth.test}.tsx, frontend/src/api/account.ts, frontend/src/{App,components/Sidebar}.tsx, frontend/src/{state/store,lib/i18n}.ts | the Settings and Admin pages and the code step at sign-in |
 | W16a | 2026-10-08 | 5bbfad9 | forge_web/{doctor,cli,preview,app}.py, packages/server/pyproject.toml, tests/{test_doctor,test_preview,test_access}.py | `forge-web doctor`, the on-demand TLS check for preview hosts, the web UI in the wheel |
-| W16b | 2026-10-08 | (next) | docker/server.Dockerfile(.dockerignore), compose.yaml, deploy/{Caddyfile,env.example,forge-web.example.toml,forge-web.service,com.forge.web.plist,forge-web-winsw.xml}, ../.github/workflows/forge-web-release.yml, docs/EINRICHTUNG.md, README.md, tests/{test_deploy,test_docker_driver}.py | server image, compose with Caddy, service templates, release workflow, German setup guide |
+| W16b | 2026-10-08 | 8ec52af | docker/server.Dockerfile(.dockerignore), compose.yaml, deploy/{Caddyfile,env.example,forge-web.example.toml,forge-web.service,com.forge.web.plist,forge-web-winsw.xml}, ../.github/workflows/forge-web-release.yml, docs/EINRICHTUNG.md, README.md, tests/{test_deploy,test_docker_driver}.py | server image, compose with Caddy, service templates, release workflow, German setup guide |
+| W17a | 2026-10-08 | (next) | tests/e2e/{conftest,test_flows}.py, tests/{support,test_docker_driver}.py, pyproject.toml, ../.github/workflows/forge-web.yml | end-to-end flows in Chromium, local and Docker |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -169,13 +170,16 @@ Next step: W17
 - W16b: Caddy serves Forge and, with on-demand TLS, every preview host (`*.PREVIEW_DOMAIN`), asking `/api/preview/allowed-host` first. Let's Encrypt limits certificates per domain per week; very large installs should use a wildcard certificate with a DNS challenge instead (noted for the guide).
 - W16b: service templates: systemd (own user in the docker group, `ProtectSystem=strict`, writes only the data folder), launchd, WinSW; the guide recommends WSL2 + Docker Engine on Windows servers.
 - W16b: the release workflow (tags `forge-web-v*`) builds the UI and the three wheels, checks that the server wheel carries the UI and that the wheels install and start, builds and pushes `ghcr.io/<owner>/forge-web` and `forge-web-sandbox` (on manual runs it only builds and starts the server image), and attaches the wheels to a GitHub release. No release has been tagged yet; until then the guide builds the images from the checkout.
+- W17: split into W17a (end-to-end tests) and W17b (security review, `docs/SECURITY.md`, fixes and the open issues).
+- W17a: `tests/e2e` drives the built web UI in Chromium against a real server with the fake model: sign in, a project, a chat in "ask before changes" mode whose file write needs the Allow button, its diff and report, the files and changes panels, a terminal, and a dev server shown in the preview frame. Local isolation by default, Docker with `FORGE_WEB_E2E_ISOLATION=docker`; both pass here (about 15 s) and run as a CI matrix. The test server listens on a chosen port (`LiveServer(port=)`), so preview URLs and Forge's `frame-src` match it.
+- W17a: tests with Docker remove their projects' containers and volumes afterwards (`support.remove_docker_projects`); before, every run left volumes behind.
+- W17: (closes the W12a issue) Forge itself ignores `providers`, `mcp_servers` and `hooks` in a project's `.forge/config.toml` unless the project is in `~/.forge/trusted.toml`; Forge Web never marks a project trusted, so a cloned repository cannot start hooks or MCP servers on its own.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
 - W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
 - W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+ (npm now suggests 5.0.3), a major upgrade for a later step.
-- W12a: a cloned repository's `.forge/config.toml` (hooks, MCP servers) is loaded by Forge inside the sandbox like any project config; it cannot leave the sandbox, but it could run commands without asking. Review with W17 whether chats should ignore project hooks/MCP until the owner trusts the project.
 - W13: Docker Hub answered the sandbox image build with 429 (rate limit for this network); the base image was pulled from `mirror.gcr.io/library/python:3.12-slim-bookworm` and tagged locally. Worth a `--build-arg` for the base image in W16 so installs behind a mirror work.
 - W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a.
 - W14a: the ::1 test is skipped on this machine (no IPv6 at all); it runs where loopback has IPv6 (CI).

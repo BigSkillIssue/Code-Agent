@@ -50,6 +50,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]  # `support` for tests in subfolders (tests/e2e) too
 addopts = "-m 'not docker and not e2e and not postgres and not live'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
