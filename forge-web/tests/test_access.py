@@ -16,10 +16,9 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from forge_web.app import create_app
-from forge_web.auth.sessions import token_id
 from forge_web.db.models import AuditEntry, AuthSession, Chat, Project, ProjectMember, User
 from forge_web.settings import load_settings
-from support import LiveServer, WebClient
+from support import LiveServer, Person, WebClient, person
 
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 # Anyone may call these (signing in and the like); test_auth covers them.
@@ -27,14 +26,17 @@ PUBLIC = {
     "GET /api/health", "GET /api/auth/config", "GET /api/auth/dev-login",
     "GET /api/auth/invite/{token}", "POST /api/auth/setup", "POST /api/auth/login",
     "POST /api/auth/signup", "POST /api/auth/reset", "POST /api/auth/forgot",
-    "POST /api/auth/verify",
+    "POST /api/auth/verify", "GET /api/auth/oauth/{name}/start",
+    "GET /api/auth/oauth/{name}/callback",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
     "GET /api/me", "POST /api/auth/logout", "GET /api/auth/sessions",
     "DELETE /api/auth/sessions/{session_id}", "GET /api/projects", "POST /api/projects",
     "GET /api/keys", "POST /api/keys", "DELETE /api/keys/{key_id}", "GET /api/providers",
-    "GET /api/usage",
+    "GET /api/usage", "GET /api/auth/identities", "DELETE /api/auth/identities/{provider}",
+    "GET /api/git/credentials", "POST /api/git/credentials",
+    "DELETE /api/git/credentials/{credential_id}",
 }  # fmt: skip
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
@@ -50,16 +52,8 @@ BODIES: dict[str, dict[str, Any]] = {
     "AnswerIn": {"request_id": "r1", "answer": {"approved": True}},
     "KeyIn": {"provider": "anthropic", "key": "sk-ant-not-a-real-key"},
     "GrantIn": {"allowed": True, "monthly_limit_usd": 1000},
+    "CredentialIn": {"host": "github.com", "token": "ghp_not_a_real_token"},
 }
-
-
-@dataclass
-class Person:
-    """A signed-in user and their browser."""
-
-    id: str
-    email: str
-    web: WebClient
 
 
 @dataclass
@@ -81,23 +75,6 @@ def settings(data_dir: Path) -> Any:
         environ={"FORGE_WEB_DATA_DIR": str(data_dir)},
         overrides={"sandbox.isolation": "docker"},
     )
-
-
-async def person(server: LiveServer, name: str, role: str = "member") -> Person:
-    """A new account with a live session (no password: argon2 would only slow tests down)."""
-    now, token = time.time(), secrets.token_urlsafe(32)
-    user = User(id=secrets.token_hex(8), email=f"{name}@example.com", name=name.title(),
-                role=role, status="active", created_at=now)  # fmt: skip
-    session_row = AuthSession(id=token_id(token), user_id=user.id, csrf=secrets.token_urlsafe(16),
-                              created_at=now, last_seen_at=now, expires_at=now + 3600)  # fmt: skip
-    async with server.services.db.session() as session, session.begin():
-        session.add(user)
-        await session.flush()
-        session.add(session_row)
-    web = WebClient(server)
-    web.client.cookies.set("forge_session", token)
-    web.client.cookies.set("forge_csrf", session_row.csrf)
-    return Person(user.id, f"{name}@example.com", web)
 
 
 async def project_with_chat(server: LiveServer, owner: Person, viewer: Person) -> tuple[str, str]:
@@ -174,7 +151,8 @@ def filled(path: str, world: World) -> str:
     values = {
         "project_id": world.project_id, "chat_id": world.chat_id, "member_id": world.owner.id,
         "user_id": world.owner.id, "token": "x" * 20, "invite_id": "0" * 16,
-        "session_id": "0" * 16, "key_id": "0" * 16,
+        "session_id": "0" * 16, "key_id": "0" * 16, "name": "google", "provider": "google",
+        "credential_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

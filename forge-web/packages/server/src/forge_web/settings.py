@@ -91,6 +91,25 @@ class SmtpSettings(_Strict):
     starttls: bool = True
 
 
+class ProviderSettings(_Strict):
+    """A sign-in provider: Google, GitHub, or any OpenID Connect issuer (Microsoft, GitLab,
+    Keycloak, …). The client secret is read from `client_secret_env`, else `client_secret`."""
+
+    kind: Literal["google", "github", "oidc"] | None = None  # None: from the name, else oidc
+    label: str = ""  # the button text; empty = from the name
+    client_id: str
+    client_secret_env: str = ""  # empty = FORGE_WEB_<NAME>_SECRET
+    client_secret: str = ""
+    issuer: str = ""  # oidc: the issuer URL (its /.well-known/openid-configuration is read)
+    url: str = ""  # github: GitHub Enterprise's address; empty = github.com
+    scopes: list[str] = []  # extra scopes
+    trust_email: bool = False  # oidc: the issuer checks emails but sends no email_verified
+
+    def provider_kind(self, name: str) -> str:
+        """google, github or oidc."""
+        return self.kind or (name if name in ("google", "github") else "oidc")
+
+
 class AuthSettings(_Strict):
     """Who may sign up and how sign-in works."""
 
@@ -100,6 +119,7 @@ class AuthSettings(_Strict):
     session_days: float = Field(default=30, gt=0)
     allowed_origins: list[str] = []  # extra origins for the browser (besides public_url)
     smtp: SmtpSettings = SmtpSettings()
+    providers: dict[str, ProviderSettings] = {}  # name -> provider, e.g. google, github
 
 
 class DevSettings(_Strict):
@@ -182,7 +202,9 @@ def env_overrides(environ: Mapping[str, str]) -> dict[str, Any]:
     """FORGE_WEB_SERVER__PORT=9000 -> {"server": {"port": "9000"}}; JSON values for lists."""
     found: dict[str, Any] = {}
     for name, raw in environ.items():
-        if not name.startswith(ENV_PREFIX) or name in RESERVED_ENV:
+        # Only FORGE_WEB_<SECTION>__<KEY> names are settings: secrets such as
+        # FORGE_WEB_SMTP_PASSWORD share the prefix but are read where they are needed.
+        if not name.startswith(ENV_PREFIX) or name in RESERVED_ENV or "__" not in name:
             continue
         keys = [part.lower() for part in name[len(ENV_PREFIX) :].split("__")]
         merge(found, nested(keys, parse_env_value(raw)))

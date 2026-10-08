@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from forge_web.auth.dev import ensure_dev_user
+from forge_web.auth.oauth_providers import SignIn, load_providers
 from forge_web.chats.runs import RunManager
 from forge_web.containers.docker import DockerDriver
 from forge_web.containers.driver import ContainerDriver
@@ -105,6 +106,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
+        sign_in=SignIn(load_providers(settings.auth.providers)),
     )  # fmt: skip
     await after_start(services, docker)
     return services
@@ -175,5 +177,6 @@ async def stop_services(services: Services) -> None:
     await services.egress.close()
     await services.gateway_server.stop()
     await services.gateway.close()
+    await services.sign_in.close()
     await services.writer.close()
     await services.db.close()

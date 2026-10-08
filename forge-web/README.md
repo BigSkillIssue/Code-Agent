@@ -23,3 +23,33 @@ for trying Forge Web on your own machine, not for other people.
 
 Forge Web lives next to Forge and never changes it: `forge-web/` is a separate uv workspace that uses Forge
 as a library.
+
+## Sign-in with Google, GitHub or your own identity provider
+
+Register an OAuth app with the provider, using `<public_url>/api/auth/oauth/<name>/callback` as the
+redirect (callback) URL, then name it in `forge-web.toml` and put its client secret in an environment
+variable (`FORGE_WEB_<NAME>_SECRET` unless `client_secret_env` names another):
+
+```toml
+[server]
+public_url = "https://forge.example.com"
+
+[auth.providers.google]      # console.cloud.google.com → APIs & Services → Credentials → OAuth client
+client_id = "1234-abc.apps.googleusercontent.com"   # secret in FORGE_WEB_GOOGLE_SECRET
+
+[auth.providers.github]      # github.com → Settings → Developer settings → OAuth Apps
+client_id = "Ov23li..."                             # secret in FORGE_WEB_GITHUB_SECRET
+
+[auth.providers.company]     # any OpenID Connect issuer: Microsoft Entra, GitLab, Keycloak, …
+kind = "oidc"
+label = "Company login"
+issuer = "https://login.microsoftonline.com/<tenant>/v2.0"
+client_id = "..."
+trust_email = true           # only if the issuer checks emails but sends no email_verified
+```
+
+A provider account joins an existing Forge account only when the provider has verified its email and
+the Forge account's email is confirmed too; otherwise people link providers in their settings while
+signed in. Sign-up rules (`auth.signup`: invite, approval or open, and `auth.allowed_domains`) apply to
+provider sign-ins as well. GitHub can also be connected for repositories (clone, pull, push); that grant
+is separate from signing in and is stored encrypted.

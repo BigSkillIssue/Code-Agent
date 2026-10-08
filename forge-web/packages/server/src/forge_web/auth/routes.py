@@ -122,7 +122,7 @@ def auth_router() -> APIRouter:
             "setup_needed": await user_count(services) == 0,
             "passwords": auth.passwords,
             "signup": auth.signup,
-            "providers": services.oauth_providers,
+            "providers": services.sign_in.buttons(),
             "mail": mail_enabled(auth.smtp),
             "dev": services.settings.dev.enabled,
         }
@@ -284,26 +284,39 @@ async def create_user(
 
 
 async def signup_user(services: Services, email: str, body: SignupIn) -> User:
-    """Create the account the sign-up mode allows."""
+    """Create the account a password sign-up may have."""
+    return await new_account(services, email, body.name, body.password, body.invite)
+
+
+async def new_account(
+    services: Services,
+    email: str,
+    name: str,
+    password: str | None,
+    invite: str,
+    *,
+    verified: bool = False,
+) -> User:
+    """Create the account the sign-up mode allows (`verified`: a provider checked the email)."""
     auth = services.settings.auth
-    if body.invite:
+    if invite:
         # Check before using it up: a wrong email must not burn someone else's invite.
-        row = await onetime.peek(services.db, body.invite, "invite")
+        row = await onetime.peek(services.db, invite, "invite")
         if row is None or (row.email and row.email != email):
             raise HTTPException(403, "this invite is not valid for this email")
-        row = await onetime.consume(services.db, body.invite, "invite")
+        row = await onetime.consume(services.db, invite, "invite")
         if row is None:
             raise HTTPException(403, "this invite is not valid for this email")
-        return await create_user(services, email, body.name, body.password, role=row.role,
-                                 verified=bool(row.email))  # fmt: skip
+        return await create_user(services, email, name, password, role=row.role,
+                                 verified=verified or bool(row.email))  # fmt: skip
     if auth.signup == "invite" or services.settings.sandbox.isolation == "local":
         raise HTTPException(403, "signing up needs an invite from an admin")
     if not domain_allowed(services, email):
         raise HTTPException(403, "this email domain may not sign up here")
     status = "pending" if auth.signup == "approval" else "active"
-    if mail_enabled(auth.smtp):
+    if not verified and mail_enabled(auth.smtp):
         status = "unverified"
-    return await create_user(services, email, body.name, body.password, status=status)
+    return await create_user(services, email, name, password, status=status, verified=verified)
 
 
 async def send_verification(services: Services, user: User) -> None:

@@ -6,6 +6,7 @@ import os
 import socket
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -262,3 +263,35 @@ class WebClient:
 
     async def __aexit__(self, *_exc: object) -> None:
         await self.client.aclose()
+
+
+@dataclass
+class Person:
+    """A signed-in user and their browser."""
+
+    id: str
+    email: str
+    web: WebClient
+
+
+async def person(server: LiveServer, name: str, role: str = "member", **fields: Any) -> Person:
+    """A new account with a live session (no password: argon2 would only slow tests down)."""
+    import secrets
+    import time
+
+    from forge_web.auth.sessions import token_id
+    from forge_web.db.models import AuthSession, User
+
+    now, token = time.time(), secrets.token_urlsafe(32)
+    values = {"name": name.title(), "role": role, "status": "active", **fields}
+    user = User(id=secrets.token_hex(8), email=f"{name}@example.com", created_at=now, **values)
+    session_row = AuthSession(id=token_id(token), user_id=user.id, csrf=secrets.token_urlsafe(16),
+                              created_at=now, last_seen_at=now, expires_at=now + 3600)  # fmt: skip
+    async with server.services.db.session() as session, session.begin():
+        session.add(user)
+        await session.flush()
+        session.add(session_row)
+    web = WebClient(server)
+    web.client.cookies.set("forge_session", token)
+    web.client.cookies.set("forge_csrf", session_row.csrf)
+    return Person(user.id, f"{name}@example.com", web)

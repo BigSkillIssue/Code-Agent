@@ -53,3 +53,24 @@ def test_bad_toml(tmp_path: Path) -> None:
 def test_default_data_dir_override(tmp_path: Path) -> None:
     assert default_data_dir({"FORGE_WEB_DATA_DIR": str(tmp_path)}) == tmp_path
     assert default_data_dir({}).name == "forge-web"
+
+
+def test_secret_variables_are_not_settings(tmp_path: Path) -> None:
+    env = {
+        "FORGE_WEB_DATA_DIR": str(tmp_path),
+        "FORGE_WEB_SMTP_PASSWORD": "hunter2",
+        "FORGE_WEB_GOOGLE_SECRET": "s3cret",
+        "FORGE_WEB_AUTH__SIGNUP": "open",
+    }
+    assert load_settings(tmp_path / "none.toml", environ=env).auth.signup == "open"
+
+
+def test_sign_in_providers(tmp_path: Path) -> None:
+    file = tmp_path / "forge-web.toml"
+    file.write_text(
+        '[auth.providers.google]\nclient_id = "g"\n'
+        '[auth.providers.firma]\nclient_id = "f"\nissuer = "https://sso.example.com"\n'
+    )
+    providers = load_settings(file, environ={"FORGE_WEB_DATA_DIR": str(tmp_path)}).auth.providers
+    assert providers["google"].provider_kind("google") == "google"
+    assert providers["firma"].provider_kind("firma") == "oidc"

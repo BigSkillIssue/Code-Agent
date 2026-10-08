@@ -35,3 +35,4 @@ class AuthLimits:
         self.login_by_email = RateLimiter(10, 900)
         self.signup_by_ip = RateLimiter(10, 3600)
         self.mail_by_email = RateLimiter(3, 3600)
+        self.oauth_by_ip = RateLimiter(30, 900)

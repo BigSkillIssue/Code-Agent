@@ -180,3 +180,35 @@ class AuditEntry(Base):
     target: Mapped[str] = mapped_column(String(200), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
     ip: Mapped[str] = mapped_column(String(64), default="")
+
+
+class Identity(Base):
+    """A sign-in account at Google, GitHub or another provider, linked to a user."""
+
+    __tablename__ = "identities"
+    __table_args__ = (Index("identities_by_user", "user_id"),)
+
+    provider: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(255), primary_key=True)  # the provider's user id
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    email: Mapped[str] = mapped_column(String(320), default="")
+    username: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[float] = mapped_column(Float)
+    last_used_at: Mapped[float] = mapped_column(Float)
+
+
+class GitCredential(Base):
+    """A user's token for a git host (GitHub sign-in grant or a personal token), encrypted."""
+
+    __tablename__ = "git_credentials"
+    __table_args__ = (Index("git_credentials_by_user", "user_id", "host", unique=True),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    host: Mapped[str] = mapped_column(String(255))
+    username: Mapped[str] = mapped_column(String(200), default="")
+    secret: Mapped[str] = mapped_column(Text)  # encrypted with the vault
+    hint: Mapped[str] = mapped_column(String(16), default="")
+    source: Mapped[str] = mapped_column(String(16), default="token")  # oauth | token
+    scopes: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[float] = mapped_column(Float)

@@ -8,6 +8,8 @@ from fastapi import APIRouter, FastAPI
 from forge_web import __version__
 from forge_web.auth.admin import admin_router
 from forge_web.auth.dev import dev_router
+from forge_web.auth.git_credentials import git_credentials_router
+from forge_web.auth.oauth import oauth_router
 from forge_web.auth.origin import OriginGuard
 from forge_web.auth.routes import auth_router
 from forge_web.chats.api import chats_router
@@ -38,8 +40,9 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         docs_url=None, redoc_url=None, openapi_url=None,
     )  # fmt: skip
     routers = (
-        health_router(), auth_router(), admin_router(), dev_router(), projects_router(),
-        members_router(), chats_router(), keys_router(),
+        health_router(), auth_router(), oauth_router(), admin_router(), dev_router(),
+        projects_router(), members_router(), chats_router(), keys_router(),
+        git_credentials_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

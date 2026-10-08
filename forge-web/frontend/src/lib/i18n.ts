@@ -67,6 +67,7 @@ const en = {
   haveAccount: "Already have an account? Sign in",
   needAccount: "No account yet? Create one",
   or: "or",
+  continueWith: "Continue with",
 };
 
 type Texts = typeof en;
@@ -139,6 +140,7 @@ const de: Texts = {
   haveAccount: "Schon ein Konto? Anmelden",
   needAccount: "Noch kein Konto? Anlegen",
   or: "oder",
+  continueWith: "Weiter mit",
 };
 
 export type TextKey = keyof Texts;

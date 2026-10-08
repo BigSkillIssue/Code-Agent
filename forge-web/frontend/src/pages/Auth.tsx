@@ -9,7 +9,7 @@ export interface AuthConfig {
   setup_needed: boolean;
   passwords: boolean;
   signup: "invite" | "approval" | "open";
-  providers: string[];
+  providers: { name: string; label: string }[];
   mail: boolean;
   dev: boolean;
 }
@@ -76,17 +76,24 @@ function ErrorText({ error }: { error: string }) {
 
 const enter = () => window.location.assign("/");
 
-function ProviderButtons({ config }: { config: AuthConfig }) {
+function providerUrl(name: string, invite: string): string {
+  const params = new URLSearchParams();
+  if (invite) params.set("invite", invite);
+  const query = params.toString();
+  return `/api/auth/oauth/${encodeURIComponent(name)}/start${query ? `?${query}` : ""}`;
+}
+
+function ProviderButtons({ config, invite = "" }: { config: AuthConfig; invite?: string }) {
   if (config.providers.length === 0) return null;
   return (
     <div className="space-y-2">
       {config.providers.map((provider) => (
         <a
-          key={provider}
-          href={`/api/auth/oauth/${provider}/start`}
-          className="block w-full rounded-md border border-line py-2 text-center font-medium capitalize hover:bg-panel"
+          key={provider.name}
+          href={providerUrl(provider.name, invite)}
+          className="block w-full rounded-md border border-line py-2 text-center font-medium hover:bg-panel"
         >
-          {provider === "github" ? "GitHub" : provider === "google" ? "Google" : provider}
+          {t("continueWith")} {provider.label}
         </a>
       ))}
       {config.passwords && <div className="text-center text-xs text-muted">{t("or")}</div>}
@@ -94,17 +101,28 @@ function ProviderButtons({ config }: { config: AuthConfig }) {
   );
 }
 
+/** The error a provider sign-in came back with (`?auth_error=`), shown once. */
+function useReturnedError(): string {
+  const [error] = useState(() => new URLSearchParams(window.location.search).get("auth_error") ?? "");
+  useEffect(() => {
+    if (error) window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+  }, [error]);
+  return error;
+}
+
 function LoginPage({ config }: { config: AuthConfig }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
+  const returned = useReturnedError();
   const { error, busy, submit } = useSubmit(async () => {
     await api.post("/api/auth/login", { email, password });
     enter();
   });
   return (
     <Card title={t("signIn")}>
+      <ErrorText error={returned} />
       <ProviderButtons config={config} />
       {config.passwords && (
         <form className="space-y-3" onSubmit={submit}>
@@ -185,7 +203,7 @@ function SignupPage({ config }: { config: AuthConfig }) {
   if (status) return <Card title={t("signupTitle")}>{status === "pending" ? t("pending") : t("checkMail")}</Card>;
   return (
     <Card title={t("signupTitle")}>
-      <ProviderButtons config={config} />
+      <ProviderButtons config={config} invite={invite} />
       <form className="space-y-3" onSubmit={submit}>
         <Field label={t("name")} value={form.name} onChange={(name) => setForm({ ...form, name })} />
         <Field label={t("email")} type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} />

@@ -59,8 +59,8 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: project members with roles owner / editor / viewer; admin API for users (approve, roles, disable), invites and reset links; a user's own sessions (list, end).
     - Tests: every route × an outsider is refused (a matrix over the route table); viewers cannot change anything; admin routes refuse members.
     - Verify: `uv run pytest tests/test_access.py -q`
-- [ ] **W09 — Google and GitHub sign-in**
-    - Files: `forge_web/auth/oauth.py`, `forge_web/auth/github_repos.py`, `tests/test_oauth.py`
+- [x] **W09 — Google and GitHub sign-in**
+    - Files: `forge_web/auth/oauth.py`, `forge_web/auth/oauth_providers.py`, `forge_web/auth/git_credentials.py`, `tests/test_oauth.py`
     - Build: Authlib with PKCE, state and nonce; Google OIDC (`email_verified` required); GitHub OAuth with the verified primary email; link accounts only by verified email; "connect GitHub for repositories" as a separate grant (or a personal token), stored encrypted.
     - Tests (mocked identity providers): sign-in creates or links the right user; an unverified email is not linked; state or nonce mismatch rejected.
     - Verify: `uv run pytest tests/test_oauth.py -q`
