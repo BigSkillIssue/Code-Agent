@@ -6,7 +6,9 @@ import type { Chat } from "./api/types";
 import { ChatView } from "./components/ChatView";
 import { Sidebar } from "./components/Sidebar";
 import { t } from "./lib/i18n";
+import { AdminPage } from "./pages/Admin";
 import { AuthPages, type AuthConfig } from "./pages/Auth";
+import { SettingsPage } from "./pages/Settings";
 import { useStore } from "./state/store";
 
 function ErrorBar() {
@@ -116,6 +118,8 @@ export function App() {
           <Route index element={<Empty />} />
           <Route path="p/:projectId" element={<ProjectPage />} />
           <Route path="c/:chatId" element={<ChatPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="admin" element={<AdminPage />} />
           <Route path="*" element={<Empty />} />
         </Route>
       </Routes>

@@ -58,6 +58,7 @@ interface Store {
   cancel: (chatId: string) => Promise<void>;
   handle: (message: ServerMessage) => void;
   setError: (error: string) => void;
+  setUserName: (name: string) => void;
 }
 
 /** A chat's live state after one live-only item (streaming text, command output). */
@@ -239,6 +240,9 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  setUserName(name) {
+    set((s) => ({ user: s.user ? { ...s.user, name } : s.user }));
+  },
   setError(error) {
     set({ error });
   },

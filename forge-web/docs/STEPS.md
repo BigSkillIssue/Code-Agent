@@ -114,7 +114,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: suggested dev commands (package.json scripts, Python servers), start/stop, detected ports; an HTTP + WebSocket proxy on `<project>.<preview domain>` (a separate registrable domain with wildcard DNS) with one-time tokens exchanged for a subdomain cookie, app cookies never forwarded, Host and Origin rewritten to `localhost:<port>`; a single-port mode for local single-user installs only.
     - Tests: preview of project A cannot read B (different origin, cookie scoped); the app session cookie is never forwarded; a WebSocket upgrade passes through.
     - Verify: `uv run pytest tests/test_preview.py -q`
-- [ ] **W15 — Settings and administration** (split: [x] W15a server; [ ] W15b the Settings and Admin pages)
+- [x] **W15 — Settings and administration** (split: W15a server; W15b the Settings and Admin pages)
     - Files: `forge_web/settings_api.py`, `forge_web/admin_api.py`, `forge_web/auth/totp.py`, `frontend/src/pages/{Settings,Admin}.tsx`, `tests/test_admin.py`, `tests/test_totp.py`
     - Build: profile, linked sign-ins, API keys, TOTP two-factor (required for admins if set), default models; admin: users, invites, roles, quotas, server keys and grants, usage, audit log, sign-up mode, sandbox limits.
     - Tests: usage totals equal the database; TOTP codes (RFC 6238 vectors); admin-only routes refuse members.

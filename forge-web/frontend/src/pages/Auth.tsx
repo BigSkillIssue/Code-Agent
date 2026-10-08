@@ -1,7 +1,7 @@
 // Signing in: password sign-in, the first admin, sign-up (with an invite), resets, email checks.
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { t } from "../lib/i18n";
 
@@ -75,6 +75,37 @@ function ErrorText({ error }: { error: string }) {
 }
 
 const enter = () => window.location.assign("/");
+const SECOND_FACTOR = "/login?second_factor=1";
+
+/** Go on after a sign-in step: into the app, or to the code from the authenticator app. */
+function useSignedIn() {
+  const navigate = useNavigate();
+  return (result: { totp_required?: boolean } | undefined) => {
+    if (result?.totp_required) navigate(SECOND_FACTOR);
+    else enter();
+  };
+}
+
+function SecondFactorPage() {
+  const [code, setCode] = useState("");
+  const { error, busy, submit } = useSubmit(async () => {
+    await api.post("/api/auth/totp/verify", { code: code.trim() });
+    enter();
+  });
+  return (
+    <Card title={t("twoFactor")}>
+      <p className="text-sm text-muted">{t("enterCode")}</p>
+      <form className="space-y-3" onSubmit={submit}>
+        <Field label={t("authCode")} value={code} onChange={setCode} auto="one-time-code" />
+        <ErrorText error={error} />
+        <Submit busy={busy} label={t("signIn")} />
+      </form>
+      <Link className="block text-sm text-muted underline" to="/login">
+        {t("back")}
+      </Link>
+    </Card>
+  );
+}
 
 function providerUrl(name: string, invite: string): string {
   const params = new URLSearchParams();
@@ -116,9 +147,9 @@ function LoginPage({ config }: { config: AuthConfig }) {
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
   const returned = useReturnedError();
+  const signedIn = useSignedIn();
   const { error, busy, submit } = useSubmit(async () => {
-    await api.post("/api/auth/login", { email, password });
-    enter();
+    signedIn(await api.post<{ totp_required?: boolean }>("/api/auth/login", { email, password }));
   });
   return (
     <Card title={t("signIn")}>
@@ -220,9 +251,9 @@ function SignupPage({ config }: { config: AuthConfig }) {
 
 function ResetPage() {
   const [password, setPassword] = useState("");
+  const signedIn = useSignedIn();
   const { error, busy, submit } = useSubmit(async () => {
-    await api.post("/api/auth/reset", { token: hashToken(), password });
-    enter();
+    signedIn(await api.post<{ totp_required?: boolean }>("/api/auth/reset", { token: hashToken(), password }));
   });
   return (
     <Card title={t("resetTitle")}>
@@ -237,18 +268,24 @@ function ResetPage() {
 
 function VerifyPage() {
   const [message, setMessage] = useState(t("verifyTitle"));
+  const navigate = useNavigate();
   useEffect(() => {
     api
-      .post<{ status: string }>("/api/auth/verify", { token: hashToken() })
-      .then((result) => (result.status === "active" ? enter() : setMessage(t("pending"))))
+      .post<{ status?: string; totp_required?: boolean }>("/api/auth/verify", { token: hashToken() })
+      .then((result) => {
+        if (result.totp_required) navigate(SECOND_FACTOR);
+        else if (result.status === "active") enter();
+        else setMessage(t("pending"));
+      })
       .catch((err) => setMessage(String(err instanceof ApiError ? err.message : err)));
-  }, []);
+  }, [navigate]);
   return <Card title={t("verifyTitle")}>{message}</Card>;
 }
 
 export function AuthPages({ config }: { config: AuthConfig }) {
   const location = useLocation();
   if (config.setup_needed && location.pathname !== "/setup") return <SetupPage />;
+  if (new URLSearchParams(location.search).has("second_factor")) return <SecondFactorPage />;
   return (
     <Routes>
       <Route path="/setup" element={<SetupPage />} />

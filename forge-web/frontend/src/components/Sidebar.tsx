@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, FolderPlus, MessageSquarePlus, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, MessageSquarePlus, Search, Settings, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Chat, Project } from "../api/types";
 import { t } from "../lib/i18n";
@@ -142,6 +142,14 @@ export function Sidebar({ activeChat, onNavigate }: { activeChat?: string; onNav
       </nav>
       <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
         <span className="min-w-0 flex-1 truncate">{user?.name}</span>
+        <Link to="/settings" title={t("settings")} onClick={onNavigate} className="p-0.5">
+          <Settings className="size-4" />
+        </Link>
+        {user?.role === "admin" && (
+          <Link to="/admin" title={t("administration")} onClick={onNavigate} className="p-0.5">
+            <Shield className="size-4" />
+          </Link>
+        )}
         <button
           type="button"
           className="underline"
