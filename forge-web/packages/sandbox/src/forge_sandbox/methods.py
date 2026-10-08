@@ -1,0 +1,154 @@
+"""Parameters of the daemon's control-channel methods (shared by the daemon and the server)."""
+
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from forge_sandbox.rpc import Handler, RpcError
+
+READ_LIMIT = 900_000
+
+
+class Params(BaseModel):
+    """Base of every parameter model: unknown keys are an error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PathParams(Params):
+    """A workspace-relative path ("" is the root)."""
+
+    path: str = ""
+
+
+class ReadParams(PathParams):
+    """fs.read: how much to read."""
+
+    limit: int = Field(default=READ_LIMIT, ge=0, le=READ_LIMIT)
+
+
+class WriteParams(PathParams):
+    """fs.write: the content as text or base64."""
+
+    text: str | None = None
+    base64: str | None = None
+    create_dirs: bool = False
+    expected_mtime: float | None = None
+
+
+class DeleteParams(PathParams):
+    """fs.delete: also non-empty directories?"""
+
+    recursive: bool = False
+
+
+class RenameParams(Params):
+    """fs.rename: from where to where."""
+
+    src: str
+    dst: str
+
+
+class ProcStartParams(Params):
+    """procs.start: an argv list or a shell command line."""
+
+    argv: list[str] | None = Field(default=None, max_length=256)
+    command: str | None = Field(default=None, max_length=8192)
+    cwd: str = ""
+    env: dict[str, str] = Field(default_factory=dict, max_length=64)
+    name: str = Field(default="", max_length=120)
+
+
+class ProcParams(Params):
+    """A process id."""
+
+    id: str
+
+
+class ProcOutputParams(ProcParams):
+    """procs.output: lines from `since` on."""
+
+    since: int = Field(default=0, ge=0)
+    limit: int = Field(default=500, ge=1, le=5000)
+
+
+class PtyCreateParams(Params):
+    """pty.create: size, folder and program of a new terminal."""
+
+    cols: int = Field(default=80, ge=10, le=500)
+    rows: int = Field(default=24, ge=4, le=200)
+    cwd: str = ""
+    argv: list[str] | None = Field(default=None, max_length=64)
+
+
+class PtyResizeParams(Params):
+    """pty.resize: the new size."""
+
+    id: str
+    cols: int = Field(ge=10, le=500)
+    rows: int = Field(ge=4, le=200)
+
+
+class ListenParams(Params):
+    """forward.listen: a TCP port inside the sandbox that leads to a server target."""
+
+    target: str = Field(pattern=r"^[a-z][a-z0-9-]{0,30}$")
+    port: int = Field(ge=0, le=65535)
+
+
+class GitDiffParams(Params):
+    """git.diff: of one path or everything; staged or not."""
+
+    path: str | None = None
+    staged: bool = False
+    limit: int = Field(default=800_000, ge=1, le=READ_LIMIT)
+
+
+class EmptyParams(Params):
+    """A method without parameters."""
+
+
+class ConnectArgs(Params):
+    """Arguments of a `connect` channel: a port on the sandbox's loopback interface."""
+
+    port: int = Field(ge=1, le=65535)
+
+
+class ForwardArgs(Params):
+    """Arguments of a `forward` channel the daemon opens: which server target."""
+
+    target: str = Field(pattern=r"^[a-z][a-z0-9-]{0,30}$")
+
+
+class PtyAttachArgs(Params):
+    """Arguments of a `pty` channel: which terminal."""
+
+    id: str
+
+
+class PtyResize(BaseModel):
+    """A message on a `pty` channel that changes the terminal size."""
+
+    type: Literal["resize"] = "resize"
+    cols: int = Field(ge=10, le=500)
+    rows: int = Field(ge=4, le=200)
+
+
+def method[M: Params](model: type[M], run: Callable[[M], Awaitable[Any]]) -> Handler:
+    """A handler that validates its parameters with `model` before calling `run`."""
+
+    async def handler(params: dict[str, Any]) -> Any:
+        return await run(parse_params(model, params))
+
+    return handler
+
+
+def parse_params[M: BaseModel](model: type[M], params: dict[str, Any]) -> M:
+    """`params` as `model`; RpcError("bad_params") naming the first problem."""
+    try:
+        return model.model_validate(params)
+    except ValidationError as err:
+        first = err.errors()[0]
+        where = ".".join(str(part) for part in first["loc"]) or "params"
+        raise RpcError("bad_params", f"{where}: {first['msg']}") from None

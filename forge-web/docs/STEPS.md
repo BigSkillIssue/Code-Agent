@@ -6,17 +6,17 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
 
 ## Phase A · Runnable early
 
-- [ ] **W01 — Skeleton**
+- [x] **W01 — Skeleton**
     - Files: `pyproject.toml` (workspace), `packages/*/pyproject.toml`, `forge_sandbox/{__init__,__main__,cli}.py`, `forge_web/{__init__,__main__,cli,app,settings}.py`, `tests/test_smoke.py`, `tests/test_settings.py`, `.github/workflows/forge-web.yml`, `AGENTS.md`, `PROGRESS.md`, `README.md`, `docs/STEPS.md`
     - Build: uv workspace with Forge as a path dependency; `forge-web --version`, `forge-web serve`; settings from defaults → `forge-web.toml` → `FORGE_WEB_<SECTION>__<KEY>`; data folder per OS; `GET /api/health`; CI on ubuntu, macOS and Windows.
     - Tests: both packages import; both commands print their version; layering; unknown key names the file; health answers.
     - Verify: `uv run forge-web --version && uv run pytest -q`
-- [ ] **W02 — Wire protocol**
+- [x] **W02 — Wire protocol**
     - Files: `forge_sandbox/frames.py`, `forge_sandbox/protocol.py`, `forge_sandbox/mux.py`, `docs/PROTOCOL.md`, `tests/test_frames.py`, `tests/test_mux.py`
     - Build: length-prefixed binary frames (u32 length, u32 channel, u8 type, payload ≤ 64 KiB); JSON control messages as pydantic models with a discriminator; a multiplexer over one byte stream with per-channel credit windows (256 KiB), control frames first, version handshake.
     - Tests: round trip of every frame type and control message; a channel without credit does not delay control frames or other channels; an oversized or malformed frame closes the connection with a clear error; version mismatch is reported.
     - Verify: `uv run pytest tests/test_frames.py tests/test_mux.py -q`
-- [ ] **W03 — Sandbox daemon (local)**
+- [x] **W03 — Sandbox daemon (local)**
     - Files: `forge_sandbox/daemon.py`, `forge_sandbox/attach.py`, `forge_sandbox/fsops.py`, `forge_sandbox/procs.py`, `forge_sandbox/pty.py`, `forge_sandbox/forward.py`, `forge_sandbox/gitinfo.py`, `forge_web/containers/{driver,local}.py`, `forge_web/sandbox_client.py`, `tests/test_fsops.py`, `tests/test_daemon.py`
     - Build: `forge-sandbox daemon` listening on a unix socket (TCP loopback + secret on Windows); `forge-sandbox attach` relays stdio to it; file operations confined to the workspace (no symlink escape, no device files); processes with logs; PTY sessions; tcp-forward both ways; listening ports; git status and diff; `LocalDriver` and `SandboxClient` on the server.
     - Tests: symlink and `..` escapes refused; write/read/rename/delete round trip; process start/output/stop; PTY echo (POSIX); TCP echo through a forward; git status of a changed file.
