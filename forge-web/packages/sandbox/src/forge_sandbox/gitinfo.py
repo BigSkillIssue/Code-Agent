@@ -4,6 +4,7 @@ Git runs as the workspace owner with settings that keep it from starting other p
 (fsmonitor, external diff drivers, text conversion).
 """
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any
 
@@ -15,6 +16,12 @@ from forge_sandbox.rpc import Handler, RpcError
 MAX_FILES = 50_000  # files git.files looks at
 SAFE_GIT = ["git", "-c", "core.fsmonitor=", "-c", "color.ui=false", "-c", "core.quotepath=false"]
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat"}
+# Forge's own working files in a project: kept out of commits (in .git/info/exclude, which is
+# never committed). The project's Forge config (.forge/config.toml, commands, agents, skills)
+# stays visible to git.
+EXCLUDE_HEADER = "# Forge's working files (added by Forge Web)"
+FORGE_EXCLUDES = (".forge/audit.log", ".forge/undo/", ".forge/out/", ".forge/cache/",
+                  ".forge/worktrees/")  # fmt: skip
 
 
 def match_rank(path: str, query: str) -> int | None:
@@ -123,14 +130,30 @@ class GitInfo:
         return {"repo": True, **parse_status(out)}
 
     async def init(self, _params: EmptyParams) -> dict[str, Any]:
-        """Make the workspace a git repository on branch main (nothing happens if it is one)."""
+        """Make the workspace a git repository on branch main (unless it is one) and keep
+        Forge's working files out of its commits."""
         code, out, _ = await self._git("rev-parse", "--is-inside-work-tree")
-        if code == 0 and out.strip() == "true":
-            return {"created": False}
-        code, _, err = await self._git("init", "-q", "-b", "main")
-        if code != 0:
-            raise RpcError("git_failed", err.strip()[:500] or "git init failed")
-        return {"created": True}
+        created = not (code == 0 and out.strip() == "true")
+        if created:
+            code, _, err = await self._git("init", "-q", "-b", "main")
+            if code != 0:
+                raise RpcError("git_failed", err.strip()[:500] or "git init failed")
+        await asyncio.to_thread(self._exclude_forge_files)
+        return {"created": created}
+
+    def _exclude_forge_files(self) -> None:
+        path = ".git/info/exclude"
+        try:
+            current = self.workspace.read(path).get("text") or ""
+        except RpcError as err:
+            if err.code != "not_found":
+                return  # a link or something odd: leave it alone
+            current = ""
+        missing = [line for line in FORGE_EXCLUDES if line not in current.splitlines()]
+        if missing:
+            block = "\n".join([EXCLUDE_HEADER, *missing]) + "\n"
+            text = current + ("" if current.endswith("\n") or not current else "\n") + block
+            self.workspace.write(path, text.encode("utf-8"), create_dirs=True)
 
     async def diff(self, params: GitDiffParams) -> dict[str, Any]:
         """A unified diff of the working tree (or the index with `staged`)."""

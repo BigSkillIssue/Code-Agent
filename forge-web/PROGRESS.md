@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W11c
+Next step: W12
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -19,7 +19,8 @@ Next step: W11c
 | W10a | 2026-10-08 | 8eaa9ff | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
 | W10b | 2026-10-08 | e80226d | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
 | W11a | 2026-10-08 | 76e7dc1 | forge_sandbox/{fsops,gitops,methods,daemon}.py, forge_web/{files_api,git_api,sandbox_calls,settings,app}.py, tests/{test_fsops,test_files_api,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | files (list, read, save, folders, rename, delete, uploads and downloads of any size in parts) and local git actions (status, diff, stage, unstage, discard, commit, branches, log, remote) |
-| W11b | 2026-10-08 | (next) | forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/{gitsync,git_api,settings,services}.py, forge_sandbox/{gitops,methods}.py, tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | push and pull through a git job outside the project: bundles in, bundles out, the token only in the job |
+| W11b | 2026-10-08 | b2fc642 | forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/{gitsync,git_api,settings,services}.py, forge_sandbox/{gitops,methods}.py, tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | push and pull through a git job outside the project: bundles in, bundles out, the token only in the job |
+| W11c | 2026-10-08 | (next) | frontend/src/panels/*, frontend/src/api/{client,project}.ts, frontend/src/components/ChatView.tsx, frontend/src/lib/i18n.ts, frontend/package.json, forge_sandbox/gitinfo.py, tests/test_git_api.py | file tree, editor and changes panel beside the chat; Forge's working files excluded from git; patched react-router and diff |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -117,7 +118,13 @@ Next step: W11c
 - W11b: the remote must be https on a host allowed by `git.hosts` (default any) that resolves to public addresses only; the Docker job pins the host to the checked address (`--add-host`). Pull only fast-forwards; when both sides have new commits, `origin/<branch>` is updated and the UI says so (merging is left to the user or the agent).
 - W11b: the Docker job runs as the workspace owner (1000:1000) with a read-only root, a tmpfs /tmp, no capabilities, no-new-privileges, the workspace volume only (not the home volume) and the default bridge network. `git.allow_local_remotes` (file:// remotes, private addresses) works only in development mode, for tests.
 
+- W11c: the editor is CodeMirror (`@uiw/react-codemirror` 4.25.11, languages from `@codemirror/language-data`), loaded only when a file is opened (its own 430 KB chunk; each language is loaded on demand).
+- W11c: the panel opens beside the chat (full screen below the `lg` breakpoint) and remembers in the browser whether it was open; it reloads when a turn ends, since the agent may have changed files.
+- W11c: `git.init` (when a project is created) adds Forge's working files (`.forge/audit.log`, `undo/`, `out/`, `cache/`, `worktrees/`) to `.git/info/exclude`; the project's Forge config (`.forge/config.toml`, commands, agents, skills) stays visible to git.
+- W11c: npm audit found holes in shipped libraries from W05b: react-router-dom 7.6.2 → 7.18.4 (open redirects, XSS) and diff 8.0.2 → 8.0.4 (DoS); the built app now has no known vulnerabilities. Dev tools moved to vite 6.4.3, vitest 3.2.7 and rollup 4.63.4 (the 4.44.1 pin from W05b is no longer needed: the build finishes in 6 s).
+
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
 - W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
+- W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+, a major upgrade for a later step.

@@ -39,9 +39,32 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await response.json()) as T;
 }
 
+/** Send raw bytes (an upload) with the CSRF value. */
+async function putBytes<T>(path: string, body: Blob): Promise<T> {
+  const response = await fetch(path, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/octet-stream", "X-CSRF-Token": csrfToken() },
+    body,
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const data = await response.json();
+      if (typeof data.detail === "string") message = data.detail;
+    } catch {
+      // not JSON: keep the status text
+    }
+    throw new ApiError(response.status, message);
+  }
+  return (await response.json()) as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
+  put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
   delete: (path: string) => request<void>("DELETE", path),
+  putBytes,
 };

@@ -83,7 +83,10 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: bundles in `.git/forge-transfer/` between the project and a git job (throwaway hardened container with the workspace volume; child process in local mode); token on stdin into a credential file in the job's temporary folder; remote https on an allowed host with public addresses, pinned with `--add-host`; push and pull routes; fast-forward only.
     - Tests: no token in the project after a job; hooks, fsmonitor and credential helpers of the project never run; private, non-https and not-allowed remotes refused; the job container is hardened.
     - Verify: `uv run pytest tests/test_gitsync.py -q` (+ `-m docker tests/test_docker_driver.py`)
-- [ ] **W11 — Files and git** (rest: W11c panels; cloning a project comes with W12)
+- [x] **W11c — Files and changes panels**
+    - Files: `frontend/src/panels/{ProjectPanel,FileTree,FileEditor,CodeEditor,Changes}.tsx`, `frontend/src/panels/panels.test.tsx`, `frontend/src/api/{client,project}.ts`, `frontend/src/components/ChatView.tsx`, `frontend/src/lib/i18n.ts`, `forge_sandbox/gitinfo.py`, `tests/test_git_api.py`
+    - Build: a panel beside the chat (full screen on phones) with the file tree, a CodeMirror editor (loaded on demand, Ctrl/Cmd+S, conflict warning) and the changes view (stage, unstage, discard, diff, commit, branches, remote, push, pull, history); it refreshes when a turn ends. Forge's working files are excluded from git.
+    - Verify: `cd frontend && npm run typecheck && npm test && npm run build`; checked in Chromium.
     - Files: `forge_web/files_api.py`, `forge_web/git_api.py`, `forge_web/gitjob.py`, `frontend/src/panels/{Files,Changes}.tsx`, `tests/test_files_api.py`, `tests/test_git_api.py`
     - Build: tree, read, write, search, upload, download through the daemon; status, diff, stage, commit, branches; push, pull and clone in a throwaway git container with a credential helper on stdin and hooks disabled; the Files panel (CodeMirror) and the Changes panel.
     - Tests: no token in `.git/config` or in the project container; a malicious hook never runs; viewers cannot write.

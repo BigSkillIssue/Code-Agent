@@ -124,3 +124,17 @@ async def test_viewers_see_but_do_not_change(server: LiveServer, client: httpx.A
         assert (await viewer.web.post(f"{base}/git/{route}", body)).status_code == 403
     remote = await viewer.web.request("PUT", f"{base}/git/remote", json={"url": "https://x.y/z"})
     assert remote.status_code == 403
+
+
+async def test_forges_working_files_stay_out_of_commits(
+    server: LiveServer, client: httpx.AsyncClient
+) -> None:
+    pid, base = await project(client)
+    workspace = server.services.driver.workspace(pid)
+    for name in ("audit.log", "undo/s1/journal.jsonl", "cache/repomap.json", "config.toml"):
+        (workspace / ".forge" / name).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / ".forge" / name).write_text("x\n")
+    paths = [f["path"] for f in (await client.get(f"{base}/git/status")).json()["files"]]
+    assert paths == [".forge/config.toml"]  # the project's Forge config may be committed
+    exclude = (workspace / ".git" / "info" / "exclude").read_text()
+    assert exclude.count(".forge/audit.log") == 1
