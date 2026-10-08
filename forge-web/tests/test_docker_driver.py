@@ -248,3 +248,39 @@ async def test_programs_reach_only_allowed_hosts_through_the_egress_proxy() -> N
         await client.close()
         await egress.close()
         await driver.remove("dtest-e")
+
+
+async def command_output(client: SandboxClient, *argv: str) -> str:
+    """What a command run as the agent prints (stripped)."""
+    code = (
+        f"import subprocess; print(subprocess.run({list(argv)!r}, capture_output=True, "
+        "text=True).stdout.strip() or 'none')"
+    )
+    return "\n".join(await run_as_agent(client, code))
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_a_git_job_pushes_from_its_own_container(driver: DockerDriver) -> None:
+    from forge_web.containers.gitjob import GitJob
+
+    client = await client_for(driver, "dtest-c")
+    try:
+        await client.call("git.init")
+        await client.call("fs.write", {"path": "a.txt", "text": "a\n"})
+        await client.call("git.stage", {"paths": ["."]})
+        await client.call("git.commit", {"message": "first", "name": "Ada", "email": "a@x.y"})
+        await command_output(client, "git", "init", "-q", "--bare", "/workspace/remote.git")
+        await client.call("git.bundle_out", {"branch": "main"})
+        job = GitJob(
+            "push", "file:///workspace/remote.git", "main", "main", local_remotes=True,
+            credentials="https://ada:ghp_secret@github.com",
+        )  # fmt: skip
+        code, output = await driver.run_git_job("dtest-c", job)
+        assert code == 0, output
+        remote_log = ["git", "--git-dir", "/workspace/remote.git", "log", "--format=%s", "main"]
+        assert await command_output(client, *remote_log) == "first"
+        grep = ["grep", "-r", "-l", "ghp_secret", "/workspace", "/home/forge"]
+        assert await command_output(client, *grep) == "none"  # the token stayed in the job
+    finally:
+        await client.close()

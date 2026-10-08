@@ -9,6 +9,7 @@ import contextlib
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from forge.local.local_executor import stop_tree
 from forge.runtime.shell import new_process_group
 
 from forge_web.containers.driver import SandboxError, SandboxLink, check_project_id
+from forge_web.containers.gitjob import SCRIPT, GitJob, run_job
 
 # What a sandbox inherits from the server's environment: nothing secret, just enough to run.
 PASS_ENV = (
@@ -110,3 +112,14 @@ class LocalDriver:
         """Stop the daemons and delete the project's folder (never a server folder)."""
         await self.stop(project_id)
         await asyncio.to_thread(shutil.rmtree, self.project_dir(project_id), True)
+
+    async def run_git_job(self, project_id: str, job: GitJob) -> tuple[int, str]:
+        """Run a git job as a child process, in a temporary folder that is removed afterwards."""
+        shell = shutil.which("sh")
+        if shell is None:
+            raise SandboxError("pushing and pulling need a POSIX shell (sh) in local mode")
+        workspace = self.workspace(check_project_id(project_id))
+        with tempfile.TemporaryDirectory(prefix="forge-web-git-") as tmp:
+            base = {name: os.environ[name] for name in ("PATH", "SYSTEMROOT") if name in os.environ}
+            env = {**base, **job.env(str(workspace), tmp)}
+            return await run_job([shell, "-c", SCRIPT], env, job.stdin(), job.timeout)

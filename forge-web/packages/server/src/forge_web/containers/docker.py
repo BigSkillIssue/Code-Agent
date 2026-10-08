@@ -10,11 +10,13 @@ import asyncio
 import contextlib
 import json
 import logging
+import secrets
 import shutil
 from typing import Any
 
 from forge_sandbox.protocol import PROTOCOL_VERSION
 from forge_web.containers.driver import SandboxError, SandboxLink, check_project_id
+from forge_web.containers.gitjob import SCRIPT, GitJob, run_job
 from forge_web.settings import SandboxSettings
 
 log = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ LABEL = "org.forge-web.project"
 # Capabilities the daemon needs to start programs as the project user and to manage that
 # user's files; everything else is dropped.
 CAPABILITIES = ("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL")
+PROJECT_USER = "1000:1000"  # the image's forge user, who owns the workspace
 
 
 class DockerDriver:
@@ -191,3 +194,36 @@ class DockerDriver:
         await self.docker("rm", "--force", self.container(project_id), timeout=60)
         for volume in self.volumes(project_id):
             await self.docker("volume", "rm", "--force", volume, timeout=60)
+
+    def git_job_args(
+        self, project_id: str, job: GitJob, name: str, runtime: str | None
+    ) -> list[str]:
+        """`docker run` arguments of a git job: a throwaway, hardened container with the
+        workspace volume and network access, running only the job script."""
+        workspace, _ = self.volumes(project_id)
+        args = [
+            "run", "--rm", "-i", "--pull", "never", "--name", name,
+            "--label", f"{LABEL}.gitjob={project_id}",
+            "--user", PROJECT_USER, "--read-only",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g",
+            "--mount", f"type=volume,source={workspace},target=/workspace",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--pids-limit", "256", "--memory", "1g", "--cpus", "1",
+            "--entrypoint", "sh",
+        ]  # fmt: skip
+        if runtime:
+            args += ["--runtime", runtime]
+        if job.pin is not None:
+            args += ["--add-host", f"{job.pin[0]}:{job.pin[1]}"]
+        for key, value in job.env("/workspace", "/tmp/job").items():
+            args += ["--env", f"{key}={value}"]
+        return [*args, self.settings.image, "-c", SCRIPT]
+
+    async def run_git_job(self, project_id: str, job: GitJob) -> tuple[int, str]:
+        """Run a git job in its own container (removed afterwards, also on timeout)."""
+        name = f"{self.container(project_id)}-git-{secrets.token_hex(4)}"
+        args = self.git_job_args(project_id, job, name, await self.runtime())
+        code, output = await run_job([self.binary, *args], None, job.stdin(), job.timeout)
+        if code == -1:
+            await self.docker("rm", "--force", name, timeout=60)
+        return code, output

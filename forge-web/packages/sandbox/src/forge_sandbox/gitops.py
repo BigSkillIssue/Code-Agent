@@ -13,6 +13,7 @@ from forge_sandbox.fsops import Workspace, split_path
 from forge_sandbox.gitinfo import GIT_ENV, SAFE_GIT
 from forge_sandbox.methods import (
     EmptyParams,
+    GitBranchParams,
     GitCommitParams,
     GitLogParams,
     GitPathsParams,
@@ -24,6 +25,7 @@ from forge_sandbox.procs import run_program
 from forge_sandbox.rpc import Handler, RpcError
 
 UI_GIT = [*SAFE_GIT, "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false"]
+TRANSFER = ".git/forge-transfer"  # bundles to and from the git job (which has the network)
 LOG_FORMAT = "%H%x00%an%x00%ae%x00%at%x00%s"
 
 
@@ -52,6 +54,8 @@ class GitOps:
             "git.log": method(GitLogParams, self.log),
             "git.remote": method(EmptyParams, self.remote),
             "git.set_remote": method(GitRemoteParams, self.set_remote),
+            "git.bundle_out": method(GitBranchParams, self.bundle_out),
+            "git.bundle_in": method(GitBranchParams, self.bundle_in),
         }
 
     async def _git(self, *args: str, check: str = "") -> str:
@@ -168,3 +172,47 @@ class GitOps:
         action = "set-url" if exists else "add"
         await self._git("remote", action, "origin", params.url, check="could not set the remote")
         return {"url": params.url}
+
+    async def _branch(self, name: str) -> str:
+        branch = name.strip()
+        await self._git("check-ref-format", "--branch", branch, check="not a valid branch name")
+        return branch
+
+    async def bundle_out(self, params: GitBranchParams) -> dict[str, Any]:
+        """Pack a branch into `.git/forge-transfer/push.bundle` for the git job to push."""
+        branch = await self._branch(params.branch)
+        await asyncio.to_thread(self.workspace.mkdir, TRANSFER)
+        bundle = f"{TRANSFER}/push.bundle"
+        await asyncio.to_thread(self._delete_new, bundle)
+        await self._git("bundle", "create", "-q", bundle, f"refs/heads/{branch}",
+                        check=f"could not pack {branch}")  # fmt: skip
+        head = (await self._git("rev-parse", f"refs/heads/{branch}")).strip()
+        return {"bundle": bundle, "head": head}
+
+    async def bundle_in(self, params: GitBranchParams) -> dict[str, Any]:
+        """Take what the git job fetched (`fetch.bundle`) as `origin/<branch>`, and fast-forward
+        the branch if it is checked out and has nothing of its own."""
+        branch = await self._branch(params.branch)
+        bundle = f"{TRANSFER}/fetch.bundle"
+        try:
+            await self._git("fetch", "-q", "--no-tags", bundle,
+                            f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
+                            check="could not read what was fetched")  # fmt: skip
+        finally:
+            await asyncio.to_thread(self._delete_new, bundle)
+        current = (await self._git("symbolic-ref", "--short", "-q", "HEAD")).strip()
+        if current != branch:
+            return {"merged": False, "reason": f"{branch} is not checked out"}
+        merged = await self._git("merge", "--ff-only", "-q", f"refs/remotes/origin/{branch}")
+        if not merged and not await self._is_ancestor(f"refs/remotes/origin/{branch}", "HEAD"):
+            return {"merged": False, "reason": "the branch and the remote both have new commits"}
+        return {"merged": True, "head": (await self._git("rev-parse", "HEAD")).strip()}
+
+    async def _is_ancestor(self, older: str, newer: str) -> bool:
+        code, _, _ = await run_program(
+            [*UI_GIT, "merge-base", "--is-ancestor", older, newer],
+            self.workspace.root,
+            owner=self.workspace.owner,
+            env=self.env,
+        )
+        return code == 0

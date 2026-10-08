@@ -144,6 +144,12 @@ class GitSwitchParams(Params):
     create: bool = False
 
 
+class GitBranchParams(Params):
+    """git.bundle_out, git.bundle_in: which branch."""
+
+    branch: str = Field(min_length=1, max_length=200)
+
+
 class GitLogParams(Params):
     """git.log: how many commits."""
 

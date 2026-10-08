@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from forge_sandbox.mux import Writer
+from forge_web.containers.gitjob import GitJob
 
 PROJECT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -39,6 +40,10 @@ class ContainerDriver(Protocol):
 
     async def remove(self, project_id: str) -> None:
         """Stop the sandbox and delete everything that belongs to the project."""
+        ...
+
+    async def run_git_job(self, project_id: str, job: GitJob) -> tuple[int, str]:
+        """Run a push or fetch outside the sandbox: exit code and output."""
         ...
 
 

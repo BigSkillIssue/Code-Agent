@@ -63,6 +63,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "CommitIn": {"message": "sneaky commit"},
     "SwitchIn": {"branch": "evil", "create": True},
     "RemoteIn": {"url": "https://example.com/evil.git"},
+    "SyncIn": {"branch": "main"},
 }
 
 

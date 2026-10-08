@@ -81,6 +81,15 @@ class EgressSettings(_Strict):
     allow_private: bool = False  # private and loopback addresses (only for tests)
 
 
+class GitSettings(_Strict):
+    """Pushing and pulling: which hosts git jobs may reach."""
+
+    hosts: list[str] = ["*"]  # git hosts (and their subdomains); "*" = any public host
+    timeout_s: float = Field(default=300, gt=0)
+    # Development and tests only (needs dev mode): file:// remotes and private addresses.
+    allow_local_remotes: bool = False
+
+
 class SmtpSettings(_Strict):
     """Outgoing mail for verification and reset links (optional)."""
 
@@ -141,6 +150,7 @@ class WebSettings(_Strict):
     auth: AuthSettings = AuthSettings()
     gateway: GatewaySettings = GatewaySettings()
     egress: EgressSettings = EgressSettings()
+    git: GitSettings = GitSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

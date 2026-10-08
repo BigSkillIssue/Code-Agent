@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from forge_web.db.models import ProjectMember
-from forge_web.git_api import remote_problem
+from forge_web.gitsync import remote_problem
 from support import LiveServer, dev_settings, person
 
 POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="shell hooks need POSIX")

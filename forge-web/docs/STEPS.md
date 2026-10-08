@@ -78,7 +78,12 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: list, read, save, mkdir, rename, delete; uploads and downloads of any size in parts; status, diff, stage, unstage, discard, commit (as the signed-in user), branches, log, remote (https only, no credentials).
     - Tests: viewers cannot change files or the repository; links are not followed; downloads are attachments; a malicious hook never runs on a commit.
     - Verify: `uv run pytest tests/test_files_api.py tests/test_git_api.py -q`
-- [ ] **W11 — Files and git** (rest: W11b push/pull/clone job, W11c panels)
+- [x] **W11b — Push and pull in a git job**
+    - Files: `forge_web/containers/{gitjob,driver,docker,local}.py`, `forge_web/{gitsync,git_api,settings,services}.py`, `forge_sandbox/{gitops,methods}.py`, `tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py`
+    - Build: bundles in `.git/forge-transfer/` between the project and a git job (throwaway hardened container with the workspace volume; child process in local mode); token on stdin into a credential file in the job's temporary folder; remote https on an allowed host with public addresses, pinned with `--add-host`; push and pull routes; fast-forward only.
+    - Tests: no token in the project after a job; hooks, fsmonitor and credential helpers of the project never run; private, non-https and not-allowed remotes refused; the job container is hardened.
+    - Verify: `uv run pytest tests/test_gitsync.py -q` (+ `-m docker tests/test_docker_driver.py`)
+- [ ] **W11 — Files and git** (rest: W11c panels; cloning a project comes with W12)
     - Files: `forge_web/files_api.py`, `forge_web/git_api.py`, `forge_web/gitjob.py`, `frontend/src/panels/{Files,Changes}.tsx`, `tests/test_files_api.py`, `tests/test_git_api.py`
     - Build: tree, read, write, search, upload, download through the daemon; status, diff, stage, commit, branches; push, pull and clone in a throwaway git container with a credential helper on stdin and hooks disabled; the Files panel (CodeMirror) and the Changes panel.
     - Tests: no token in `.git/config` or in the project container; a malicious hook never runs; viewers cannot write.

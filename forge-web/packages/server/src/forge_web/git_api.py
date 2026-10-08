@@ -1,17 +1,24 @@
 """A project's git repository over HTTP: status, diffs, staging, commits, branches, history and
-the remote. Reading needs the viewer role, changing the editor role. Pushing and pulling (which
-need the network and the user's token) run in a separate git job, never in the project."""
+the remote, push and pull. Reading needs the viewer role, changing the editor role. Pushing and
+pulling (which need the network and the user's token) run in a git job outside the project."""
 
 import re
 from typing import Any
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from forge_web.auth.sessions import CurrentUser
+from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.models import User
 from forge_web.files_api import MAX_PATH, allowed
+from forge_web.gitsync import (
+    check_branch,
+    current_branch,
+    local_remotes,
+    pull,
+    push,
+    remote_problem,
+)
 from forge_web.sandbox_calls import result_dict, sandbox_call
 
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -42,16 +49,11 @@ class RemoteIn(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
 
 
-def remote_problem(url: str) -> str | None:
-    """Why a remote URL is not accepted (https only, no credentials in it), or None."""
-    parts = urlsplit(url.strip())
-    if parts.scheme != "https" or not parts.hostname:
-        return "the remote must be an https:// URL"
-    if parts.username or parts.password:
-        return "the URL must not contain a user name or token; connect the host in your settings"
-    if CONTROL.search(url) or " " in url.strip():
-        return "the URL contains spaces or control characters"
-    return None
+class SyncIn(BaseModel):
+    """Push or pull: the project's branch (default: the checked-out one) and the remote's."""
+
+    branch: str = Field(default="", max_length=200)
+    remote_branch: str = Field(default="", max_length=200)
 
 
 def committer(user: User) -> tuple[str, str]:
@@ -66,6 +68,7 @@ def git_router() -> APIRouter:
     router = APIRouter(prefix="/api/projects/{project_id}/git")
     reading_routes(router)
     changing_routes(router)
+    sync_routes(router)
     return router
 
 
@@ -137,11 +140,34 @@ def changing_routes(router: APIRouter) -> None:
         project_id: str, body: RemoteIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
         services = await allowed(request, user, project_id, "editor")
-        problem = remote_problem(body.url)
+        local = local_remotes(services) and body.url.startswith("file://")
+        problem = None if local else remote_problem(body.url)
         if problem:
             raise HTTPException(422, problem)
         params = {"url": body.url.strip()}
         return result_dict(await sandbox_call(services, project_id, "git.set_remote", params))
+
+
+def sync_routes(router: APIRouter) -> None:
+    """Push to and pull from the remote (through a git job outside the project)."""
+
+    @router.post("/push")
+    async def push_route(
+        project_id: str, body: SyncIn, request: Request, user: CurrentUser
+    ) -> dict[str, Any]:
+        services = await allowed(request, user, project_id, "editor")
+        branch = check_branch(body.branch or await current_branch(services, project_id))
+        remote_branch = check_branch(body.remote_branch or branch)
+        return await push(services, project_id, user, branch, remote_branch, client_ip(request))
+
+    @router.post("/pull")
+    async def pull_route(
+        project_id: str, body: SyncIn, request: Request, user: CurrentUser
+    ) -> dict[str, Any]:
+        services = await allowed(request, user, project_id, "editor")
+        branch = check_branch(body.branch or await current_branch(services, project_id))
+        remote_branch = check_branch(body.remote_branch or branch)
+        return await pull(services, project_id, user, branch, remote_branch, client_ip(request))
 
 
 def add_paths_route(router: APIRouter, action: str) -> None:

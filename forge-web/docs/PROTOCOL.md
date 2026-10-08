@@ -91,6 +91,8 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `git.branches` / `git.switch` | — / `branch`, `create` | `{current, branches}` / `{current}` |
 | `git.log` | `limit` | `{commits: [{commit, author, email, time, subject}]}` |
 | `git.remote` / `git.set_remote` | — / `url` | `{url}` |
+| `git.bundle_out` | `branch` | `{bundle, head}` — packs the branch into `.git/forge-transfer/push.bundle` for a git job |
+| `git.bundle_in` | `branch` | `{merged, head \| reason}` — takes `.git/forge-transfer/fetch.bundle` as `origin/<branch>` and fast-forwards a checked-out branch |
 | `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |
 | `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |
 | `chat.send` | `chat_id`, `text` (a prompt, or a `/command`) | chat info; `busy` while a turn runs |
@@ -138,3 +140,7 @@ Worker ↔ daemon (inside the sandbox) is one JSON object per line on the worker
 `start {options}`, `prompt {text}`, `answer {id, answer}`, `cancel`, `shutdown` in; the items above out.
 
 Git actions from the web UI run with `core.hooksPath=/dev/null`: repository hooks never run for them.
+
+Pushing and pulling never happen in the sandbox: the server runs a git job (a throwaway container, or a
+child process in local mode) that only exchanges bundle files with the project, has the user's token on
+stdin and runs git with no system or global config, no hooks, https only and no redirects.

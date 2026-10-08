@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W11b
+Next step: W11c
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -18,7 +18,8 @@ Next step: W11b
 | W09 | 2026-10-08 | b53ffa9 | forge_web/auth/{oauth,oauth_providers,git_credentials,routes,ratelimit}.py, forge_web/{settings,services,startup,app}.py, forge_web/db/{models.py,migrations/versions/0004_identities.py}, frontend/src/{pages/Auth.tsx,pages/Auth.test.tsx,lib/i18n.ts}, tests/{support,test_oauth,test_access,test_settings}.py, README.md | Google (OIDC), GitHub (OAuth) and any OpenID Connect issuer; state, PKCE (S256) and nonce in a signed HttpOnly flow cookie; accounts link only by verified email (both sides) or on purpose while signed in; GitHub repository grant and personal tokens stored encrypted |
 | W10a | 2026-10-08 | 8eaa9ff | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
 | W10b | 2026-10-08 | e80226d | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
-| W11a | 2026-10-08 | (next) | forge_sandbox/{fsops,gitops,methods,daemon}.py, forge_web/{files_api,git_api,sandbox_calls,settings,app}.py, tests/{test_fsops,test_files_api,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | files (list, read, save, folders, rename, delete, uploads and downloads of any size in parts) and local git actions (status, diff, stage, unstage, discard, commit, branches, log, remote) |
+| W11a | 2026-10-08 | 76e7dc1 | forge_sandbox/{fsops,gitops,methods,daemon}.py, forge_web/{files_api,git_api,sandbox_calls,settings,app}.py, tests/{test_fsops,test_files_api,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | files (list, read, save, folders, rename, delete, uploads and downloads of any size in parts) and local git actions (status, diff, stage, unstage, discard, commit, branches, log, remote) |
+| W11b | 2026-10-08 | (next) | forge_web/containers/{gitjob,driver,docker,local}.py, forge_web/{gitsync,git_api,settings,services}.py, forge_sandbox/{gitops,methods}.py, tests/{test_gitsync,test_docker_driver,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | push and pull through a git job outside the project: bundles in, bundles out, the token only in the job |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -110,6 +111,11 @@ Next step: W11b
 - W11a: git actions from the UI run with `core.hooksPath=/dev/null` (and `--no-verify`), so a cloned repository's hooks never run for them; the agent can still run hooks itself in its sandbox.
 - W11a: commits carry the signed-in user's name and email; remotes must be https URLs without credentials (tokens never go into `.git/config`).
 - W11a: sandbox failures map to HTTP codes in one place (`sandbox_calls.py`): not_found 404, conflict/exists/git_failed 409, too_large 413, path problems 400, an unreachable sandbox 503.
+
+- W11b: the git job never runs git in the project's repository: the project packs `push.bundle` / unpacks `fetch.bundle` itself (no network, hooks off), the job unbundles into a fresh repository in its own temporary folder and pushes or fetches from there. So the project's `.git/config` (insteadOf, credential helpers, fsmonitor) and hooks cannot steer a process that holds the token or the network.
+- W11b: the job runs with `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `protocol.allow=never` (+ https), `http.followRedirects=false`, `core.hooksPath=/dev/null`; the token arrives on stdin and goes into a git-credential-store file in the job's temporary folder (a tmpfs in Docker), never into the environment or arguments.
+- W11b: the remote must be https on a host allowed by `git.hosts` (default any) that resolves to public addresses only; the Docker job pins the host to the checked address (`--add-host`). Pull only fast-forwards; when both sides have new commits, `origin/<branch>` is updated and the UI says so (merging is left to the user or the agent).
+- W11b: the Docker job runs as the workspace owner (1000:1000) with a read-only root, a tmpfs /tmp, no capabilities, no-new-privileges, the workspace volume only (not the home volume) and the default bridge network. `git.allow_local_remotes` (file:// remotes, private addresses) works only in development mode, for tests.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
