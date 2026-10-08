@@ -146,3 +146,45 @@ def test_fifo_is_refused_without_hanging(ws: Workspace) -> None:
 def test_descriptor_walk_is_available_on_posix() -> None:
     # Linux and macOS must take the race-free path, not the Windows fallback.
     assert FD_SAFE
+
+
+def test_reads_continue_from_an_offset(ws: Workspace) -> None:
+    ws.write("data.bin", bytes(range(256)) * 10)
+    first = ws.read("data.bin", limit=1000)
+    rest = ws.read("data.bin", limit=2000, offset=1000)
+    assert first["truncated"] and not rest["truncated"]
+    assert rest["offset"] == 1000 and rest["size"] == 2560
+    import base64
+
+    joined = base64.b64decode(first["base64"]) + base64.b64decode(rest["base64"])
+    assert joined == bytes(range(256)) * 10
+
+
+def test_large_files_are_written_in_parts(ws: Workspace) -> None:
+    upload = "0123456789abcdef"
+    for index in range(3):
+        result = ws.write_part("big/file.bin", upload, b"x" * 500_000, last=False, create_dirs=True)
+        assert result == {"path": "big/file.bin", "received": 500_000 * (index + 1), "done": False}
+        assert not (ws.root / "big" / "file.bin").exists()  # nothing in place until the end
+    done = ws.write_part("big/file.bin", upload, b"end", last=True)
+    assert done["done"] and done["size"] == 1_500_003
+    assert (ws.root / "big" / "file.bin").read_bytes().endswith(b"xend")
+    assert [p.name for p in (ws.root / "big").iterdir()] == ["file.bin"]
+
+
+def test_an_upload_can_be_abandoned(ws: Workspace) -> None:
+    ws.write("keep.txt", b"old")
+    ws.write_part("keep.txt", "aaaaaaaaaaaaaaaa", b"new", last=False)
+    assert ws.write_part("keep.txt", "aaaaaaaaaaaaaaaa", b"", last=False, abort=True)["aborted"]
+    assert sorted(p.name for p in ws.root.iterdir()) == ["keep.txt"]
+    assert (ws.root / "keep.txt").read_bytes() == b"old"
+
+
+@POSIX_ONLY
+def test_an_upload_part_never_follows_a_link(ws: Workspace, outside: Path) -> None:
+    upload = "bbbbbbbbbbbbbbbb"
+    (ws.root / f".notes.txt.upload-{upload}").symlink_to(outside / "secret.txt")
+    with pytest.raises(RpcError) as err:
+        ws.write_part("notes.txt", upload, b"appended", last=False)
+    assert code_of(err) == "is_symlink"
+    assert (outside / "secret.txt").read_text() == "top secret"

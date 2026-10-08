@@ -73,7 +73,12 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: sidebar (projects → chats, search, status), transcript with streaming Markdown (no raw HTML), tool cards (diffs for edits, live shell output, sub-agents, todos), plan card, approval and question cards, report card with cost, composer with slash and @file completion, model and mode pickers, German and English, light and dark, mobile layout.
     - Tests (Vitest): recorded event fixtures render the expected cards; an XSS fixture renders inert; approval buttons send the right answer.
     - Verify: `cd frontend && npm run typecheck && npm test && npm run build`
-- [ ] **W11 — Files and git**
+- [x] **W11a — Files and local git actions**
+    - Files: `forge_sandbox/{fsops,gitops,methods,daemon}.py`, `forge_web/{files_api,git_api,sandbox_calls,settings,app}.py`, `tests/{test_fsops,test_files_api,test_git_api,test_access}.py`
+    - Build: list, read, save, mkdir, rename, delete; uploads and downloads of any size in parts; status, diff, stage, unstage, discard, commit (as the signed-in user), branches, log, remote (https only, no credentials).
+    - Tests: viewers cannot change files or the repository; links are not followed; downloads are attachments; a malicious hook never runs on a commit.
+    - Verify: `uv run pytest tests/test_files_api.py tests/test_git_api.py -q`
+- [ ] **W11 — Files and git** (rest: W11b push/pull/clone job, W11c panels)
     - Files: `forge_web/files_api.py`, `forge_web/git_api.py`, `forge_web/gitjob.py`, `frontend/src/panels/{Files,Changes}.tsx`, `tests/test_files_api.py`, `tests/test_git_api.py`
     - Build: tree, read, write, search, upload, download through the daemon; status, diff, stage, commit, branches; push, pull and clone in a throwaway git container with a credential helper on stdin and hooks disabled; the Files panel (CodeMirror) and the Changes panel.
     - Tests: no token in `.git/config` or in the project container; a malicious hook never runs; viewers cannot write.

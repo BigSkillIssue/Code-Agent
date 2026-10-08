@@ -23,6 +23,7 @@ from forge_sandbox.rpc import RpcError
 
 READ_LIMIT = 900_000  # bytes of content per read (a message carries at most 1 MiB)
 WRITE_LIMIT = 900_000
+UPLOAD_LIMIT = 2 * 1024**3  # bytes of one file written in parts
 SNIFF = 8192
 FD_SAFE = (
     all(
@@ -181,11 +182,11 @@ class Workspace:
             raise fs_error("not_found", f"{rel} does not exist")
         return stat_info(name, st)
 
-    def read(self, rel: str, limit: int = READ_LIMIT) -> dict[str, Any]:
-        """A regular file's content (text or base64), at most `limit` bytes."""
+    def read(self, rel: str, limit: int = READ_LIMIT, offset: int = 0) -> dict[str, Any]:
+        """A regular file's content (text or base64): at most `limit` bytes from `offset`."""
         limit = max(0, min(limit, READ_LIMIT))
         if not FD_SAFE:
-            return self._fallback_read(rel, limit)
+            return self._fallback_read(rel, limit, offset)
         dir_fd, name, _ = self._parent(rel)
         try:
             fd = self._open_file(name, dir_fd, os.O_RDONLY)
@@ -193,8 +194,9 @@ class Workspace:
             os.close(dir_fd)
         with os.fdopen(fd, "rb") as handle:
             st = os.fstat(handle.fileno())
+            handle.seek(offset)
             data = handle.read(limit + 1)
-        return self._content(rel, st, data, limit)
+        return self._content(rel, st, data, limit, offset)
 
     def _open_file(self, name: str, dir_fd: int, flags: int) -> int:
         try:
@@ -214,14 +216,20 @@ class Workspace:
         os.set_blocking(fd, True)
         return fd
 
-    def _content(self, rel: str, st: os.stat_result, data: bytes, limit: int) -> dict[str, Any]:
+    def _content(
+        self, rel: str, st: os.stat_result, data: bytes, limit: int, offset: int = 0
+    ) -> dict[str, Any]:
         truncated = len(data) > limit
-        body = decode_content(data[:limit])
+        # A later part may start inside a UTF-8 character: those always travel as base64.
+        body = decode_content(data[:limit]) if offset == 0 else {
+            "binary": True, "text": None, "base64": base64.b64encode(data[:limit]).decode(),
+        }  # fmt: skip
         path = "/".join(split_path(rel))
         return {
             "path": path,
             "size": st.st_size,
             "mtime": st.st_mtime,
+            "offset": offset,
             "truncated": truncated,
             **body,
         }
@@ -260,6 +268,61 @@ class Workspace:
         finally:
             os.close(dir_fd)
         return {"path": "/".join(parts), "size": st.st_size, "mtime": st.st_mtime}
+
+    def write_part(
+        self,
+        rel: str,
+        upload: str,
+        data: bytes,
+        *,
+        last: bool,
+        create_dirs: bool = False,
+        abort: bool = False,
+    ) -> dict[str, Any]:
+        """Write a large file in parts: each part is appended to a hidden file next to it, the
+        last one puts that file in place at once; `abort` throws the parts away."""
+        if len(data) > WRITE_LIMIT:
+            raise fs_error("too_large", f"at most {WRITE_LIMIT} bytes per part")
+        if not FD_SAFE:
+            return self._fallback_write_part(rel, upload, data, last, create_dirs, abort)
+        dir_fd, name, parts = self._parent(rel, create=create_dirs)
+        temp, path = f".{name}.upload-{upload}", "/".join(parts)
+        try:
+            if abort:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(temp, dir_fd=dir_fd)
+                return {"path": path, "aborted": True}
+            size = self._append(temp, name, dir_fd, data)
+            if not last:
+                return {"path": path, "received": size, "done": False}
+            self._check_replaceable(rel, self._lstat(name, dir_fd), None)
+            os.rename(temp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+            st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        finally:
+            os.close(dir_fd)
+        return {"path": path, "size": st.st_size, "mtime": st.st_mtime, "done": True}
+
+    def _append(self, temp: str, name: str, dir_fd: int, data: bytes) -> int:
+        """Add `data` to the upload's hidden file (created by the first part); its new size."""
+        try:
+            fd = self._open_file(temp, dir_fd, os.O_WRONLY | os.O_APPEND)
+            new = False
+        except RpcError as err:
+            if err.code != "not_found":
+                raise
+            fd = os.open(
+                temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW, 0o644, dir_fd=dir_fd
+            )
+            new = True
+        with os.fdopen(fd, "ab") as handle:
+            if new:
+                self._claim(handle.fileno(), self._lstat(name, dir_fd))
+            handle.write(data)
+            size = handle.tell()
+        if size > UPLOAD_LIMIT:
+            os.unlink(temp, dir_fd=dir_fd)
+            raise fs_error("too_large", f"a file may have at most {UPLOAD_LIMIT} bytes")
+        return size
 
     def _check_replaceable(
         self, rel: str, current: os.stat_result | None, expected_mtime: float | None
@@ -344,13 +407,34 @@ class Workspace:
         entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
         return {"path": "/".join(split_path(rel)), "entries": entries}
 
-    def _fallback_read(self, rel: str, limit: int) -> dict[str, Any]:
+    def _fallback_read(self, rel: str, limit: int, offset: int) -> dict[str, Any]:
         path = self._fallback_path(rel)
         if not path.is_file() or path.is_symlink():
             raise fs_error("not_found", f"{rel} is not a file")
         with path.open("rb") as handle:
+            handle.seek(offset)
             data = handle.read(limit + 1)
-        return self._content(rel, path.stat(), data, limit)
+        return self._content(rel, path.stat(), data, limit, offset)
+
+    def _fallback_write_part(
+        self, rel: str, upload: str, data: bytes, last: bool, create_dirs: bool, abort: bool
+    ) -> dict[str, Any]:
+        path = self._fallback_path(rel)
+        temp = path.with_name(f".{path.name}.upload-{upload}")
+        rel_path = "/".join(split_path(rel))
+        if abort:
+            temp.unlink(missing_ok=True)
+            return {"path": rel_path, "aborted": True}
+        if create_dirs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        with temp.open("ab") as handle:
+            handle.write(data)
+            size = handle.tell()
+        if not last:
+            return {"path": rel_path, "received": size, "done": False}
+        os.replace(temp, path)
+        st = path.stat()
+        return {"path": rel_path, "size": st.st_size, "mtime": st.st_mtime, "done": True}
 
     def _fallback_write(
         self, rel: str, data: bytes, create_dirs: bool, expected_mtime: float | None

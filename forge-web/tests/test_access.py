@@ -38,9 +38,9 @@ OWN = {
     "GET /api/git/credentials", "POST /api/git/credentials",
     "DELETE /api/git/credentials/{credential_id}", "GET /api/models",
 }  # fmt: skip
-# These reach into the project's sandbox, which the access tests do not start: once access is
-# granted they answer 503 here.
-NEEDS_SANDBOX = {"GET /api/projects/{project_id}/files/search"}
+# Project files and git live in the project's sandbox, which the access tests do not start:
+# once access is granted, these routes answer 503 here.
+SANDBOX_PATHS = ("/api/projects/{project_id}/files", "/api/projects/{project_id}/git/")
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -56,6 +56,13 @@ BODIES: dict[str, dict[str, Any]] = {
     "KeyIn": {"provider": "anthropic", "key": "sk-ant-not-a-real-key"},
     "GrantIn": {"allowed": True, "monthly_limit_usd": 1000},
     "CredentialIn": {"host": "github.com", "token": "ghp_not_a_real_token"},
+    "TextFileIn": {"path": "src/app.py", "text": "print('owned')\n"},
+    "PathIn": {"path": "new-folder"},
+    "RenameIn": {"src": "README.md", "dst": "GONE.md"},
+    "PathsIn": {"paths": ["."]},
+    "CommitIn": {"message": "sneaky commit"},
+    "SwitchIn": {"branch": "evil", "create": True},
+    "RemoteIn": {"url": "https://example.com/evil.git"},
 }
 
 
@@ -160,12 +167,15 @@ def filled(path: str, world: World) -> str:
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
 
+# Query parameters some routes need; routes without them ignore them.
+QUERY = {"path": "README.md"}
+
+
 async def call(who: Person | WebClient, method: str, path: str, model: str | None) -> int:
     web = who.web if isinstance(who, Person) else who
     body = BODIES[model] if model is not None else ({} if method in UNSAFE else None)
-    response = await web.request(method, path, json=body) if body is not None else (
-        await web.request(method, path)
-    )  # fmt: skip
+    extra: dict[str, Any] = {"json": body} if body is not None else {}
+    response = await web.request(method, path, params=QUERY, **extra)
     return int(response.status_code)
 
 
@@ -229,7 +239,7 @@ async def test_the_owner_reads_every_project_route(shared: World) -> None:
 
 def granted(method: str, path: str) -> int:
     """What a permitted read answers in these tests."""
-    return 503 if f"{method} {path}" in NEEDS_SANDBOX else 200
+    return 503 if path.startswith(SANDBOX_PATHS) else 200
 
 
 @on_shared_loop

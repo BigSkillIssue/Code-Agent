@@ -23,9 +23,20 @@ class PathParams(Params):
 
 
 class ReadParams(PathParams):
-    """fs.read: how much to read."""
+    """fs.read: how much to read, from where."""
 
     limit: int = Field(default=READ_LIMIT, ge=0, le=READ_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class WritePartParams(PathParams):
+    """fs.write_part: one part of a large file (base64); `last` puts the file in place."""
+
+    upload: str = Field(pattern=r"^[0-9a-f]{16}$")
+    base64: str = ""
+    last: bool = False
+    create_dirs: bool = False
+    abort: bool = False
 
 
 class WriteParams(PathParams):
@@ -110,6 +121,39 @@ class GitFilesParams(Params):
 
     query: str = Field(default="", max_length=200)
     limit: int = Field(default=50, ge=1, le=1000)
+
+
+class GitPathsParams(Params):
+    """git.stage, git.unstage, git.discard: which paths."""
+
+    paths: list[str] = Field(min_length=1, max_length=1000)
+
+
+class GitCommitParams(Params):
+    """git.commit: the message and who commits."""
+
+    message: str = Field(min_length=1, max_length=10_000)
+    name: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=3, max_length=320)
+
+
+class GitSwitchParams(Params):
+    """git.switch: to which branch; `create` makes it from the current one."""
+
+    branch: str = Field(min_length=1, max_length=200)
+    create: bool = False
+
+
+class GitLogParams(Params):
+    """git.log: how many commits."""
+
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class GitRemoteParams(Params):
+    """git.set_remote: the URL of `origin`."""
+
+    url: str = Field(min_length=1, max_length=2000)
 
 
 class EmptyParams(Params):

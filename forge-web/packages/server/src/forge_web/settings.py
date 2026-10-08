@@ -32,6 +32,7 @@ class ServerSettings(_Strict):
     host: str = "127.0.0.1"
     port: int = 8420
     public_url: str = ""  # e.g. https://forge.example.com; empty = http://host:port
+    max_upload_mb: int = Field(default=200, ge=1)  # largest file one upload may bring
 
 
 class DatabaseSettings(_Strict):

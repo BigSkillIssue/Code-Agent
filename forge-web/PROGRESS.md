@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W11
+Next step: W11b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -17,7 +17,8 @@ Next step: W11
 | W08b | 2026-10-08 | 97d1229 | forge_web/{members,app}.py, forge_web/auth/admin.py, forge_web/gateway/api.py, tests/{support,test_auth,test_access}.py, AGENTS.md | project members (owner / editor / viewer; a project keeps one owner; removed or demoted members' running turns stop); admin API for accounts, invites, reset links and the audit log; a user's own sessions; the access test walks every API route as stranger, outsider, viewer and owner |
 | W09 | 2026-10-08 | b53ffa9 | forge_web/auth/{oauth,oauth_providers,git_credentials,routes,ratelimit}.py, forge_web/{settings,services,startup,app}.py, forge_web/db/{models.py,migrations/versions/0004_identities.py}, frontend/src/{pages/Auth.tsx,pages/Auth.test.tsx,lib/i18n.ts}, tests/{support,test_oauth,test_access,test_settings}.py, README.md | Google (OIDC), GitHub (OAuth) and any OpenID Connect issuer; state, PKCE (S256) and nonce in a signed HttpOnly flow cookie; accounts link only by verified email (both sides) or on purpose while signed in; GitHub repository grant and personal tokens stored encrypted |
 | W10a | 2026-10-08 | 8eaa9ff | forge_sandbox/{gitinfo,methods,worker}.py, forge_web/{files_api,app}.py, forge_web/gateway/api.py, forge_web/chats/items.py, forge_web/containers/docker.py, tests/{test_daemon,test_worker,test_items,test_models,test_access,test_docker_driver}.py, docs/{PROTOCOL,STEPS}.md, frontend/.gitignore | file search for @-mentions (`git.files`, `/files/search`), slash commands in `ready`, `/api/models`; containers never pull images |
-| W10b | 2026-10-08 | (next) | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
+| W10b | 2026-10-08 | e80226d | frontend/src/{App.tsx,api/types.ts,state/{store,transcript}.ts,lib/{completion,i18n,tools}.ts,components/{ChatView,Composer,Sidebar,TodoPanel,Transcript}.tsx,components/cards/{AgentCard,ApprovalCard,Cards,DiffView,ToolCard}.tsx,fixtures/{chat-tools,chat-plan,xss}.json, *.test.ts(x)}, frontend/tsconfig.json, forge_sandbox/worker.py, tests/{record_ui_fixtures,test_worker}.py | sub-agents folded into their card, todo list above the composer, plan approval with its steps, report with manual checks, /command and @file completion, model picker, sidebar search, mobile drawer; UI tests on chats recorded from a real server; requests no longer overtake the events before them |
+| W11a | 2026-10-08 | (next) | forge_sandbox/{fsops,gitops,methods,daemon}.py, forge_web/{files_api,git_api,sandbox_calls,settings,app}.py, tests/{test_fsops,test_files_api,test_git_api,test_access}.py, docs/{PROTOCOL,STEPS}.md | files (list, read, save, folders, rename, delete, uploads and downloads of any size in parts) and local git actions (status, diff, stage, unstage, discard, commit, branches, log, remote) |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -102,6 +103,13 @@ Next step: W11
 - W10b: todo_write, submit_plan, update_plan and ask_user get no tool card (the todo list, the plan card and the question card show them); a failed call still shows as an error. The final reviewer's JSON verdict is shown only in the report card.
 - W10b: Forge sends the plan for approval as a checklist in the request's reason (`[ ] s1 Title`); the approval card shows those lines as the steps.
 - W10b: a sub-agent's events are put into the card of the `spawn_agent` call that started it (the oldest card still waiting, or the id in the call's result).
+
+- W11: W11 split into W11a (files, local git actions), W11b (push, pull and clone in a throwaway git job) and W11c (the panels).
+- W11a: files larger than one message move in parts: downloads read from an offset, uploads append to a hidden `.<name>.upload-<id>` file that the last part renames into place (or `abort` removes); `server.max_upload_mb` (default 200) limits one upload.
+- W11a: downloads are always attachments (`application/octet-stream`, `nosniff`, `Content-Security-Policy: sandbox`), so a project's HTML never runs on Forge Web's origin.
+- W11a: git actions from the UI run with `core.hooksPath=/dev/null` (and `--no-verify`), so a cloned repository's hooks never run for them; the agent can still run hooks itself in its sandbox.
+- W11a: commits carry the signed-in user's name and email; remotes must be https URLs without credentials (tokens never go into `.git/config`).
+- W11a: sandbox failures map to HTTP codes in one place (`sandbox_calls.py`): not_found 404, conflict/exists/git_failed 409, too_large 413, path problems 400, an unreachable sandbox 503.
 
 ## Open issues
 - W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).

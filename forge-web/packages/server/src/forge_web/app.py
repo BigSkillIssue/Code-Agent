@@ -16,6 +16,7 @@ from forge_web.chats.api import chats_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.files_api import files_router
 from forge_web.gateway.api import keys_router
+from forge_web.git_api import git_router
 from forge_web.members import members_router
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
@@ -42,8 +43,8 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     )  # fmt: skip
     routers = (
         health_router(), auth_router(), oauth_router(), admin_router(), dev_router(),
-        projects_router(), members_router(), chats_router(), files_router(), keys_router(),
-        git_credentials_router(),
+        projects_router(), members_router(), chats_router(), files_router(), git_router(),
+        keys_router(), git_credentials_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

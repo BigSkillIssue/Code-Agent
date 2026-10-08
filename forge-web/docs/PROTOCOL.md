@@ -76,8 +76,9 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | Method | Parameters | Result |
 | --- | --- | --- |
 | `fs.list` / `fs.stat` | `path` | entries `{name, type, size, mtime}` / one entry |
-| `fs.read` | `path`, `limit` (≤ 900 000) | `{path, size, mtime, truncated, binary, text \| base64}` |
+| `fs.read` | `path`, `limit` (≤ 900 000), `offset` | `{path, size, mtime, offset, truncated, binary, text \| base64}` (parts after the first are always base64) |
 | `fs.write` | `path`, `text` or `base64`, `create_dirs`, `expected_mtime` | `{path, size, mtime}`; `conflict` if changed |
+| `fs.write_part` | `path`, `upload` (16 hex), `base64`, `last`, `create_dirs`, `abort` | `{path, received, done: false}`, then `{path, size, mtime, done: true}`; parts go to a hidden file that the last part moves into place |
 | `fs.mkdir` / `fs.rename` / `fs.delete` | `path` / `src`, `dst` / `path`, `recursive` | `{path}` |
 | `procs.start` | `argv` or `command`, `cwd`, `env`, `name` | program info (`id`, `pid`, `running`, …) |
 | `procs.list` / `procs.output` / `procs.stop` | — / `id`, `since`, `limit` / `id` | info / `{lines, from, next, …}` / info |
@@ -85,6 +86,11 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `forward.listen` | `target`, `port` (0 = any) | `{target, port}` on 127.0.0.1 inside the sandbox |
 | `ports.list` | — | listening ports `{port, address}` (without the daemon's own) |
 | `git.status` / `git.diff` | — / `path`, `staged`, `limit` | `{repo, branch, upstream, ahead, behind, files}` / `{diff, truncated}` |
+| `git.stage` / `git.unstage` / `git.discard` | `paths` | `{ok}` — discard resets tracked files to HEAD and deletes new ones |
+| `git.commit` | `message`, `name`, `email` | `{commit}`; `nothing_staged` |
+| `git.branches` / `git.switch` | — / `branch`, `create` | `{current, branches}` / `{current}` |
+| `git.log` | `limit` | `{commits: [{commit, author, email, time, subject}]}` |
+| `git.remote` / `git.set_remote` | — / `url` | `{url}` |
 | `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |
 | `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |
 | `chat.send` | `chat_id`, `text` (a prompt, or a `/command`) | chat info; `busy` while a turn runs |
@@ -130,3 +136,5 @@ fit counts as "no" (approvals) or "dismissed" (questions).
 
 Worker ↔ daemon (inside the sandbox) is one JSON object per line on the worker's stdin/stdout:
 `start {options}`, `prompt {text}`, `answer {id, answer}`, `cancel`, `shutdown` in; the items above out.
+
+Git actions from the web UI run with `core.hooksPath=/dev/null`: repository hooks never run for them.

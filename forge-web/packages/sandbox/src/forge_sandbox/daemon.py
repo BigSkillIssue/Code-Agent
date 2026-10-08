@@ -28,6 +28,7 @@ from forge_sandbox.chats import Chats
 from forge_sandbox.forward import Forwards
 from forge_sandbox.fsops import Owner, Workspace
 from forge_sandbox.gitinfo import GitInfo
+from forge_sandbox.gitops import GitOps
 from forge_sandbox.methods import (
     DeleteParams,
     EmptyParams,
@@ -35,6 +36,7 @@ from forge_sandbox.methods import (
     ReadParams,
     RenameParams,
     WriteParams,
+    WritePartParams,
     method,
 )
 from forge_sandbox.mux import Channel, ChannelClosed, Mux, OpenRefused, Writer
@@ -67,6 +69,7 @@ class Daemon:
         self.procs = Procs(self.workspace, self.env, self.notify)
         self.ptys = Ptys(self.workspace, self.env)
         self.git = GitInfo(self.workspace, self.env)
+        self.gitops = GitOps(self.workspace, self.env)
         self.forwards = Forwards(self.open_to_server)
         self.chats = Chats(self.workspace, self.env)
         self.connection: Connection | None = None
@@ -88,6 +91,7 @@ class Daemon:
             **self.procs.handlers(),
             **self.ptys.handlers(),
             **self.git.handlers(),
+            **self.gitops.handlers(),
             **self.forwards.handlers(),
             **self.chats.handlers(),
             "ports.list": method(EmptyParams, self.ports),
@@ -105,7 +109,14 @@ class Daemon:
             return await asyncio.to_thread(ws.stat, p.path)
 
         async def fs_read(p: ReadParams) -> Any:
-            return await asyncio.to_thread(ws.read, p.path, p.limit)
+            return await asyncio.to_thread(ws.read, p.path, p.limit, p.offset)
+
+        async def fs_write_part(p: WritePartParams) -> Any:
+            data = decode_base64(p.base64)
+            return await asyncio.to_thread(
+                lambda: ws.write_part(p.path, p.upload, data, last=p.last,
+                                      create_dirs=p.create_dirs, abort=p.abort)
+            )  # fmt: skip
 
         async def fs_write(p: WriteParams) -> Any:
             data = decode_write(p)
@@ -129,6 +140,7 @@ class Daemon:
             "fs.stat": method(PathParams, fs_stat),
             "fs.read": method(ReadParams, fs_read),
             "fs.write": method(WriteParams, fs_write),
+            "fs.write_part": method(WritePartParams, fs_write_part),
             "fs.mkdir": method(PathParams, fs_mkdir),
             "fs.rename": method(RenameParams, fs_rename),
             "fs.delete": method(DeleteParams, fs_delete),
@@ -203,8 +215,13 @@ def decode_write(params: WriteParams) -> bytes:
         raise RpcError("bad_params", "give either text or base64")
     if params.text is not None:
         return params.text.encode("utf-8")
+    return decode_base64(params.base64 or "")
+
+
+def decode_base64(text: str) -> bytes:
+    """Bytes from base64; a bad_params error if it is not valid."""
     try:
-        return base64.b64decode(params.base64 or "", validate=True)
+        return base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError):
         raise RpcError("bad_params", "base64 is not valid") from None
 
