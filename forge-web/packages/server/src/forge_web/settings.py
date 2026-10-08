@@ -46,6 +46,14 @@ class SandboxSettings(_Strict):
     isolation: Literal["docker", "local"] = "docker"
 
 
+class DevSettings(_Strict):
+    """Development mode: one local user, a login link in the log, optionally the fake model."""
+
+    enabled: bool = False
+    fake: bool = False  # every chat uses Forge's fake model (no API keys needed)
+    fake_script: str = ""  # a FakeProvider script file instead of the built-in greeting
+
+
 class WebSettings(_Strict):
     """Every setting of one Forge Web server."""
 
@@ -53,6 +61,7 @@ class WebSettings(_Strict):
     server: ServerSettings = ServerSettings()
     database: DatabaseSettings = DatabaseSettings()
     sandbox: SandboxSettings = SandboxSettings()
+    dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:
         """The URL users open, without a trailing slash."""

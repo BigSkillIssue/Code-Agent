@@ -20,6 +20,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve = commands.add_parser("serve", help="run the web server")
     serve.add_argument("--host", help="address to listen on (default from settings)")
     serve.add_argument("--port", type=int, help="port to listen on (default from settings)")
+    serve.add_argument(
+        "--dev", action="store_true", help="development mode: local sandboxes, a login link"
+    )
+    serve.add_argument(
+        "--fake", nargs="?", const="", metavar="SCRIPT", help="every chat uses the fake model"
+    )
     from forge_web.dev_chat import add_arguments
 
     add_arguments(commands.add_parser("dev-chat", help="chat with Forge in the terminal (local)"))
@@ -55,6 +61,12 @@ def settings_from(args: argparse.Namespace) -> WebSettings:
     for key in ("host", "port"):
         if getattr(args, key, None) is not None:
             overrides[f"server.{key}"] = getattr(args, key)
+    if getattr(args, "dev", False):
+        overrides["dev.enabled"] = True
+        overrides["sandbox.isolation"] = "local"
+    if getattr(args, "fake", None) is not None:
+        overrides["dev.fake"] = True
+        overrides["dev.fake_script"] = args.fake
     return load_settings(args.config, overrides=overrides)
 
 
@@ -64,6 +76,10 @@ def serve(settings: WebSettings) -> int:
 
     from forge_web.app import create_app
 
+    if not settings.dev.enabled:
+        print("error: accounts are not built yet; start with --dev for now", file=sys.stderr)
+        return 1
+
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     config = uvicorn.Config(
         create_app(settings),
@@ -71,6 +87,7 @@ def serve(settings: WebSettings) -> int:
         port=settings.server.port,
         proxy_headers=True,
         log_level="info",
+        ws="websockets-sansio",
     )
     # asyncio.run keeps the default loop (Proactor on Windows), which subprocesses need.
     asyncio.run(uvicorn.Server(config).serve())

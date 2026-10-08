@@ -16,6 +16,7 @@ import binascii
 import contextlib
 import logging
 import os
+import secrets
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -62,6 +63,7 @@ class Daemon:
     ) -> None:
         self.workspace = Workspace(root, owner)
         self.env = dict(os.environ if env is None else env)
+        self.boot = secrets.token_hex(8)  # changes with every daemon start: chat numbers restart
         self.procs = Procs(self.workspace, self.env, self.notify)
         self.ptys = Ptys(self.workspace, self.env)
         self.git = GitInfo(self.workspace, self.env)
@@ -76,6 +78,7 @@ class Daemon:
             "platform": sys.platform,
             "pid": os.getpid(),
             "version": __version__,
+            "boot": self.boot,
         }
 
     def handlers(self) -> dict[str, Handler]:

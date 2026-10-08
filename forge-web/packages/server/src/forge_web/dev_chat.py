@@ -15,18 +15,9 @@ from typing import Any
 
 from forge_sandbox.mux import Channel, ChannelClosed
 from forge_web.containers.local import LocalDriver
+from forge_web.fake import fake_script
 from forge_web.sandbox_client import SandboxClient
 from forge_web.settings import WebSettings
-
-HELLO_SPEC = {
-    "goal": "greet the user", "context": "", "requirements": [], "constraints": [],
-    "acceptance_criteria": ["the user is greeted"], "assumptions": [], "open_questions": [],
-    "size": "trivial",
-}  # fmt: skip
-BUILTIN_FAKE: dict[str, Any] = {
-    "roles": {"refiner": [{"text": json.dumps(HELLO_SPEC)}] * 50},
-    "turns": [{"text": "Hello from Forge Web's fake model. Nothing to do."}] * 50,
-}
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -50,9 +41,7 @@ def chat_options(args: argparse.Namespace) -> dict[str, Any]:
     if args.model:
         options["model"] = args.model
     if args.fake is not None:
-        options["fake_script"] = (
-            json.loads(Path(args.fake).read_text(encoding="utf-8")) if args.fake else BUILTIN_FAKE
-        )
+        options["fake_script"] = fake_script(args.fake)
     return options
 
 

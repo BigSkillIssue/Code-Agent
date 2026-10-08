@@ -69,6 +69,7 @@ class GitInfo:
         return {
             "git.status": method(EmptyParams, self.status),
             "git.diff": method(GitDiffParams, self.diff),
+            "git.init": method(EmptyParams, self.init),
         }
 
     async def _git(self, *args: str, timeout: float = 30) -> tuple[int, str, str]:
@@ -92,6 +93,16 @@ class GitInfo:
         if code != 0:
             raise RpcError("git_failed", err.strip()[:500] or "git status failed")
         return {"repo": True, **parse_status(out)}
+
+    async def init(self, _params: EmptyParams) -> dict[str, Any]:
+        """Make the workspace a git repository on branch main (nothing happens if it is one)."""
+        code, out, _ = await self._git("rev-parse", "--is-inside-work-tree")
+        if code == 0 and out.strip() == "true":
+            return {"created": False}
+        code, _, err = await self._git("init", "-q", "-b", "main")
+        if code != 0:
+            raise RpcError("git_failed", err.strip()[:500] or "git init failed")
+        return {"created": True}
 
     async def diff(self, params: GitDiffParams) -> dict[str, Any]:
         """A unified diff of the working tree (or the index with `staged`)."""

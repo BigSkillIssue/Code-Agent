@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W05
+Next step: W05b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -8,7 +8,8 @@ Next step: W05
 | W01 | 2026-10-07 | 1d73b6f | pyproject.toml, packages/sandbox/pyproject.toml, packages/server/pyproject.toml, forge_sandbox/{__init__,__main__,cli}.py, forge_web/{__init__,__main__,cli,app,settings}.py, tests/conftest.py, tests/test_smoke.py, tests/test_settings.py, ../.github/workflows/forge-web.yml, AGENTS.md, PROGRESS.md, README.md, docs/STEPS.md | workspace with Forge as editable path dependency; settings defaults → file → env; `/api/health` |
 | W02 | 2026-10-07 | 95b2709 | forge_sandbox/{frames,protocol,mux,rpc}.py, docs/PROTOCOL.md, tests/support.py, tests/test_frames.py, tests/test_mux.py | 9-byte header frames, 1 MiB credit window per channel, management + control frames first, CLOSE stays behind data; RPC with generic `internal` errors |
 | W03 | 2026-10-08 | d20353b | forge_sandbox/{daemon,attach,fsops,methods,procs,pty,netinfo,gitinfo,forward,streams,cli}.py, forge_web/containers/{__init__,driver,local}.py, forge_web/sandbox_client.py, tests/test_fsops.py, tests/test_daemon.py, AGENTS.md | daemon state outlives connections (newest connection wins); fs ops walk with O_NOFOLLOW per component; programs, terminals and git run as the workspace owner; forward out (listen → `forward` channel) and in (`connect` channel); LocalDriver spawns `--stdio` daemons with a clean environment |
-| W04 | 2026-10-08 | (next) | forge_sandbox/{worker,pipe_renderer,chats,history,prompts,methods,daemon,cli,streams}.py, forge_web/{dev_chat,cli}.py, forge_web/containers/local.py, tests/{support,test_worker,test_chats,test_dev_chat,test_daemon}.py, docs/PROTOCOL.md | one worker process per chat (python -I, protocol on private fds, non-dumpable); numbered chat buffer with replay after `seq`; first answer wins; a crashed worker is replaced on the next message and reopens the same Forge session; follow-ups carry the last 10 turns; `forge-web dev-chat --fake` |
+| W04 | 2026-10-08 | aa2e751 | forge_sandbox/{worker,pipe_renderer,chats,history,prompts,methods,daemon,cli,streams}.py, forge_web/{dev_chat,cli}.py, forge_web/containers/local.py, tests/{support,test_worker,test_chats,test_dev_chat,test_daemon}.py, docs/PROTOCOL.md | one worker process per chat (python -I, protocol on private fds, non-dumpable); numbered chat buffer with replay after `seq`; first answer wins; a crashed worker is replaced on the next message and reopens the same Forge session; follow-ups carry the last 10 turns; `forge-web dev-chat --fake` |
+| W05a | 2026-10-08 | (next) | forge_web/db/{__init__,engine,models,writer}.py, forge_web/db/migrations/{env.py,script.py.mako,versions/0001_initial.py}, forge_web/chats/{api,runs,items}.py, forge_web/{hub,ws,projects,access,services,fake,app,cli,settings,dev_chat}.py, forge_web/auth/{__init__,dev}.py, forge_sandbox/{daemon,gitinfo}.py, tests/{support,test_server}.py, docs/STEPS.md | single-user server: projects, chats, event log with gapless numbers, WebSocket replay without gaps or repeats, first answer wins across tabs; `serve --dev [--fake]` |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -33,6 +34,14 @@ Next step: W05
 - W04: Forge publishes no role with its events, so the refiner's JSON spec streams as model text (Forge's CLI shows it too); the web UI shows such structured replies as a folded card (W10).
 - W04: chat channel messages are tagged (`hello`, `gap`, `item`); items are cut to fit one message (long strings like screenshots are replaced by a note).
 - W04: Forge's import takes 2-3 s, so most worker tests run the worker in the test process; test_chats.py runs real worker processes.
+
+- W05: W05 split into W05a (server) and W05b (web UI scaffold).
+- W05a: model text (`model_delta`) and live command output (`tool_output`) are streamed but not stored: `model_done` and `tool_finished` carry the same content and are. A subscribe gets the partial text and output of a running turn in its `subscribed` message.
+- W05a: stored items get the server's own gapless numbers; the daemon's numbers (`dseq`) are stored with them, plus the daemon's boot id per chat, so after a reconnect the relay asks for everything after the last stored daemon number, and after a daemon restart from 1.
+- W05a: until accounts exist (W08), `forge-web serve` only runs with `--dev` (local isolation, one admin, a login link on stderr).
+- W05a: a WebSocket without a valid session is refused during the handshake (HTTP 403).
+- W05a: projects use 16-hex ids, chats 32-hex ids; both fit the sandbox id pattern.
+- W05a: the server tests start a real uvicorn server in a thread and talk HTTP + WebSocket to it with timeouts.
 
 ## Open issues
 - (none)

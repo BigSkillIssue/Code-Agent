@@ -100,3 +100,113 @@ def fake_script(*turns: dict[str, Any], prompts: int = 1) -> dict[str, Any]:
 def call(name: str, **arguments: Any) -> dict[str, Any]:
     """A scripted model turn that calls one tool."""
     return {"text": "", "tool_calls": [{"name": name, "arguments": arguments}]}
+
+
+class LiveServer:
+    """A real Forge Web server on a free port, in a background thread (for HTTP + WebSocket)."""
+
+    def __init__(self, settings: Any) -> None:
+        import threading
+
+        import uvicorn
+
+        from forge_web.app import create_app
+
+        self.app = create_app(settings)
+        config = uvicorn.Config(
+            self.app,
+            host="127.0.0.1",
+            port=0,
+            log_level="warning",
+            loop="asyncio",
+            ws="websockets-sansio",
+        )
+        self.server = uvicorn.Server(config)
+        self.thread = threading.Thread(target=self.server.run, daemon=True)
+
+    def __enter__(self) -> "LiveServer":
+        import time
+
+        self.thread.start()
+        deadline = time.time() + 30
+        while not self.server.started:
+            if time.time() > deadline or not self.thread.is_alive():
+                raise RuntimeError("the test server did not start")
+            time.sleep(0.02)
+        port = self.server.servers[0].sockets[0].getsockname()[1]
+        self.url = f"http://127.0.0.1:{port}"
+        self.ws_url = f"ws://127.0.0.1:{port}/api/ws"
+        self.services = self.app.state.services
+        self.cookie = f"forge_dev={self.services.dev_token}"
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.server.should_exit = True
+        self.thread.join(30)
+
+
+def dev_settings(data_dir: Path, script: dict[str, Any] | None = None) -> Any:
+    """Development settings in `data_dir`, with the fake model (and a script, if given)."""
+    from forge_web.settings import load_settings
+
+    overrides: dict[str, Any] = {
+        "dev.enabled": True,
+        "sandbox.isolation": "local",
+        "dev.fake": True,
+    }
+    if script is not None:
+        path = data_dir / "script.json"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(script))
+        overrides["dev.fake_script"] = str(path)
+    return load_settings(
+        data_dir / "forge-web.toml",
+        environ={"FORGE_WEB_DATA_DIR": str(data_dir)},
+        overrides=overrides,
+    )
+
+
+class Browser:
+    """One browser tab: a WebSocket that remembers every message it received."""
+
+    def __init__(self, server: LiveServer) -> None:
+        self.server = server
+        self.messages: list[dict[str, Any]] = []
+        self.ws: Any = None
+
+    async def __aenter__(self) -> "Browser":
+        from websockets.asyncio.client import connect
+
+        self.ws = await connect(
+            self.server.ws_url, additional_headers={"Cookie": self.server.cookie}
+        )
+        await self.next("hello")
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        await self.ws.close()
+
+    async def send(self, message: dict[str, Any]) -> None:
+        await self.ws.send(json.dumps(message))
+
+    async def next(self, message_type: str, timeout: float = 30, **match: Any) -> dict[str, Any]:
+        """Read until a message of this type (and fields) arrives; it is returned."""
+        async with asyncio.timeout(timeout):
+            while True:
+                message = json.loads(await self.ws.recv())
+                self.messages.append(message)
+                if message.get("type") == message_type and all(
+                    message.get(k) == v for k, v in match.items()
+                ):
+                    return message
+
+    async def next_item(self, item_type: str, timeout: float = 30) -> dict[str, Any]:
+        """Read until a stored item of this type arrives; the whole message is returned."""
+        async with asyncio.timeout(timeout):
+            while True:
+                message = await self.next("item", timeout)
+                if message["item"].get("type") == item_type:
+                    return message
+
+    def seqs(self) -> list[int]:
+        return [m["seq"] for m in self.messages if m.get("type") == "item"]

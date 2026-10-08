@@ -26,11 +26,16 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: one worker process per chat started by the daemon; `PipeRenderer` turns ask/approve into request messages and waits for answers; follow-up prompts carry a "conversation so far" block; slash commands via Forge's `handle_command`; cancel; per-chat event buffer with `seq` and `resume(after_seq)`; chat options (model, mode) as config overrides; a terminal client for trying it out.
     - Tests: a FakeProvider script yields the expected events; an approval round trip; a question round trip; cancel during a tool call; worker killed → the chat resumes from Forge's store; replay after a reconnect has no gaps.
     - Verify: `uv run pytest tests/test_worker.py -q && uv run forge-web dev-chat --fake --prompt "hi"`
-- [ ] **W05 — Single-user server and frontend scaffold**
-    - Files: `forge_web/db/{engine,models,writer}.py`, `forge_web/db/migrations/`, `forge_web/chats/{api,runs,events}.py`, `forge_web/ws.py`, `forge_web/projects.py`, `forge_web/static.py`, `frontend/` (Vite, React, TypeScript, Tailwind), `tests/test_runs.py`, `tests/test_ws.py`
-    - Build: async SQLAlchemy with Alembic migrations, a single writer task (batched commits, WAL); projects (empty only) and chats; `RunManager` keeps one sandbox connection per project and forwards chat traffic; event log (deltas merged, tool output capped); pending requests with "first answer wins"; `/api/ws` with `subscribe(chat_id, after_seq)`; a dev login token; the React app with a sidebar of projects and chats and a basic chat view, served as static files.
-    - Tests: replay after `after_seq` has no gaps or duplicates; two tabs answer the same approval → the first wins; a run survives a browser reconnect; static index served with an SPA fallback.
-    - Verify: `uv run pytest -q && (cd frontend && npm run build)` then `uv run forge-web serve --dev --fake` and chat in the browser.
+- [x] **W05a — Single-user server**
+    - Files: `forge_web/db/{engine,models,writer}.py`, `forge_web/db/migrations/`, `forge_web/chats/{api,runs,items}.py`, `forge_web/{hub,ws,projects,access,services,fake,app,cli}.py`, `forge_web/auth/dev.py`, `tests/test_server.py`
+    - Build: async SQLAlchemy with Alembic migrations, a single writer task (batched commits, WAL); projects (empty only) and chats; `RunManager` keeps one sandbox connection per project and a relay per chat; items from the sandbox are validated and rebuilt; stored items get gapless numbers, model text and command output stream live only; `/api/ws` with `subscribe(chat_id, after_seq)`; a development login link.
+    - Tests: replay after `after_seq` has no gaps or repeats; two tabs answer the same approval → the first wins; a tab that reconnects mid-turn misses nothing; project lifecycle; sign-in required.
+    - Verify: `uv run pytest tests/test_server.py -q`
+- [ ] **W05b — Web UI scaffold**
+    - Files: `frontend/` (Vite, React, TypeScript, Tailwind), `forge_web/static.py`, `tests/test_static.py`
+    - Build: the React app with a sidebar of projects and chats and a basic chat view (streaming text, tool calls, approval and question cards, composer with stop), a WebSocket client that resumes after its last number; built into `forge_web/static` and served with an SPA fallback.
+    - Tests: Vitest for the item reducer; the server serves `index.html` for app routes and never for `/api/*`.
+    - Verify: `(cd frontend && npm run typecheck && npm test && npm run build) && uv run pytest tests/test_static.py -q`, then `uv run forge-web serve --dev --fake` and chat in the browser.
 
 ## Phase B · Complete and safe
 
