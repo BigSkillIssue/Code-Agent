@@ -8,7 +8,17 @@ from forge.config import ForgeConfig
 from forge.hooks import Hooks
 from forge.monitors import Monitors
 from forge.plan import Plan
-from forge.ports import Browser, BrowserFactory, EventBus, Executor, Renderer, Session, Store
+from forge.ports import (
+    AppleBuilder,
+    AppleScreen,
+    Browser,
+    BrowserFactory,
+    EventBus,
+    Executor,
+    Renderer,
+    Session,
+    Store,
+)
 from forge.providers.base import Usage
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
@@ -98,6 +108,11 @@ class SessionState:
     todos: dict[str, list[Todo]] = field(default_factory=dict)  # agent id -> its todo list
     job_labels: dict[str, str] = field(default_factory=dict)  # job id -> what it runs (/tasks)
     cooldowns: dict[str, float] = field(default_factory=dict)  # "provider/model" -> skip until
+    apple: AppleBuilder | None = (
+        None  # set by wiring (Xcode here) or a server; None: no Apple tools
+    )
+    apple_screens: list[AppleScreen] = field(default_factory=list)  # latest per device, for review
+    apple_shots: int = 0  # apple_screenshot calls so far
 
 
 @dataclass

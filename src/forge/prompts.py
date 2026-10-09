@@ -61,6 +61,7 @@ KNOWN_SLOTS = frozenset(
         "role",
         "agent_prompt",
         "deferred_tools",
+        "apple",
     }
 )
 
@@ -113,7 +114,7 @@ Environment:
 
 Project instructions (from FORGE.md, AGENTS.md and CLAUDE.md files; deeper files win, and the user's direct instructions win over all of them):
 {memory}
-{skills}{deferred_tools}"""
+{skills}{deferred_tools}{apple}"""
 
 # --------------------------------------------------------------------------- REFINER
 
@@ -513,6 +514,17 @@ OVERRIDES: dict[str, dict[str, str]] = {
     },
 }
 
+APPLE = """
+Apple apps (Swift and SwiftUI):
+- Write Swift 6 with SwiftUI for the platforms the app supports: iOS, iPadOS, macOS and watchOS. Keep shared code in shared files; put platform-specific code in `#if os(...)` blocks or per-platform folders.
+- XcodeGen makes the Xcode project from `project.yml`: change targets, files, build settings and Info.plist keys there. Never edit `.xcodeproj` or `.pbxproj` files; they are regenerated.
+- Check your work with apple_build: build, then test, for every platform the app supports. Look at the app with apple_screenshot on each kind of device (and in dark mode) before you call the work done.
+- Follow Apple's Human Interface Guidelines: system fonts and colors, Dynamic Type, Dark Mode, safe areas, accessibility labels and touch targets of at least 44 points. Use only public APIs.
+- Declare every use of personal data and device features: the usage description strings in Info.plist and the privacy manifest (PrivacyInfo.xcprivacy). Ask for permissions only when the feature is used.
+- Never put API keys, passwords or signing certificates into the app's code or project files.
+"""
+
+
 LOCAL_FAMILIES = ("llama", "qwen", "mistral", "phi", "gemma", "deepseek-coder", "codellama")
 
 # --------------------------------------------------------------------------- render()
@@ -533,6 +545,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "explore": (EXPLORE, "\n" + ENVIRONMENT),
     "researcher": (RESEARCHER, "\n" + ENVIRONMENT),
     "browser": (BROWSER, "\n" + ENVIRONMENT),
+    "apple": (APPLE, ""),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),
     "final_review": (FINAL_REVIEW, FINAL_REVIEW_TAIL),

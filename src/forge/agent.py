@@ -23,6 +23,7 @@ from forge.providers.base import (
     Usage,
     text_message,
 )
+from forge.runtime.apple import is_apple_project
 from forge.runtime.shell import find_shell
 from forge.skills import skills_listing
 from forge.tools import (
@@ -125,6 +126,11 @@ def deferred_tools_text(ctx: Ctx) -> str:
     return prompts.render("deferred_tools", tools="\n".join(listing)) if listing else ""
 
 
+def apple_text(ctx: Ctx) -> str:
+    """Apple guidance for Apple projects and wherever Apple apps can be built (else empty)."""
+    return prompts.render("apple") if ctx.state.apple or is_apple_project(ctx.root) else ""
+
+
 def over_budget(ctx: Ctx) -> bool:
     """True once the whole session (every agent) has spent its cost budget."""
     return ctx.state.usage.cost_usd >= ctx.cfg.limits.max_cost_usd
@@ -145,6 +151,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "role": ctx.role,
         "deferred_tools": deferred_tools_text(ctx),
         "skills": skills_text(ctx),
+        "apple": apple_text(ctx),
         "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 

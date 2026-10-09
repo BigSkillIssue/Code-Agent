@@ -44,6 +44,11 @@ from forge.events import PlanUpdated, TodosUpdated, ToolOutput
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
 from forge.ports import (
+    AppleAction,
+    AppleBuilder,
+    AppleBuildError,
+    ApplePlatform,
+    AppleScreen,
     Browser,
     BrowserError,
     Command,
@@ -55,6 +60,7 @@ from forge.ports import (
 from forge.providers.base import ProviderError, ToolCall, ToolResult, ToolSpec, text_message
 from forge.providers.registry import resolve_role
 from forge.questions import ask
+from forge.runtime.apple import build_report
 from forge.runtime.edit import adapt_newlines, edit_summary, replace_text
 from forge.runtime.errors import ToolError, failure
 from forge.runtime.files import (
@@ -110,7 +116,7 @@ LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TOOL_GROUPS = frozenset(
-    {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp"}
+    {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp", "apple"}
 )
 BROWSER_ROLE_TOOLS = frozenset({"web_search"})  # besides the browser group
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
@@ -121,7 +127,7 @@ class ToolDef:
     """A registered tool: its function, schema and permission settings."""
 
     name: str
-    group: str  # "shell", "files", "search", "web", "plan", "agents", "memory", "mcp"
+    group: str  # one of TOOL_GROUPS
     fn: ToolFn
     spec: ToolSpec  # generated from signature + docstring
     permission: Permission
@@ -267,6 +273,8 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
         tools = [t for t in tools if t.name not in BOARD_TOOLS]
     if ctx.state.mode == "solo":
         tools = [t for t in tools if t.name not in AGENT_TOOLS]
+    if ctx.state.apple is None:  # no Mac to build on: the tools could only fail
+        tools = [t for t in tools if t.group != "apple"]
     return [*tools, *mcp_tools(ctx, role)] if ctx.state.mcp else drop_mcp(tools)
 
 
@@ -1437,6 +1445,77 @@ async def browser_read(ctx: Ctx) -> str:
         return await browser.read()
     except BrowserError as err:
         raise ToolError("network", str(err)) from err
+
+
+# =====================================================================================
+# APPLE
+# =====================================================================================
+
+PlatformArg = Annotated[
+    ApplePlatform,
+    "Where the app runs: ios (iPhone), ipados (iPad), macos (Mac) or watchos (Apple Watch).",
+]
+
+
+def apple_of(ctx: Ctx) -> AppleBuilder:
+    """The session's Apple builder."""
+    if ctx.state.apple is None:
+        raise ToolError("unsupported", "no Mac with Xcode is available in this session")
+    return ctx.state.apple
+
+
+@tool(group="apple", permission="ask", read_only=False)
+async def apple_build(
+    ctx: Ctx,
+    platform: PlatformArg,
+    action: Annotated[
+        AppleAction,
+        "build: compile; test: build and run the tests on a simulator; "
+        "archive: a release archive for the App Store.",
+    ] = "build",
+    scheme: Annotated[str | None, "Xcode scheme; empty: the app's scheme for the platform."] = None,
+) -> ToolResult:
+    """Build, test or archive the Apple app with Xcode; reports errors, warnings and tests."""
+    try:
+        result = await apple_of(ctx).build(platform, action, scheme)
+    except AppleBuildError as err:
+        raise ToolError("unsupported", str(err), hint=err.hint) from err
+    return ToolResult(
+        call_id="", ok=result.ok, code=None if result.ok else "exit_nonzero",
+        text=build_report(result, ctx.root),
+    )  # fmt: skip
+
+
+@tool(group="apple", permission="ask", read_only=False)
+async def apple_screenshot(
+    ctx: Ctx,
+    platform: PlatformArg,
+    device: Annotated[str | None, "Simulator, e.g. `iPhone 16`; empty: the usual one."] = None,
+    dark: Annotated[bool, "Dark mode instead of light mode."] = False,
+) -> ToolResult:
+    """Build the app, run it on a simulated device (or the Mac) and show a screenshot."""
+    if ctx.state.apple_shots >= ctx.cfg.apple.max_screenshots:
+        raise ToolError(
+            "unsupported", "the screenshot limit of this session is reached",
+            hint="raise [apple] max_screenshots, or check the build with apple_build",
+        )  # fmt: skip
+    try:
+        screen = await apple_of(ctx).screenshot(platform, device, dark)
+    except AppleBuildError as err:
+        raise ToolError("unsupported", str(err), hint=err.hint) from err
+    ctx.state.apple_shots += 1
+    keep_screen(ctx, screen)
+    mode = "dark" if screen.dark else "light"
+    text = f"{platform} on {screen.device} ({mode} mode): screenshot attached"
+    return ToolResult(call_id="", ok=True, text=text, images=[screen.image])
+
+
+def keep_screen(ctx: Ctx, screen: AppleScreen) -> None:
+    """Remember the latest screenshot of each device and mode (the reviewer looks at them)."""
+    same = (screen.platform, screen.device, screen.dark)
+    ctx.state.apple_screens = [
+        s for s in ctx.state.apple_screens if (s.platform, s.device, s.dark) != same
+    ] + [screen]
 
 
 # =====================================================================================

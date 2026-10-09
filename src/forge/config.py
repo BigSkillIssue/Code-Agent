@@ -139,6 +139,21 @@ class BrowserConfig(_Strict):
     max_screenshots: int = 60
 
 
+class AppleConfig(_Strict):
+    """Building Apple apps: Xcode on this Mac, or the remote Mac a server provides."""
+
+    timeout_s: float = 1800  # one build, test run or archive
+    max_screenshots: int = 40  # per session
+    # The simulator each platform runs on; the newest one of the same family when missing.
+    devices: dict[str, str] = Field(
+        default_factory=lambda: {
+            "ios": "iPhone 16",
+            "ipados": "iPad Pro 13-inch (M4)",
+            "watchos": "Apple Watch Series 10 (46mm)",
+        }
+    )
+
+
 class McpServerConfig(_Strict):
     """An MCP server: a local command (stdio) or a URL (HTTP)."""
 
@@ -168,6 +183,7 @@ class ForgeConfig(_Strict):
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
+    apple: AppleConfig = Field(default_factory=AppleConfig)
     mcp_servers: dict[str, McpServerConfig] = {}
     hooks: dict[HookEventName, list[HookConfig]] = {}
     profiles: dict[str, dict[str, Any]] = {}
