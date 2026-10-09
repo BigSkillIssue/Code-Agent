@@ -192,10 +192,19 @@ async def test_too_many_channels() -> None:
 # A hostile peer writes raw frames ------------------------------------------------------------
 
 
+async def hold_or_echo(channel: Channel) -> None:
+    """'hold' channels are accepted and never read (so no credit comes back); others echo."""
+    if channel.kind != "hold":
+        await echo_handler(channel)
+        return
+    await channel.accept()
+    await asyncio.Event().wait()
+
+
 async def raw_peer() -> tuple[Mux, asyncio.StreamReader, asyncio.StreamWriter]:
     """A daemon-side Mux whose server side the test drives frame by frame."""
     (sr, sw), (dr, dw) = await stream_pair()
-    daemon = Mux(dr, dw, role="daemon", on_open=echo_handler, window=64 * 1024)
+    daemon = Mux(dr, dw, role="daemon", on_open=hold_or_echo, window=64 * 1024)
     started = asyncio.create_task(daemon.start())
     sw.write(Frame(0, FrameType.MESSAGE, to_json(Hello(role="server", version="t"))).encode())
     await started
@@ -218,12 +227,14 @@ async def test_version_mismatch_is_reported() -> None:
 
 async def test_peer_exceeding_its_window_is_cut_off() -> None:
     daemon, sr, sw = await raw_peer()
-    sw.write(Frame(1, FrameType.OPEN, to_json(OpenRequest(kind="echo"))).encode())
+    # The channel's reader never reads, so the daemon grants nothing beyond the first 64 KiB
+    # (with a reader that keeps up, credit would come back while the bytes arrive).
+    sw.write(Frame(1, FrameType.OPEN, to_json(OpenRequest(kind="hold"))).encode())
     opened = await read_frame(sr)
     while opened is not None and opened.type is FrameType.CREDIT:
         opened = await read_frame(sr)
     assert opened is not None and opened.type is FrameType.OPEN_OK
-    for _ in range(3):  # 3 x 64 KiB without waiting for credit
+    for _ in range(2):  # 2 x 64 KiB without waiting for credit
         sw.write(Frame(1, FrameType.DATA, b"q" * 65536).encode())
     await asyncio.wait_for(daemon.wait_closed(), 5)
     assert isinstance(daemon.error, ProtocolError)

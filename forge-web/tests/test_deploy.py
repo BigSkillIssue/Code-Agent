@@ -4,6 +4,7 @@ server they run."""
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import tomllib
@@ -162,5 +163,7 @@ def test_the_sync_workflow_runs_the_script_and_then_ci() -> None:
     workflow = (ROOT.parent / ".github" / "workflows" / "forge-web-sync.yml").read_text()
     assert "branches: [main]" in workflow and "workflow_dispatch" in workflow
     assert "bash forge-web/scripts/sync-core.sh" in workflow
-    assert 'gh workflow run forge-web.yml --ref "$FORGE_WEB_BRANCH"' in workflow
-    assert "FORGE_WEB_BRANCH: claude/elegant-tesla-h2iugo" in workflow
+    assert 'gh workflow run forge-web.yml --ref "$SYNC_BRANCH"' in workflow
+    assert "SYNC_BRANCH: claude/elegant-tesla-h2iugo" in workflow
+    # Forge reads every FORGE_* variable as a setting: the checks would fail on an unknown key.
+    assert not re.search(r"^\s+FORGE_\w+:", workflow, re.MULTILINE)

@@ -136,7 +136,7 @@ class Workspace:
         return self.owner is not None and sys.platform != "win32" and os.geteuid() == 0
 
     def _chown(self, name: str, dir_fd: int) -> None:
-        if self.owner is not None and self._as_root():
+        if sys.platform != "win32" and self.owner is not None and self._as_root():
             os.chown(name, self.owner.uid, self.owner.gid, dir_fd=dir_fd, follow_symlinks=False)
 
     def _claim(self, fd: int, current: os.stat_result | None) -> None:

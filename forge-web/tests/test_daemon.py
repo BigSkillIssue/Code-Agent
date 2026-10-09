@@ -19,7 +19,10 @@ from forge_web.sandbox_client import SandboxClient
 from support import connect, sandbox
 
 POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="needs a POSIX sandbox")
-LINUX_ONLY = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc/net")
+PORTS_WORK = pytest.mark.skipif(
+    not (sys.platform.startswith("linux") or sys.platform == "darwin"),
+    reason="listening ports come from /proc (Linux) or lsof (macOS)",
+)
 
 
 async def echo_server() -> tuple[asyncio.Server, int]:
@@ -260,7 +263,7 @@ async def test_git_files_lists_and_finds_project_files(tmp_path: Path) -> None:
         assert len(limited["files"]) == 2 and limited["total"] == 6
 
 
-@LINUX_ONLY
+@PORTS_WORK
 async def test_listening_ports_leave_out_the_daemons_own(tmp_path: Path) -> None:
     server, port = await echo_server()
     async with sandbox(tmp_path) as (_daemon, client):
@@ -277,7 +280,7 @@ LISTENER = (
 )
 
 
-@LINUX_ONLY
+@PORTS_WORK
 def test_only_ports_of_a_process_tree_when_asked() -> None:
     from forge_sandbox.netinfo import listening_ports
 
@@ -296,6 +299,19 @@ def test_only_ports_of_a_process_tree_when_asked() -> None:
         for process in (mine, other):
             process.kill()
             process.wait()
+
+
+def test_lsof_and_ps_output_is_read() -> None:
+    from forge_sandbox.netinfo import descendants, parse_lsof, ps_children
+
+    listing = "p417\nf5\nn*:7000\np1234\nf9\nn127.0.0.1:8000\nf10\nn[::1]:5173\nnjunk\n"
+    assert parse_lsof(listing) == [
+        {"port": 7000, "address": "0.0.0.0", "pid": 417},
+        {"port": 8000, "address": "127.0.0.1", "pid": 1234},
+        {"port": 5173, "address": "::1", "pid": 1234},
+    ]
+    tree = ps_children("    1     0\n  100     1\n  200   100\n  300     1\n bad line\n")
+    assert descendants(100, tree) == {100, 200} and descendants(300, tree) == {300}
 
 
 async def test_a_new_connection_replaces_the_old_and_state_survives(tmp_path: Path) -> None:
