@@ -20,9 +20,12 @@ Work through `docs/STEPS.md` in order, record each step in `PROGRESS.md`, one co
 
 1. **Never change Forge.** Nothing under `../src/forge` or `../tests` changes for Forge Web. If Forge lacks
    something, build it here on top of Forge's public modules, or write an *Open issue* in `PROGRESS.md`.
+   Forge's own changes arrive from `main` through `forge-web-sync` (`scripts/sync-core.sh`); when one breaks
+   Forge Web, fix Forge Web, not Forge.
 2. **Two packages, one direction.** `forge_sandbox` (runs inside a project's container) never imports
    `forge_web`. `forge_web` (the server) imports only the shared wire modules of the sandbox package —
-   `frames`, `protocol`, `methods`, `mux`, `rpc`, `streams` — never the daemon, its services or the worker.
+   `frames`, `protocol`, `methods`, `mux`, `rpc`, `streams`, `fingerprint` — never the daemon, its services or
+   the worker.
    Both may import Forge.
 3. **The container is hostile.** Every frame, event, path and number that comes out of a container is
    validated and size-limited. The server never trusts usage reported by a worker, never uses a path from a

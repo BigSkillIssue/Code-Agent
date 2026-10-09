@@ -127,7 +127,7 @@ needs_docker = [
 async def driver() -> AsyncIterator[DockerDriver]:
     created = DockerDriver(SandboxSettings(image=IMAGE, cpus=1, memory="1g", pids=256))
     yield created
-    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d", "dtest-t", "dtest-p"):
+    for project_id in ("dtest-a", "dtest-b", "dtest-c", "dtest-d", "dtest-t", "dtest-p", "dtest-u"):
         await created.remove(project_id)
 
 
@@ -232,6 +232,34 @@ async def test_idle_stop_and_restart_keep_the_files(driver: DockerDriver, tmp_pa
         ["docker", "volume", "ls", "-q"], capture_output=True, text=True
     ).stdout
     assert "forge-web-dtest-c" not in volumes
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_a_rebuilt_image_reaches_projects_at_their_next_start(driver: DockerDriver) -> None:
+    tag = "forge-web-sandbox:test-update"
+    subprocess.run(["docker", "tag", IMAGE, tag], check=True, capture_output=True)
+    driver.settings.image = tag
+    try:
+        client = await client_for(driver, "dtest-u")
+        await client.call("fs.write", {"path": "keep.txt", "text": "my work"})
+        await client.close()
+        first = (await driver.inspect("dtest-u") or {})["Image"]
+        newer = f"FROM {IMAGE}\nLABEL org.forge-web.test=newer-forge\n"  # a rebuilt image
+        subprocess.run(["docker", "build", "-q", "-t", tag, "-"], input=newer, text=True,
+                       check=True, capture_output=True)  # fmt: skip
+        await driver.ensure("dtest-u")
+        assert (await driver.inspect("dtest-u") or {})["Image"] == first  # running: left alone
+        await driver.stop("dtest-u")
+        again = await client_for(driver, "dtest-u")
+        try:
+            assert (await again.call("fs.read", {"path": "keep.txt"}))["text"] == "my work"
+        finally:
+            await again.close()
+        assert (await driver.inspect("dtest-u") or {})["Image"] != first  # the new image
+    finally:
+        await driver.remove("dtest-u")
+        subprocess.run(["docker", "rmi", "--force", tag], capture_output=True)
 
 
 @pytest.fixture

@@ -160,18 +160,32 @@ class DockerDriver:
         async with lock:
             info = await self.inspect(project_id)
             labels = (info or {}).get("Config", {}).get("Labels") or {}
+            running = bool((info or {}).get("State", {}).get("Running"))
             if info is not None and labels.get("org.forge-web.protocol") != str(PROTOCOL_VERSION):
                 log.info(
                     "recreating %s for protocol %s", self.container(project_id), PROTOCOL_VERSION
                 )
                 await self.docker("rm", "--force", self.container(project_id), check=True)
                 info = None
+            elif info is not None and not running and await self._outdated(info):
+                # A rebuilt image (a newer Forge) reaches the project when its sandbox starts
+                # again; a running one keeps its chats until the idle stop. Volumes stay.
+                log.info("updating %s to the current sandbox image", self.container(project_id))
+                await self.docker("rm", "--force", self.container(project_id), check=True)
+                info = None
             if info is None:
                 runtime = await self.runtime()
                 await self.docker(*self.run_args(project_id, runtime), timeout=300, check=True)
-            elif not info.get("State", {}).get("Running"):
+            elif not running:
                 await self.docker("start", self.container(project_id), check=True)
             await self._wait_for_socket(project_id)
+
+    async def _outdated(self, info: dict[str, Any]) -> bool:
+        """The container was made from another image than the one its tag names now."""
+        code, out, _ = await self.docker(
+            "image", "inspect", "--format", "{{.Id}}", self.settings.image, timeout=30
+        )
+        return code == 0 and bool(out.strip()) and info.get("Image") != out.strip()
 
     async def _wait_for_socket(self, project_id: str, seconds: float = 30) -> None:
         loop = asyncio.get_running_loop()

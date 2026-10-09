@@ -1,8 +1,8 @@
 """`forge-web doctor`: checks what a working server needs and says how to fix what is missing.
 
-It reads the settings like `serve` does and looks at the machine: Docker and the sandbox image,
-gVisor, the event loop, the address people use, sign-in providers, previews and the web UI.
-Nothing is changed.
+It reads the settings like `serve` does and looks at the machine: Docker and the sandbox image
+(and whether it holds this server's Forge), gVisor, the event loop, the address people use,
+sign-in providers, previews and the web UI. Nothing is changed.
 """
 
 import asyncio
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from forge_sandbox.fingerprint import forge_fingerprint
 from forge_web.auth.oauth_providers import load_providers
 from forge_web.preview_auth import LOOPBACK, preview_base
 from forge_web.settings import WebSettings
@@ -176,6 +177,22 @@ def check_providers(settings: WebSettings) -> list[Finding]:
     return found
 
 
+async def check_image_forge(cli: str, image: str, run: Run) -> Finding:
+    """Whether the sandbox image holds the Forge this server runs (else chats use another)."""
+    code, out = await run([cli, "run", "--rm", "--pull", "never", "--network", "none",
+                           "--entrypoint", "/opt/forge/bin/python", image,
+                           "-I", "-m", "forge_sandbox", "fingerprint"])  # fmt: skip
+    lines = out.strip().splitlines()
+    theirs, ours = (lines[-1].strip() if code == 0 and lines else ""), forge_fingerprint()
+    if theirs == ours:
+        return Finding("ok", f"The sandbox's Forge is this server's ({ours})")
+    fix = "rebuild the image: forge-web sandbox build, or forge-web/deploy/update.sh"
+    if not theirs:
+        return Finding("warn", "The sandbox's Forge is unknown (an image from before W18)", "", fix)
+    detail = f"image {theirs}, server {ours}; projects get the new one at their next start"
+    return Finding("warn", "The sandbox's Forge differs from this server's", detail, fix)
+
+
 async def check_docker(settings: WebSettings, run: Run) -> list[Finding]:
     """The container CLI, its daemon, the sandbox image and gVisor."""
     cli = settings.sandbox.docker
@@ -211,6 +228,8 @@ async def check_docker(settings: WebSettings, run: Run) -> list[Finding]:
             f"forge-web sandbox build (or: {cli} pull {image})",
         )
     )
+    if code == 0:
+        found.append(await check_image_forge(cli, image, run))
     code, runtimes = await run([cli, "info", "--format", "{{json .Runtimes}}"])
     has_runsc = code == 0 and "runsc" in runtimes
     if has_runsc:

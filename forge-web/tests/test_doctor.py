@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from forge_sandbox.fingerprint import forge_fingerprint
 from forge_web.cli import main
 from forge_web.doctor import Finding, diagnose
 from forge_web.settings import load_settings
@@ -24,8 +25,12 @@ def settings_with(tmp_path: Path, **overrides: Any) -> Any:
     return load_settings(tmp_path / "forge-web.toml", environ={}, overrides=values)
 
 
-def fake_docker(tmp_path: Path, *, image: bool, runtimes: str = '{"runc":{}}') -> str:
-    """A `docker` that answers like a running daemon (with or without the sandbox image)."""
+def fake_docker(
+    tmp_path: Path, *, image: bool, runtimes: str = '{"runc":{}}', forge: str | None = None
+) -> str:
+    """A `docker` that answers like a running daemon (with or without the sandbox image); in
+    the image `forge-sandbox fingerprint` prints `forge` (the server's Forge if not given)."""
+    printed = forge_fingerprint() if forge is None else forge
     script = tmp_path / "fake-docker"
     script.write_text(
         "#!/bin/sh\n"
@@ -33,6 +38,7 @@ def fake_docker(tmp_path: Path, *, image: bool, runtimes: str = '{"runc":{}}') -
         "  version) echo 27.1.1 ;;\n"
         f"  image) exit {0 if image else 1} ;;\n"
         f"  info) echo '{runtimes}' ;;\n"
+        f"  run) {f'echo {printed}' if printed else 'exit 2'} ;;\n"
         "esac\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
@@ -77,6 +83,19 @@ async def test_a_missing_sandbox_image_names_the_fix(tmp_path: Path) -> None:
                                         "sandbox.runtime": "runsc"})  # fmt: skip
     assert by_title(await diagnose(strict, static=await built_ui(tmp_path / "y")),
                     "gvisor").level == "error"  # fmt: skip
+
+
+@POSIX_ONLY
+async def test_a_sandbox_image_with_another_forge_is_a_warning(tmp_path: Path) -> None:
+    cases = {"same": (None, "ok"), "older": ("0123456789ab", "warn"), "unknown": ("", "warn")}
+    for name, (forge, level) in cases.items():
+        docker = fake_docker(tmp_path, image=True, forge=forge)
+        settings = settings_with(tmp_path, **{"sandbox.docker": docker})
+        found = by_title(await diagnose(settings, static=await built_ui(tmp_path / name)),
+                         "sandbox's forge")  # fmt: skip
+        assert found.level == level, (name, found)
+        if level == "warn":
+            assert "forge-web sandbox build" in found.fix and "update.sh" in found.fix
 
 
 async def test_local_isolation_and_addresses(tmp_path: Path) -> None:

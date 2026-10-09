@@ -1,6 +1,6 @@
 # Progress
 
-Next step: — (W01–W17 done)
+Next step: — (W01–W18 done; open decisions in docs/SPAETER.md)
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -33,6 +33,7 @@ Next step: — (W01–W17 done)
 | W17a | 2026-10-08 | 508fab1 | tests/e2e/{conftest,test_flows}.py, tests/{support,test_docker_driver}.py, pyproject.toml, ../.github/workflows/forge-web.yml | end-to-end flows in Chromium, local and Docker |
 | W17b | 2026-10-09 | f158a48 | forge_web/{live_access,members,services,settings_api,admin_api,terminals,ws}.py, forge_web/auth/{oauth,routes,onetime,second_factor,ratelimit,admin}.py, forge_web/chats/{runs,api}.py, forge_sandbox/{chats,worker,cli}.py, frontend/src/{lib/errors.ts,lib/errors.test.ts,api/client.ts,api/account.ts,lib/i18n.ts,pages/Auth.tsx,pages/Auth.test.tsx,pages/Admin.tsx}, frontend/package{,-lock}.json, docker/{sandbox,server}.Dockerfile, docs/SECURITY.md, tests/test_{auth,oauth,totp,access,terminals,chats,gateway_e2e,deploy}.py | security review of sign-in (fixed) and of the sandbox (findings for W17c); warm spare chat worker; German server errors; vitest 4 |
 | W17c | 2026-10-09 | a8bbd98 | forge_web/gateway/{meter,proxy,upstreams,api}.py, forge_web/chats/{runs,api}.py, forge_web/{hub,ws,quotas,services,startup,settings,egress,preview,preview_auth,sources}.py, forge_web/db/writer.py, forge_web/containers/{driver,docker,local}.py, forge_sandbox/{mux,rpc}.py, docs/{SECURITY,EINRICHTUNG}.md, tests/test_{runs,gateway,mux,egress,preview,docker_driver,projects}.py | fixes for the sandbox review: metering, run windows, byte limits, disk measured by Docker, egress chaining, keyless presets, mount paths, preview certificates |
+| W18 | 2026-10-09 | (next) | scripts/sync-core.sh, ../.github/workflows/forge-web-sync.yml, deploy/update.sh, forge_sandbox/{fingerprint,cli,daemon}.py, forge_web/{containers/docker,chats/runs,doctor}.py, docs/{SPAETER,EINRICHTUNG,STEPS}.md, README.md, AGENTS.md, tests/test_{sync,fingerprint,deploy,doctor,daemon,docker_driver,runs,smoke}.py | core changes on main reach Forge Web (tested merge), projects follow rebuilt images, Forge fingerprint, update.sh, list of open decisions |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -191,8 +192,14 @@ Next step: — (W01–W17 done)
 - W17c: keyless presets (Ollama, LM Studio, vLLM) are served only when listed in `gateway.upstreams`; the egress proxy passes only unresolvable names to an upstream `HTTPS_PROXY`; server folder paths with `,` or `"` are refused (and `--mount` refuses them again); `/api/preview/allowed-host` says yes only for previews opened in the last 10 minutes and at most 20 ports per project a day.
 - W17c: git jobs stay on Docker's default network (the reviewer found no attack path; a closed network needs host firewall rules or a socket mount that does not work when the server runs in a container). The guide shows the `DOCKER-USER` rule that blocks the metadata address; SECURITY.md lists it as an accepted risk.
 - W17c: the e2e chat flow looks for the model's answer inside `[data-testid=assistant-message]`: the turn card holds the same text (folded away), and once both were on the page the plain text locator found two elements (a race that showed up with Docker isolation).
+- W18: (asked for after W17) until Forge Web is on `main`, `.github/workflows/forge-web-sync.yml` — the one file added to `main` — runs after every push to `main` that touches `src/`, `tests/`, `pyproject.toml` or `uv.lock`: it checks out this branch, runs `scripts/sync-core.sh` (merge `origin/main` on a detached copy, run Forge Web's gate, push only when green) and then starts `forge-web.yml` by `workflow_dispatch` (pushes with the workflow token start no workflows). A conflict or a red gate opens an issue "Forge Web: Kern-Änderung nicht übernommen" (or comments on the open one). Delete both after the merge into `main`.
+- W18: a stopped project container whose image differs from the image its tag names now is recreated at its next start (volumes stay); a running one keeps its chats and moves after the idle stop.
+- W18: `forge_sandbox.fingerprint` hashes the `*.py` files of the imported `forge` package (12 hex characters, the same from a checkout and a wheel). The daemon sends it in its hello, `forge-sandbox fingerprint` prints it, the server logs once per project when a sandbox runs another Forge, and `forge-web doctor` compares the image's with its own (WARN with the fix). AGENTS.md rule 2 lists `fingerprint` as a shared module; `test_smoke` now checks the rule.
+- W18: `deploy/update.sh` updates a compose server: `git pull --ff-only`, builds both images under the names in `.env` (`DOCKER_BUILD_ARGS` for mirrors), `docker compose up -d`, `forge-web doctor`; `--release` pulls the released images instead. The guide clones the Forge Web branch until the merge.
+- W18: the open decisions (pytest-xdist, release tag, PR to `main`) and known leftovers are kept in German in `docs/SPAETER.md`.
 
 ## Open issues
+- W18: the open decisions and leftovers for later are collected in `docs/SPAETER.md` (German).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
 - W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a. At W17b: 277 tests in 175 s; at W17c: 291 tests in 176 s.
 - W14a: the ::1 test is skipped on this machine (no IPv6 at all); it runs where loopback has IPv6 (CI).

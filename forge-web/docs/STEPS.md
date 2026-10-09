@@ -129,3 +129,8 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: Playwright flows — sign in, create a project, chat with the fake model, approve an edit, see the diff, use the terminal, open the preview — in local mode and (CI) Docker mode; threat model; fixes for what the review finds.
     - Tests: all end-to-end flows pass.
     - Verify: `uv run pytest -q -m e2e`
+- [x] **W18 — Core changes reach Forge Web; open points kept for later** (asked for after W17)
+    - Files: `scripts/sync-core.sh`, `../.github/workflows/forge-web-sync.yml` (also on `main`), `deploy/update.sh`, `forge_sandbox/fingerprint.py`, `forge_sandbox/{cli,daemon}.py`, `forge_web/{containers/docker,chats/runs,doctor}.py`, `docs/{SPAETER,EINRICHTUNG}.md`, `README.md`, `AGENTS.md`
+    - Build: after each push to `main` that touches Forge, merge `main` into the Forge Web branch, run Forge Web's checks, push only when green (else an issue); a stopped project container is recreated when its image tag points at a newer image; a Forge fingerprint in the sandbox hello, `forge-sandbox fingerprint` and a doctor check; `update.sh` pulls, rebuilds and restarts a compose server; `SPAETER.md` keeps the open decisions.
+    - Tests: the sync script merges/pushes, leaves conflicts, failing checks and local changes alone; fingerprints follow the Python files; doctor warns about another Forge; a rebuilt image reaches a project at its next start (Docker); `update.sh` builds the images named in `.env`; the server imports only shared sandbox modules.
+    - Verify: `uv run pytest -q tests/test_sync.py tests/test_fingerprint.py tests/test_deploy.py tests/test_doctor.py`

@@ -32,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     worker = commands.add_parser("worker", help="run one chat's Forge (started by the daemon)")
     worker.add_argument("--workspace", type=Path, required=True)
     worker.add_argument("--chat", default="", help="the chat (else it comes with `start`)")
+    commands.add_parser("fingerprint", help="print which Forge this is (a short hash)")
     return parser
 
 
@@ -55,6 +56,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         from forge_sandbox.attach import relay
 
         return asyncio.run(relay(args.socket))
+    if args.command == "fingerprint":
+        from forge_sandbox.fingerprint import forge_fingerprint
+
+        print(forge_fingerprint())
+        return 0
     if args.command == "worker":
         from forge_sandbox.worker import run_worker
 

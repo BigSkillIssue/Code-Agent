@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import func, select, update
 
+from forge_sandbox.fingerprint import forge_fingerprint
 from forge_sandbox.frames import ProtocolError
 from forge_sandbox.mux import ChannelClosed, OpenFailed
 from forge_sandbox.rpc import RpcError
@@ -119,6 +120,8 @@ class RunManager:
         self.run_seconds = run_seconds
         self.max_log_bytes = max_log_bytes  # chat history per project (0 = no limit)
         self.log_bytes: dict[str, int] = {}  # project id -> history stored, once counted
+        self.forge = forge_fingerprint()  # which Forge this server runs
+        self.other_forge: set[str] = set()  # projects whose sandbox runs another one
         self.links: dict[str, SandboxClient] = {}
         self.link_info: dict[str, dict[str, Any]] = {}
         self.boots: dict[str, str] = {}
@@ -148,7 +151,19 @@ class RunManager:
                 raise
             self.links[project_id] = client
             self.boots[project_id] = str(hello.info.get("boot", ""))
+            self.note_forge(project_id, hello.info.get("forge"))
             return client
+
+    def note_forge(self, project_id: str, theirs: Any) -> None:
+        """Say once when a sandbox runs another Forge than the server (an older image)."""
+        if theirs == self.forge or project_id in self.other_forge:
+            return
+        self.other_forge.add(project_id)
+        log.warning(
+            "project %s runs Forge %s, this server %s: it gets this one at its next start once "
+            "the sandbox image is current (forge-web doctor)",
+            project_id, str(theirs)[:16], self.forge,
+        )  # fmt: skip
 
     def warm(self, project_id: str) -> None:
         """Have a chat worker ready in the project's sandbox (in the background), so the next

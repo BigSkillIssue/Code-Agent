@@ -57,11 +57,14 @@ docker compose version          # muss eine Version zeigen
 ### 2.2 Dateien holen
 
 ```bash
-git clone https://github.com/BigSkillIssue/Code-Agent.git
+git clone -b claude/elegant-tesla-h2iugo https://github.com/BigSkillIssue/Code-Agent.git
 cd Code-Agent/forge-web
 cp deploy/env.example .env
 cp deploy/forge-web.example.toml forge-web.toml
 ```
+
+(Forge Web liegt noch auf dem Branch `claude/elegant-tesla-h2iugo`, nicht auf `main`. Der Branch bekommt
+jede Änderung am Forge-Kern automatisch, siehe Abschnitt 7.)
 
 ### 2.3 `.env` ausfüllen
 
@@ -284,15 +287,30 @@ docker run --rm -v forge-web_forge-web-data:/data -v "$PWD":/backup busybox \
   tar czf /backup/forge-web-data.tgz -C /data .
 ```
 
-**Aktualisieren** (Weg A):
+**Aktualisieren** (Weg A) – ein Befehl im Ordner `Code-Agent`:
 
 ```bash
-git pull                      # neue compose.yaml und Vorlagen
-docker compose pull           # neue Images (bzw. neu bauen, siehe 2.4)
-docker compose up -d
+forge-web/deploy/update.sh            # neuen Stand holen, beide Images neu bauen, neu starten
+forge-web/deploy/update.sh --release  # stattdessen die veröffentlichten Images laden
 ```
 
-Die Datenbank wird beim Start automatisch auf den neuen Stand gebracht.
+Das Skript holt mit `git pull` den neuen Stand, baut die Images unter den Namen aus `.env` (Abschnitt 2.4),
+startet mit `docker compose up -d` neu und ruft danach `forge-web doctor` auf. Braucht dein Server einen
+Spiegel für die Basis-Images, gib ihn mit, z. B.
+`DOCKER_BUILD_ARGS="--build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.12-slim-bookworm"`.
+
+- Die Datenbank wird beim Start automatisch auf den neuen Stand gebracht.
+- **Projekte behalten ihre Dateien.** Jedes bekommt das neue Forge beim nächsten Start seiner Sandbox. Eine
+  gerade laufende Sandbox (mit laufenden Chats) wird nicht unterbrochen; sie wechselt nach ihrem
+  Leerlauf-Stopp.
+- `forge-web doctor` zeigt mit „The sandbox's Forge is this server's“, dass Server und Sandbox-Image
+  dasselbe Forge haben.
+
+**Woher die neuen Stände kommen:** Änderungen am Forge-Kern landen auf `main`. Nach jedem solchen Push
+mischt der GitHub-Workflow „Forge Web sync“ sie in den Forge-Web-Branch, prüft Forge Web damit und
+übernimmt sie nur, wenn alles grün ist. Geht das nicht (Konflikt, rote Tests), öffnet er im Repository ein
+Issue „Forge Web: Kern-Änderung nicht übernommen“. Was übernommen ist, holst du mit `update.sh` auf den
+Server.
 
 ---
 

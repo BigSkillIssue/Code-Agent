@@ -5,8 +5,9 @@ Windows server; people sign in with Google, GitHub or email and password, keep s
 Forge in each one — with a file tree and editor, a changes/git panel, a terminal and a live preview, much like
 the Claude Code desktop app. Every project runs in its own hardened container, so users can be strangers.
 
-> Status: feature-complete, in final review — see [`docs/STEPS.md`](docs/STEPS.md) and
-> [`PROGRESS.md`](PROGRESS.md). Setup guide (German): [`docs/EINRICHTUNG.md`](docs/EINRICHTUNG.md).
+> Status: done (W01–W18) — see [`docs/STEPS.md`](docs/STEPS.md) and [`PROGRESS.md`](PROGRESS.md).
+> Setup guide (German): [`docs/EINRICHTUNG.md`](docs/EINRICHTUNG.md). Security: [`docs/SECURITY.md`](docs/SECURITY.md).
+> Open decisions for later (German): [`docs/SPAETER.md`](docs/SPAETER.md).
 
 ## Try it from a checkout
 
@@ -23,6 +24,18 @@ for trying Forge Web on your own machine, not for other people.
 
 Forge Web lives next to Forge and never changes it: `forge-web/` is a separate uv workspace that uses Forge
 as a library.
+
+## How changes to Forge reach Forge Web
+
+Until `forge-web/` is merged into `main`, it lives on its own branch:
+
+- **Code**: Forge is a library here (an editable path dependency), not a copy, so nothing is ported by hand.
+- **Branch**: after every push to `main` that touches Forge, `.github/workflows/forge-web-sync.yml` merges
+  `main` into the Forge Web branch, runs Forge Web's checks and pushes only when they pass (then Forge Web's
+  CI runs); a conflict or a red check opens an issue instead. By hand: `bash forge-web/scripts/sync-core.sh`.
+- **Server**: `forge-web/deploy/update.sh` pulls, rebuilds both images and restarts. A project's sandbox
+  moves to the new image the next time it starts (its files stay); `forge-web doctor` says whether the
+  sandbox image holds the same Forge as the server (`forge-sandbox fingerprint`).
 
 ## Sign-in with Google, GitHub or your own identity provider
 

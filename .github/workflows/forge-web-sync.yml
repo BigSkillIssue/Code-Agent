@@ -1,0 +1,72 @@
+name: Forge Web sync
+
+# Forge Web (forge-web/) lives on its own branch until it is merged into main. After every
+# change to Forge's core on main, this merges main into that branch, runs Forge Web's checks on
+# the result and pushes only when they pass (forge-web/scripts/sync-core.sh). If the merge
+# conflicts or the checks fail, it opens an issue (or comments on the open one). Delete this
+# file once forge-web/ is on main.
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", "tests/**", "pyproject.toml", "uv.lock"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # push the merge to the Forge Web branch
+  issues: write  # report a merge that needs a person
+  actions: write  # start Forge Web's CI on the merge (pushes by this token start no workflows)
+
+concurrency:
+  group: forge-web-sync
+  cancel-in-progress: false
+
+env:
+  FORGE_WEB_BRANCH: claude/elegant-tesla-h2iugo
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.FORGE_WEB_BRANCH }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Merge main, check, push
+        id: sync
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash forge-web/scripts/sync-core.sh || true
+      - name: Run Forge Web's CI on the merge
+        if: steps.sync.outputs.result == 'pushed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run forge-web.yml --ref "$FORGE_WEB_BRANCH"
+      - name: Report what needs a person
+        if: steps.sync.outputs.result != 'pushed' && steps.sync.outputs.result != 'current'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.sync.outputs.result }}
+        run: |
+          title="Forge Web: Kern-Änderung nicht übernommen"
+          case "$RESULT" in
+            conflict) reason="Die Änderungen auf main lassen sich nicht ohne Konflikt in den Forge-Web-Branch mischen." ;;
+            failed) reason="Mit den Änderungen auf main schlagen die Prüfungen von Forge Web fehl." ;;
+            *) reason="Der Abgleich ist unerwartet abgebrochen ($RESULT)." ;;
+          esac
+          body="$reason
+
+          Lauf: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Stand von main: $GITHUB_SHA
+          Von Hand nachholen: \`bash forge-web/scripts/sync-core.sh\` im Branch \`$FORGE_WEB_BRANCH\`."
+          open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          exit 1

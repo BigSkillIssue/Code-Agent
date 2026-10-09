@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from forge_sandbox.daemon import Daemon
+from forge_sandbox.fingerprint import forge_fingerprint
 from forge_sandbox.mux import OpenFailed
 from forge_sandbox.protocol import Notify
 from forge_sandbox.rpc import RpcError
@@ -36,6 +37,7 @@ async def test_hello_and_file_round_trip(tmp_path: Path) -> None:
     async with sandbox(tmp_path) as (_daemon, client):
         assert client.hello is not None
         assert client.hello.info["workspace"] == str(tmp_path.resolve())
+        assert client.hello.info["forge"] == forge_fingerprint()  # which Forge runs in there
         await client.call("fs.write", {"path": "a/b.txt", "text": "hello", "create_dirs": True})
         read = await client.call("fs.read", {"path": "a/b.txt"})
         assert read["text"] == "hello"

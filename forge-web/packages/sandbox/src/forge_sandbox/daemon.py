@@ -25,6 +25,7 @@ from typing import Any
 
 from forge_sandbox import __version__
 from forge_sandbox.chats import Chats
+from forge_sandbox.fingerprint import forge_fingerprint
 from forge_sandbox.forward import Forwards
 from forge_sandbox.fsops import Owner, Workspace
 from forge_sandbox.gitinfo import GitInfo
@@ -86,6 +87,7 @@ class Daemon:
             "pid": os.getpid(),
             "version": __version__,
             "boot": self.boot,
+            "forge": forge_fingerprint(),
         }
 
     def handlers(self) -> dict[str, Handler]:

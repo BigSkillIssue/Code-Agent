@@ -110,3 +110,13 @@ async def test_a_browser_that_does_not_read_is_dropped_by_size() -> None:
     subscriber.hold("c2")
     subscriber.put({"type": "item", "chat_id": "c2", "seq": 1})
     assert subscriber.held_bytes == 0  # nothing more is kept once it overflowed
+
+
+def test_a_sandbox_with_another_forge_is_reported_once(caplog: pytest.LogCaptureFixture) -> None:
+    runs = RunManager(None, None, None, Hub(), lambda c, i: {})  # type: ignore[arg-type]
+    runs.note_forge("p1", runs.forge)
+    assert not caplog.records  # the same Forge: nothing to say
+    for _ in range(3):
+        runs.note_forge("p2", "0123456789ab")
+    warned = [r for r in caplog.records if "runs Forge 0123456789ab" in r.getMessage()]
+    assert len(warned) == 1 and runs.other_forge == {"p2"}
