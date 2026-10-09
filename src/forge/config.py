@@ -47,6 +47,8 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "explore": ["openai/gpt-5-mini"],
     "researcher": ["anthropic/claude-sonnet", "openai/gpt-5-mini"],
     "browser": ["anthropic/claude-sonnet", "openai/gpt-5"],
+    # Another model family than the coder's first, so the check does not share its blind spots.
+    "apple_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
 }
 
 

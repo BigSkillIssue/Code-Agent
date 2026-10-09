@@ -125,6 +125,32 @@ class AgentFinished(Event):
     report: str
 
 
+GuidelineArea = Literal["safety", "performance", "business", "design", "legal", "hig"]
+GuidelineStatus = Literal["ok", "concern", "violation"]
+
+
+class GuidelineFinding(BaseModel):
+    """The Apple reviewer's judgement of one guideline area (S59)."""
+
+    area: GuidelineArea  # App Store Review Guidelines sections 1-5, or the HIG
+    status: GuidelineStatus
+    guideline: str = ""  # the rule's number or HIG page, e.g. "5.1.1" or "HIG Accessibility"
+    reason: str
+    fix: str = ""  # what would make it ok
+
+
+class GuidelineReview(Event):
+    """The Apple reviewer's verdict on the request, the plan or the finished app (S59)."""
+
+    kind: Literal["guideline_review"] = "guideline_review"
+    stage: Literal["prompt", "plan", "product"]
+    verdict: GuidelineStatus  # the worst finding; "concern" when the review failed
+    summary: str
+    findings: list[GuidelineFinding] = []
+    sources: list[str] = []  # the Apple pages the reviewer read
+    error: str = ""  # set when no review could be made: that is never a pass
+
+
 EVENT_TYPES: tuple[type[Event], ...] = (
     ModelDelta,
     ModelDone,
@@ -140,6 +166,7 @@ EVENT_TYPES: tuple[type[Event], ...] = (
     ErrorEvent,
     AgentMessage,
     AgentFinished,
+    GuidelineReview,
 )
 
 AnyEvent = Annotated[
@@ -156,7 +183,8 @@ AnyEvent = Annotated[
     | SessionDone
     | ErrorEvent
     | AgentMessage
-    | AgentFinished,
+    | AgentFinished
+    | GuidelineReview,
     Field(discriminator="kind"),
 ]
 _EVENT_ADAPTER: TypeAdapter[AnyEvent] = TypeAdapter(AnyEvent)

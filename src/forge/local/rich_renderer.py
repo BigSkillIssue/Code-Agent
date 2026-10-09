@@ -11,6 +11,7 @@ from forge.events import (
     Compacted,
     ErrorEvent,
     Event,
+    GuidelineReview,
     ModelDelta,
     ModelDone,
     PlanUpdated,
@@ -27,6 +28,8 @@ from forge.providers.base import ToolCall
 from forge.todos import todo_lines
 
 MARKS = {"todo": "[ ]", "doing": "[>]", "done": "[x]", "failed": "[!]", "skipped": "[-]"}
+REVIEW_MARKS = {"ok": "✓", "concern": "!", "violation": "✗"}
+REVIEW_STYLES = {"ok": "green", "concern": "yellow", "violation": "bold red"}
 SETTLE_S = 0.02
 
 
@@ -116,7 +119,26 @@ def describe(event: Event) -> Text:
         return Text(f"context compacted (level {event.level}): {sizes}", style="dim")
     if isinstance(event, SessionDone):
         return Text(f"{'done' if event.ok else 'stopped'}: {event.report}", style="bold")
+    if isinstance(event, GuidelineReview):
+        return Text(review_lines(event), style=REVIEW_STYLES[event.verdict])
     return Text(str(event.model_dump(exclude={"session_id", "ts"})), style="dim")
+
+
+def review_lines(review: GuidelineReview) -> str:
+    """An Apple review: its verdict and summary, then each finding that is not ok."""
+    head = f"Apple review of the {review.stage}: {review.verdict}"
+    lines = [head + (" (the review failed)" if review.error else ""), f"  {review.summary}"]
+    for finding in review.findings:
+        if finding.status == "ok":
+            continue
+        rule = f" {finding.guideline}" if finding.guideline else ""
+        fix = f" -> {finding.fix}" if finding.fix else ""
+        mark = REVIEW_MARKS[finding.status]
+        lines.append(f"  {mark} {finding.area}{rule}: {finding.reason}{fix}")
+    passed = sum(f.status == "ok" for f in review.findings)
+    if passed:
+        lines.append(f"  {REVIEW_MARKS['ok']} {passed} areas ok")
+    return "\n".join(lines)
 
 
 def plan_lines(plan: Plan) -> str:

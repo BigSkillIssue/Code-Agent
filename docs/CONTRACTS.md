@@ -68,6 +68,24 @@ class StepDone(Event):      kind: Literal["step_done"] = "step_done";       step
 class Compacted(Event):     kind: Literal["compacted"] = "compacted";       level: int; tokens_before: int; tokens_after: int
 class SessionDone(Event):   kind: Literal["session_done"] = "session_done"; ok: bool; report: str
 class ErrorEvent(Event):    kind: Literal["error"] = "error";               message: str
+
+# S59: the independent Apple reviewer's verdict on the request, the plan or the finished app
+GuidelineArea = Literal["safety", "performance", "business", "design", "legal", "hig"]
+GuidelineStatus = Literal["ok", "concern", "violation"]
+class GuidelineFinding(BaseModel):
+    area: GuidelineArea              # App Store Review Guidelines sections 1-5, or the HIG
+    status: GuidelineStatus
+    guideline: str = ""              # the rule's number or HIG page, e.g. "5.1.1"
+    reason: str
+    fix: str = ""
+class GuidelineReview(Event):
+    kind: Literal["guideline_review"] = "guideline_review"
+    stage: Literal["prompt", "plan", "product"]
+    verdict: GuidelineStatus         # the worst finding; "concern" when the review failed
+    summary: str
+    findings: list[GuidelineFinding] = []   # every area at least once (missing ones: concern)
+    sources: list[str] = []          # the Apple pages the reviewer read
+    error: str = ""                  # no review could be made; never counts as a pass
 ```
 
 Rule: every event serializes to one JSON line (`model_dump_json()`); headless mode (S40) prints exactly these lines.

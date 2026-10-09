@@ -41,6 +41,7 @@ compressor = ["openai/gpt-5-mini"]
 explore = ["openai/gpt-5-mini"]
 researcher = ["anthropic/claude-sonnet", "openai/gpt-5-mini"]
 browser = ["anthropic/claude-sonnet", "openai/gpt-5"]
+apple_reviewer = ["openai/gpt-5", "anthropic/claude-sonnet"]
 ```
 
 ## [sandbox]
