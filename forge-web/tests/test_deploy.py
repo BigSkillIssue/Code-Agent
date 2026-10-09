@@ -25,7 +25,10 @@ ENV = {"FORGE_DOMAIN": "forge.example.com", "PREVIEW_DOMAIN": "preview.example.n
 def compose_available() -> bool:
     if shutil.which("docker") is None:
         return False
-    found = subprocess.run(["docker", "compose", "version"], capture_output=True, timeout=30)
+    try:
+        found = subprocess.run(["docker", "compose", "version"], capture_output=True, timeout=30)
+    except subprocess.TimeoutExpired:  # seen on Windows runners: a CLI that never answers
+        return False
     return found.returncode == 0
 
 
