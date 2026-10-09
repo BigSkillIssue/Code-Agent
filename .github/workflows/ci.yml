@@ -76,8 +76,14 @@ jobs:
       - name: Apple tests
         env:
           APPLE_SHOTS_DIR: ${{ runner.temp }}/apple-shots
-        run: uv run pytest -m apple -v
-      - name: Keep the screenshots
+        run: |
+          mkdir -p "$APPLE_SHOTS_DIR"
+          set -o pipefail
+          uv run pytest -m apple -v -rA 2>&1 | tee "$APPLE_SHOTS_DIR/pytest.txt"
+      - name: Stop the simulators
+        if: always()
+        run: xcrun simctl shutdown all || true
+      - name: Keep the screenshots and the test output
         if: always()
         uses: actions/upload-artifact@v4
         with:

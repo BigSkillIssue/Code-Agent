@@ -332,7 +332,7 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
     - Build: the role `apple_reviewer` works in a fresh context (none of the builder's reasoning) with read-only tools and `web_fetch` for Apple's current guidelines; `review_prompt`, `review_plan` and `review_product` return a verdict per guideline area (ok, concern, violation; guideline number, reason, fix); every review is a `GuidelineReview` event.
     - Verify: `uv run pytest tests/test_apple_review.py -q`
 - [ ] **S60 — Apple checkpoints in the pipeline**
-    - Files: `pipeline.py`, `apple_review.py`, `cli.py` (`--apple`), `config.py` (`apple.review`), `tests/test_apple_pipeline.py`
+    - Files: `pipeline.py`, `apple_flow.py`, `apple_review.py`, `cli.py` (`--apple`), `config.py` (`apple.review`), `tests/test_apple_pipeline.py`
     - Build: with `--apple` (or `[apple] review = true`) the prompt is reviewed before planning, the plan after planning and the product after a green build with screenshots of every device; a violation stops the run until the agent revises it or the user overrides it; at the end the user approves the result before it counts as ready for Apple.
     - Verify: `uv run pytest tests/test_apple_pipeline.py -q`
 

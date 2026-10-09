@@ -65,6 +65,20 @@ EVENTS: list[events.Event] = [
     events.AgentFinished(
         session_id="s", ts=1.0, agent_id="a2", role="tester", status="done", report="ok"
     ),
+    events.GuidelineReview(
+        session_id="s",
+        ts=1.0,
+        agent_id="apple-reviewer-plan",
+        stage="plan",
+        verdict="concern",
+        summary="Login needs Sign in with Apple.",
+        sources=["https://developer.apple.com/"],
+        findings=[
+            events.GuidelineFinding(
+                area="design", status="concern", guideline="4.8", reason="Google login"
+            )
+        ],
+    ),
 ]
 
 

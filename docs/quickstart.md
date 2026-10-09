@@ -108,7 +108,27 @@ line at the bottom. Questions and approvals open dialogs. Useful commands:
 | `/tasks` | background jobs, agents and monitors (`/tasks stop j1`); `ctrl+t` opens the list |
 | `/help` | everything else, including your own commands |
 
-## 6. Later
+## 6. Apple apps
+
+On a Mac with Xcode and XcodeGen (`brew install xcodegen`), Forge builds native apps for
+iPhone, iPad, Mac and Apple Watch:
+
+```bash
+forge apple new Tally            # a SwiftUI app for every Apple device, in ./Tally
+cd Tally
+forge --apple "a tally counter with a reset button and a history of the last 10 counts"
+```
+
+The agent builds and tests the app for each platform (`apple_build`) and looks at it on every
+device (`apple_screenshot`). With `--apple` (or `[apple] review = true`) an independent reviewer,
+with its own model (`[roles] apple_reviewer`), checks your request, the plan and the finished app
+against Apple's App Store Review Guidelines and Human Interface Guidelines. A violation goes back
+to the agent; what it cannot fix, you decide. At the end you see the review and the screenshots
+(`.forge/out/apple/`) and approve the app: only then does the report say "Ready for Apple: yes".
+`--yes` and headless runs never approve an app for you. Uploading to Apple is not part of
+Forge itself.
+
+## 7. Later
 
 - `forge sessions` lists sessions; `forge resume` continues an interrupted plan.
 - `forge run --json --yes "..."` for CI: exit 0 done, 1 failed, 2 needs input.

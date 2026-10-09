@@ -67,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--team", action="store_const", const="team", dest="mode", help="a team on a task board"
     )
     parser.add_argument(
+        "--apple",
+        action="store_true",
+        help="check Apple's guidelines at the request, the plan and the built app; you approve it",
+    )
+    parser.add_argument(
         "--fake",
         metavar="SCRIPT.json",
         help="replace every model with a FakeProvider replaying SCRIPT (offline runs and tests)",
@@ -97,6 +102,8 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
     """Find the project root and load its configuration (with --fake applied)."""
     root = find_project_root(options.cwd or Path.cwd())
     cfg = load_config(root, profile=options.profile)
+    if options.apple:
+        cfg.apple.review = True
     for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
         print(f"warning: {warning}", file=sys.stderr)
     if options.fake is None:

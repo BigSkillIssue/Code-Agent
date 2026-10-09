@@ -47,6 +47,8 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "explore": ["openai/gpt-5-mini"],
     "researcher": ["anthropic/claude-sonnet", "openai/gpt-5-mini"],
     "browser": ["anthropic/claude-sonnet", "openai/gpt-5"],
+    # Another model family than the coder's first, so the check does not share its blind spots.
+    "apple_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
 }
 
 
@@ -144,6 +146,9 @@ class AppleConfig(_Strict):
 
     timeout_s: float = 1800  # one build, test run or archive
     max_screenshots: int = 40  # per session
+    # Review the request, the plan and the built app against Apple's guidelines (S60, --apple)
+    # and ask the user to approve the app; on in Forge Web's Apple projects.
+    review: bool = False
     # The simulator each platform runs on; the newest one of the same family when missing.
     devices: dict[str, str] = Field(
         default_factory=lambda: {

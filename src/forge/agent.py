@@ -108,7 +108,8 @@ def prompt_for(ctx: Ctx, role: str) -> str:
     if role in ctx.state.custom_roles:
         return "custom_agent"
     if ctx.agent_id != "main":
-        return role if role in ("explore", "researcher", "browser") else "team_member"
+        own_prompt = ("explore", "researcher", "browser", "apple_reviewer")
+        return role if role in own_prompt else "team_member"
     if role == "coder" and ctx.state.mode in ("subagents", "team"):
         return "team_lead"
     return ROLE_PROMPTS.get(role, "coder")
@@ -127,7 +128,10 @@ def deferred_tools_text(ctx: Ctx) -> str:
 
 
 def apple_text(ctx: Ctx) -> str:
-    """Apple guidance for Apple projects and wherever Apple apps can be built (else empty)."""
+    """Apple guidance for Apple projects and wherever Apple apps can be built (else empty).
+    The Apple reviewer judges instead of building, so it does not get the builder's guidance."""
+    if ctx.role == "apple_reviewer":
+        return ""
     return prompts.render("apple") if ctx.state.apple or is_apple_project(ctx.root) else ""
 
 

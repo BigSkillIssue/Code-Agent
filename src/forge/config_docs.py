@@ -109,6 +109,8 @@ SECTION_DOCS: dict[type[BaseModel], dict[str, str]] = {
         "max_screenshots": "Simulator and Mac screenshots per session.",
         "devices": "Simulator per platform (`ios`, `ipados`, `watchos`); "
         "the newest of the same family when it is missing.",
+        "review": "Check the request, the plan and the built app against Apple's guidelines and "
+        "ask you to approve the app (`--apple`).",
     },
 }
 

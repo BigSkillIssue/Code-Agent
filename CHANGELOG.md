@@ -33,6 +33,13 @@ Phase 7 (S58-S60), Apple apps:
 - **Apple app template:** `forge apple new NAME` creates a SwiftUI app for iPhone, iPad, Mac and
   Apple Watch: an XcodeGen `project.yml`, shared code, unit tests, a privacy manifest and the
   Mac App Store sandbox. CI builds, tests, archives and photographs it with a real Xcode.
+- **Apple guideline reviewer:** an independent `apple_reviewer` (its own model, a fresh
+  context, read-only tools and Apple's current pages) judges a request, a plan or a finished app
+  per guideline area: ok, concern or violation, with the guideline's number and a fix.
+- **`--apple`:** the request is reviewed before planning, the plan before building and the app
+  once it builds, passes its tests and has been photographed on every device in light and dark
+  mode. Violations go back to the planner or the coder; what they cannot fix, you decide. Only an
+  app you approve is reported as ready for Apple.
 
 ## 1.0.0 - 2026-10-05
 
