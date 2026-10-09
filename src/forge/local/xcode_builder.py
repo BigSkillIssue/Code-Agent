@@ -274,10 +274,11 @@ class XcodeBuilder:
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout)
         except TimeoutError:
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
-            await proc.wait()
+            await stopped(proc)
             raise AppleBuildError(f"{argv[0]} took longer than {timeout:.0f} s") from None
+        except asyncio.CancelledError:  # a stopped job must not leave xcodebuild running
+            await asyncio.shield(stopped(proc))
+            raise
         return (proc.returncode if proc.returncode is not None else -1), out.decode(
             "utf-8", "replace"
         )
@@ -366,3 +367,10 @@ def runtime_version(runtime: str) -> tuple[int, ...]:
 def png(path: Path) -> ImagePart:
     """A PNG file as an image part."""
     return ImagePart(media_type="image/png", data_b64=base64.b64encode(path.read_bytes()).decode())
+
+
+async def stopped(proc: asyncio.subprocess.Process) -> None:
+    """Kill a program and wait until it is gone."""
+    with contextlib.suppress(ProcessLookupError):
+        proc.kill()
+    await proc.wait()

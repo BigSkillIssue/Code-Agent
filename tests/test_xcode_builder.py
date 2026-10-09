@@ -315,3 +315,28 @@ def test_the_default_data_folder_is_per_project(
     one = XcodeBuilder(tmp_path / "a", AppleConfig())
     two = XcodeBuilder(tmp_path / "b", AppleConfig())
     assert one.data != two.data and one.data.parent == two.data.parent == tmp_path / "apple"
+
+
+async def test_a_cancelled_step_stops_its_program(project: Path, tmp_path: Path) -> None:
+    import asyncio
+
+    pid_file = tmp_path / "slow.pid"
+    slow = f"import os, time; open({str(pid_file)!r}, 'w').write(str(os.getpid())); time.sleep(60)"
+    step = asyncio.create_task(builder(project, tmp_path).run([sys.executable, "-c", slow]))
+    for _ in range(200):
+        if pid_file.exists() and pid_file.read_text():
+            break
+        await asyncio.sleep(0.05)
+    pid = int(pid_file.read_text())
+    step.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await step
+    for _ in range(100):  # a stopped job must not leave xcodebuild running
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        os.kill(pid, 9)
+        pytest.fail("the program kept running after its step was cancelled")
