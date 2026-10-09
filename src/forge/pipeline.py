@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from forge import prompts
 from forge.agent import over_budget, run_agent
+from forge.apple_flow import AppleStopped, check_plan, check_request, finish_product
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
@@ -30,6 +31,8 @@ class Report(BaseModel):
     assumptions: list[str]
     manual_checks: list[str]
     usage: Usage
+    ready_for_apple: bool = False  # S60: only when the user approved the app
+    apple_summary: str = ""  # S60: why the app is (not) ready for Apple
 
 
 class ReviewAnswer(BaseModel):
@@ -300,25 +303,43 @@ async def run_task(prompt: str, ctx: Ctx) -> Report:
     submitted = await ctx.hooks.run("prompt_submit", {"prompt": prompt}, ctx)
     if submitted.block:
         return stopped_report(ctx, f"A prompt_submit hook stopped this task: {submitted.message}")
+    apple = ctx.cfg.apple.review
     try:
+        if apple:
+            await check_request(ctx, prompt)
         spec = await refine(prompt, ctx)
         ctx.session.spec = spec
         ctx.state.mode = choose_mode(spec, ctx.state.mode_override)
-        if spec.size == "trivial":
+        if spec.size == "trivial" and not apple:  # an Apple app's plan is always reviewed
             report = await run_trivial(prompt, spec, ctx)
         else:
-            spec = await clarify(spec, ctx)
-            plan = await execute(await make_plan(spec, ctx), ctx)
-            report = await budget_report(ctx) if over_budget(ctx) else await final_review(plan, ctx)
+            report = await run_planned(await clarify(spec, ctx), ctx)
     except PlanRejected:
         report = stopped_report(ctx, "You rejected the plan, so nothing was changed.")
-    except PipelineError as err:
+    except (PipelineError, AppleStopped) as err:
         report = stopped_report(ctx, str(err))
     ctx.session.status = "done" if report.ok else "failed"
     ctx.session.summary = report.summary
     await ctx.store.save_session(ctx.session)
     await ctx.hooks.run("stop", {"ok": report.ok, "summary": report.summary}, ctx)
     return report
+
+
+async def run_planned(spec: TaskSpec, ctx: Ctx) -> Report:
+    """Plan, execute and review; with Apple checks, the plan and the built app are reviewed too."""
+    plan = await make_plan(spec, ctx)
+    if ctx.cfg.apple.review:
+        plan = await check_plan(ctx, plan, lambda revised: make_plan(revised, ctx))
+    plan = await execute(plan, ctx)
+    if over_budget(ctx):
+        return await budget_report(ctx)
+    if not ctx.cfg.apple.review:
+        return await final_review(plan, ctx)
+    outcome = await finish_product(ctx)  # before the final review: fixes belong in its diff
+    report = await final_review(plan, ctx)
+    return report.model_copy(
+        update={"ready_for_apple": outcome.ready, "apple_summary": outcome.summary}
+    )
 
 
 async def run_trivial(prompt: str, spec: TaskSpec, ctx: Ctx) -> Report:
@@ -371,6 +392,9 @@ def report_text(report: Report) -> str:
         lines.append("Files changed: " + ", ".join(report.files_changed))
     lines += [f"Assumed: {a}" for a in report.assumptions]
     lines += [f"Check by hand: {c}" for c in report.manual_checks]
+    if report.apple_summary:
+        ready = "yes" if report.ready_for_apple else "no"
+        lines.append(f"Ready for Apple: {ready} ({report.apple_summary})")
     usage = report.usage
     tokens = f"{usage.input_tokens} in, {usage.output_tokens} out tokens"
     lines.append(f"Cost: ${usage.cost_usd:.4f} ({tokens})")

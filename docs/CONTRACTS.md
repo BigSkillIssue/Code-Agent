@@ -352,6 +352,8 @@ class Report(BaseModel):
     assumptions: list[str]
     manual_checks: list[str]
     usage: Usage
+    ready_for_apple: bool = False    # S60: only when the user approved the app (--apple)
+    apple_summary: str = ""          # S60: why the app is (not) ready for Apple
 ```
 
 ## Agent loop — `src/forge/agent.py`

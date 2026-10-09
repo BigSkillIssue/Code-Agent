@@ -78,8 +78,8 @@ forge ollama setup         run locally: pick, download and configure an Ollama m
 forge apple new NAME       a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 ```
 
-Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything), `--solo`/`--team`,
-`--fake [SCRIPT.json]`.
+Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything, except an app for Apple),
+`--solo`/`--team`, `--apple` (Apple guideline checks and your approval), `--fake [SCRIPT.json]`.
 
 ## Development
 

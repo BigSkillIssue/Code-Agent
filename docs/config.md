@@ -122,6 +122,7 @@ Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).
 | --- | --- | --- | --- |
 | `timeout_s` | float | `1800` | Seconds one build, test run or archive may take. |
 | `max_screenshots` | int | `40` | Simulator and Mac screenshots per session. |
+| `review` | bool | `false` | Check the request, the plan and the built app against Apple's guidelines and ask you to approve the app (`--apple`). |
 | `devices` | table of str | - | Simulator per platform (`ios`, `ipados`, `watchos`); the newest of the same family when it is missing. |
 
 ## [providers.<name>]

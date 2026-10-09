@@ -26,6 +26,7 @@ Table of contents:
   APPLE          Swift/SwiftUI and XcodeGen guidance for Apple projects (environment section)
   APPLE_REVIEWER independent check of an Apple app against Apple's guidelines -> findings
   APPLE_REVIEW_* the reviewer's user messages for the request, the plan and the product
+  APPLE_FIX      send problems the Apple checks found back to the coder (APPLE_FEEDBACK: the user's)
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -584,6 +585,18 @@ APPLE_REVIEW_NO_SCREENS = """\
 There are no screenshots of the app. Judge the interface from the code, and say in the hig finding that nobody has looked at it yet.
 """
 
+APPLE_NO_BUILDS = """\
+There is no Mac to build on, so nothing was built, tested or photographed. Judge the app from its project and code, and say so in the performance and hig findings.
+"""
+
+APPLE_FIX = """\
+The checks of the finished Apple app found problems. Fix them in the project, then build and test with apple_build for every platform the app supports and look at the result with apple_screenshot. The problems:
+"""
+
+APPLE_FEEDBACK = """\
+The user looked at the finished Apple app and wants changes. Make them, then build and test with apple_build for every platform the app supports and look at the result with apple_screenshot. The user's feedback:
+"""
+
 
 LOCAL_FAMILIES = ("llama", "qwen", "mistral", "phi", "gemma", "deepseek-coder", "codellama")
 
@@ -613,6 +626,9 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "apple_review_screens": (APPLE_REVIEW_SCREENS, "{material}"),
     "apple_review_blind": (APPLE_REVIEW_BLIND, ""),
     "apple_review_no_screens": (APPLE_REVIEW_NO_SCREENS, ""),
+    "apple_no_builds": (APPLE_NO_BUILDS, ""),
+    "apple_fix": (APPLE_FIX, "{material}"),
+    "apple_feedback": (APPLE_FEEDBACK, "{material}"),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),
     "final_review": (FINAL_REVIEW, FINAL_REVIEW_TAIL),

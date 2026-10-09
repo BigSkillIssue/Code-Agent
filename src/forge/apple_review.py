@@ -81,6 +81,7 @@ async def review(
             verdict=max((f.status for f in findings), key=SEVERITY.__getitem__),
             summary=answer.summary, findings=findings, sources=answer.sources,
         )  # fmt: skip
+    ctx.state.apple_reviews.append(result)
     await ctx.bus.publish(result)
     return result
 

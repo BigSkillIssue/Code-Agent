@@ -7,7 +7,15 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "forge"
 
-CORE = ["pipeline.py", "agent.py", "team.py", "compress.py", "tools.py"]
+CORE = [
+    "pipeline.py",
+    "agent.py",
+    "team.py",
+    "compress.py",
+    "tools.py",
+    "apple_review.py",
+    "apple_flow.py",
+]
 FORBIDDEN_IN_CORE = ("textual", "rich", "sqlite3", "sqlalchemy", "subprocess", "forge.local")
 
 # Module-level imports must point inward. Keys are module paths (relative to src/forge),
@@ -18,6 +26,9 @@ UPWARD = {
     "tools.py": ("forge.agent", "forge.team", "forge.pipeline", "forge.cli", "forge.tui"),
     "agent.py": ("forge.team", "forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
     "pipeline.py": ("forge.cli", "forge.tui", "forge.api"),
+    # The Apple checks sit between the agent loop and the pipeline that runs them (S59, S60).
+    "apple_review.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
+    "apple_flow.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
 }
 
 
