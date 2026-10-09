@@ -35,6 +35,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+          enable-cache: false  # most runs install nothing, and an empty cache fails the job
       - name: Merge main, check, push
         id: sync
         run: |
