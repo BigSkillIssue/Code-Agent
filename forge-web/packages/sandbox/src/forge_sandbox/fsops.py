@@ -361,11 +361,7 @@ class Workspace:
     def rename(self, src: str, dst: str) -> dict[str, Any]:
         """Move an entry inside the workspace; refuses to replace an existing one."""
         if not FD_SAFE:
-            target = self._fallback_path(dst)
-            if target.exists():
-                raise fs_error("exists", f"{dst} already exists")
-            self._fallback_path(src).rename(target)
-            return {"path": dst}
+            return self._fallback_rename(src, dst)
         src_fd, src_name, _ = self._parent(src)
         try:
             dst_fd, dst_name, dst_parts = self._parent(dst, create=True)
@@ -464,13 +460,26 @@ class Workspace:
         st = path.stat()
         return {"path": "/".join(split_path(rel)), "size": st.st_size, "mtime": st.st_mtime}
 
+    def _fallback_rename(self, src: str, dst: str) -> dict[str, Any]:
+        source, target = self._fallback_path(src), self._fallback_path(dst)
+        if not (source.exists() or source.is_symlink()):
+            raise fs_error("not_found", f"{src} does not exist")
+        if target.exists() or target.is_symlink():
+            raise fs_error("exists", f"{dst} already exists")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+        return {"path": "/".join(split_path(dst))}
+
     def _fallback_delete(self, rel: str, recursive: bool) -> dict[str, Any]:
         path = self._fallback_path(rel)
         if path.is_dir() and not path.is_symlink():
             if recursive:
                 shutil.rmtree(path)
             else:
-                path.rmdir()
+                try:
+                    path.rmdir()
+                except OSError:
+                    raise fs_error("not_empty", f"{rel} is not empty") from None
         elif path.exists() or path.is_symlink():
             path.unlink()
         else:

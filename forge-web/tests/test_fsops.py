@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from forge_sandbox import fsops
 from forge_sandbox.fsops import FD_SAFE, Workspace, split_path
 from forge_sandbox.rpc import RpcError
 
@@ -90,6 +91,18 @@ def test_rename_refuses_to_replace_and_delete_refuses_non_empty(ws: Workspace) -
     with pytest.raises(RpcError) as not_empty:
         ws.delete("dir")
     assert code_of(not_empty) == "not_empty"
+
+
+def test_the_fallback_without_directory_descriptors_behaves_the_same(
+    ws: Workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows has no directory descriptors: there the path-based fallback runs.
+    monkeypatch.setattr(fsops, "FD_SAFE", False)
+    test_write_read_list_rename_delete(ws)
+    test_rename_refuses_to_replace_and_delete_refuses_non_empty(ws)
+    with pytest.raises(RpcError) as missing:
+        ws.rename("no-such-file", "elsewhere")
+    assert code_of(missing) == "not_found"
 
 
 def test_write_is_limited(ws: Workspace) -> None:
