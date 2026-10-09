@@ -24,6 +24,16 @@ Phase 6 (S49-S56), after v1.0:
 - **MCP management:** `forge mcp add/add-json/list/get/remove` and `/mcp` (add, remove,
   reconnect without a restart).
 
+Phase 7 (S58-S60), Apple apps:
+
+- **Apple builds:** on a Mac with Xcode, `apple_build` builds, tests and archives (unsigned) for
+  iOS, iPadOS, macOS and watchOS, and `apple_screenshot` shows the app on a simulated iPhone,
+  iPad or Apple Watch, or on the Mac, in light or dark mode. A server can offer the same with a
+  remote Mac through the `AppleBuilder` port.
+- **Apple app template:** `forge apple new NAME` creates a SwiftUI app for iPhone, iPad, Mac and
+  Apple Watch: an XcodeGen `project.yml`, shared code, unit tests, a privacy manifest and the
+  Mac App Store sandbox. CI builds, tests, archives and photographs it with a real Xcode.
+
 ## 1.0.0 - 2026-10-05
 
 The first release: everything planned in `docs/STEPS.md` (S01-S48).

@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,9 @@ from forge.ports import AppleBuildError
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the fake tools are scripts")
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
-TOOLS = ("xcodebuild", "xcrun", "xcodegen", "plutil", "open", "screencapture", "osascript")
+TOOLS = ("xcodebuild", "xcrun", "xcodegen", "plutil", "screencapture")
 FAKE = """#!{python}
-import json, os, sys
+import json, os, shutil, sys, time
 from pathlib import Path
 
 name, args = Path(sys.argv[0]).name, sys.argv[1:]
@@ -42,6 +43,9 @@ elif name == "xcodebuild":
               else "Debug-watchsimulator" if "watchOS" in destination else "Debug")
     app = Path(after("-derivedDataPath")) / "Build" / "Products" / folder / "Demo.app"
     app.mkdir(parents=True, exist_ok=True)
+    if folder == "Debug":  # a Mac app: its program is this script, called Demo
+        (app / "Contents" / "MacOS").mkdir(parents=True, exist_ok=True)
+        shutil.copy(sys.argv[0], app / "Contents" / "MacOS" / "Demo")
     (app.parent / "DemoTests.xctest").mkdir(exist_ok=True)
     print(state.get("output", "** BUILD SUCCEEDED **"))
     sys.exit(state.get("exit", 0))
@@ -55,7 +59,12 @@ elif name == "xcrun" and args[:2] == ["simctl", "io"]:
 elif name == "screencapture":
     Path(args[-1]).write_bytes(state["png"].encode("latin-1"))
 elif name == "plutil":
-    print("com.example.demo")
+    print("Demo" if args[1] == "CFBundleExecutable" else "com.example.demo")
+elif name == "Demo":
+    Path(os.environ["FAKE_LOG"]).with_name("demo.pid").write_text(str(os.getpid()))
+    if state.get("app_crashes"):
+        sys.exit("Fatal error: no window")
+    time.sleep(60)  # a running app, until it is stopped
 """
 
 DEVICES = {
@@ -200,15 +209,40 @@ async def test_a_simulator_screenshot(
     assert "platform=iOS Simulator,id=TABLET" in fakes.calls("xcodebuild")[-1]
 
 
-async def test_a_mac_screenshot(
+async def test_a_watch_screenshot_is_always_dark(
     project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fakes = Fakes(tmp_path, monkeypatch)
-    screen = await builder(project, tmp_path).screenshot("macos")
-    assert screen.device == "Mac" and base64.b64decode(screen.image.data_b64) == PNG
-    app = str(tmp_path / "data" / "DerivedData" / "Build" / "Products" / "Debug" / "Demo.app")
-    assert fakes.calls("open") == [["-n", app]] and fakes.calls("screencapture")
-    assert fakes.calls("osascript")  # the app is quit afterwards
+    screen = await builder(project, tmp_path).screenshot("watchos")
+    assert screen.device == "Apple Watch Series 9 (45mm)" and screen.dark
+    assert not any(c[1] == "ui" for c in fakes.calls("xcrun"))  # it has no light appearance
+
+
+async def test_a_mac_screenshot_starts_the_app_in_its_appearance_and_stops_it(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes = Fakes(tmp_path, monkeypatch)
+    # Time for the fake app to start and log its arguments before the picture is taken.
+    patient = XcodeBuilder(project, AppleConfig(), data_dir=tmp_path / "data", launch_wait_s=2)
+    screen = await patient.screenshot("macos", dark=True)
+    assert screen.device == "Mac" and screen.dark
+    assert base64.b64decode(screen.image.data_b64) == PNG and fakes.calls("screencapture")
+    assert fakes.calls("Demo") == [["-AppleInterfaceStyle", "Dark"]]
+    pid = int((tmp_path / "demo.pid").read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)  # stopped and reaped once the picture is taken
+
+
+async def test_a_mac_app_that_quits_at_once_is_an_error(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes = Fakes(tmp_path, monkeypatch)
+    fakes.set(app_crashes=True)
+    crashing = XcodeBuilder(project, AppleConfig(), data_dir=tmp_path / "data", launch_wait_s=10)
+    with pytest.raises(AppleBuildError, match="quit right after it started") as quit_early:
+        await crashing.screenshot("macos")
+    assert "Fatal error: no window" in str(quit_early.value)
+    assert not fakes.calls("screencapture")
 
 
 async def test_what_cannot_work_is_said_plainly(

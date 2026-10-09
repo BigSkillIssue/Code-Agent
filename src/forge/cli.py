@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from forge import __version__
+from forge.apple_template import bundle_problem, name_problem, write_app
 from forge.config import (
     ConfigError,
     ForgeConfig,
@@ -42,6 +43,7 @@ commands:
   forge browser install  download the Chromium the browser agent uses
   forge mcp add|list|get|remove   manage MCP servers (forge mcp for help)
   forge ollama setup|status       use a local Ollama model (picks one for this machine)
+  forge apple new NAME            a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 """
 
 
@@ -127,6 +129,30 @@ def cmd_browser(options: argparse.Namespace, rest: list[str]) -> int:
     from forge.local.playwright_browser import install_chromium
 
     return install_chromium()
+
+
+def cmd_apple(options: argparse.Namespace, rest: list[str]) -> int:
+    """`forge apple new NAME [--bundle-id ID]`: a SwiftUI app for every Apple device."""
+    parser = argparse.ArgumentParser(prog="forge apple")
+    parser.add_argument("action", choices=["new"])
+    parser.add_argument("name", help="the app's name, e.g. Tally (also its folder)")
+    parser.add_argument("--bundle-id", help="reverse domain id (default: com.example.<name>)")
+    args = parser.parse_args(rest)
+    bundle_id = args.bundle_id or f"com.example.{args.name.lower()}"
+    problem = name_problem(args.name) or bundle_problem(bundle_id)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
+        return 1
+    folder = (options.cwd or Path.cwd()) / args.name
+    try:
+        written = write_app(folder, args.name, bundle_id)
+    except FileExistsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created {args.name} ({len(written)} files) in {folder}, bundle id {bundle_id}")
+    print(f'next: cd {folder} && forge "<what the app should do>"')
+    print("Builds need a Mac with Xcode and XcodeGen (brew install xcodegen).")
+    return 0
 
 
 def cmd_config(options: argparse.Namespace, rest: list[str]) -> int:
@@ -332,6 +358,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "browser": cmd_browser,
     "mcp": cmd_mcp,
     "ollama": cmd_ollama,
+    "apple": cmd_apple,
 }
 
 

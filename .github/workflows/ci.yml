@@ -54,6 +54,37 @@ jobs:
           FORGE_REQUIRE_BROWSER: "1"
         run: uv run pytest -q tests/conformance/test_browser_conformance.py tests/test_browser.py
 
+  apple:
+    # The app from `forge apple new` built, tested, archived and photographed on every Apple
+    # platform with a real Xcode (the gate jobs skip these tests: they need a Mac with Xcode).
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv sync
+          brew install xcodegen
+      - name: Xcode and simulators
+        run: |
+          xcodebuild -version
+          xcodegen --version
+          xcrun simctl list devices available
+      - name: Apple tests
+        env:
+          APPLE_SHOTS_DIR: ${{ runner.temp }}/apple-shots
+        run: uv run pytest -m apple -v
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-screenshots
+          path: ${{ runner.temp }}/apple-shots
+          if-no-files-found: ignore
+
   windows-shells:
     # The shell tools, the sandbox and the executor with each Windows shell on its own.
     name: windows shell (${{ matrix.name }})
