@@ -35,6 +35,12 @@ def test_the_app_has_a_target_for_every_device() -> None:
     assert "PRODUCT_BUNDLE_IDENTIFIER: com.acme.tally.watchkitapp" in spec
     assert "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.acme.tally" in spec
     assert "- target: Tally_watchOS" in spec  # the Watch app ships inside the iPhone app
+    # XcodeGen finds the test host by the target's productName, not by PRODUCT_NAME.
+    for target, product in (("Tally_iOS", "Tally"), ("Tally_macOS", "Tally"),
+                            ("Tally_watchOS", "TallyWatch")):  # fmt: skip
+        block = spec.split(f"\n  {target}:\n", 1)[1].split("\n  Tally_", 1)[0]
+        assert f"\n    productName: {product}\n" in block, target
+    assert "PRODUCT_NAME" not in spec
     assert "\t" not in spec and all((len(line) - len(line.lstrip())) % 2 == 0
                                     for line in spec.splitlines())  # fmt: skip
     assert b"@main" in files["Shared/TallyApp.swift"]

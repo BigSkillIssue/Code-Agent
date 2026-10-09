@@ -51,6 +51,7 @@ ISSUE = re.compile(
 PLAIN_ISSUE = re.compile(r"^(?:xcodebuild: )?(?P<sev>error|warning): (?P<msg>.+)$", re.M)
 TESTS = re.compile(r"Executed (\d+) tests?, with (\d+) failures?")
 LOG_TAIL_LINES = 60
+BOOT_TIMEOUT_S = 600  # a cold simulator on a busy Mac
 
 
 class XcodeBuilder:
@@ -69,6 +70,7 @@ class XcodeBuilder:
         key = hashlib.sha256(str(root).encode()).hexdigest()[:12]
         self.data = data_dir or forge_home() / "apple" / key  # DerivedData, archives, shots
         self.launch_wait_s = launch_wait_s
+        self.booted: list[str] = []  # simulators this builder started
 
     async def build(
         self, platform: ApplePlatform, action: AppleAction, scheme: str | None = None
@@ -98,10 +100,11 @@ class XcodeBuilder:
         if platform == "macos":
             return await self.mac_screenshot(dark)
         udid, name = await self.device(platform, device)
-        await self.run(["xcrun", "simctl", "boot", udid], 120)  # fails harmlessly when running
-        await self.checked(["xcrun", "simctl", "bootstatus", udid, "-b"], 300)
-        app = await self.built_app(platform, self.destination(platform, udid))
+        # Built for any simulator: Xcode then need not know the device, and the device boots
+        # only once the app is ready.
+        app = await self.built_app(platform, GENERIC[platform])
         bundle = await self.plist_value(app / "Info.plist", "CFBundleIdentifier")
+        await self.boot(udid)
         if platform != "watchos":  # the Watch has no light appearance
             await self.checked(
                 ["xcrun", "simctl", "ui", udid, "appearance", "dark" if dark else "light"]
@@ -151,8 +154,23 @@ class XcodeBuilder:
             hint="run its tests with apple_build, or read its log",
         )
 
+    async def boot(self, udid: str) -> None:
+        """Start a simulator and wait until it is up. One at a time: simulators Forge started
+        for other devices are shut down first (several at once can take minutes to start)."""
+        for other in [u for u in self.booted if u != udid]:
+            await self.run(["xcrun", "simctl", "shutdown", other], 120)
+            self.booted.remove(other)
+        if udid not in self.booted:
+            code, _ = await self.run(["xcrun", "simctl", "boot", udid], 120)
+            if code == 0:  # else it was running already, and stays so
+                self.booted.append(udid)
+        await self.checked(["xcrun", "simctl", "bootstatus", udid, "-b"], BOOT_TIMEOUT_S)
+
     async def close(self) -> None:
-        """Nothing stays running between calls."""
+        """Shut down the simulators Forge started."""
+        for udid in self.booted:
+            await self.run(["xcrun", "simctl", "shutdown", udid], 120)
+        self.booted.clear()
 
     # project, scheme, device -----------------------------------------------------------
 

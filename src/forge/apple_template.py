@@ -47,12 +47,12 @@ targets:
   {name}_iOS:
     type: application
     platform: iOS
+    productName: {name}
     sources: [Shared]
     dependencies:
       - target: {name}_watchOS  # the Watch app ships inside the iPhone app
     settings:
       base:
-        PRODUCT_NAME: {name}
         PRODUCT_BUNDLE_IDENTIFIER: {bundle}
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
@@ -64,6 +64,7 @@ targets:
   {name}_macOS:
     type: application
     platform: macOS
+    productName: {name}
     sources: [Shared]
     entitlements:  # XcodeGen writes this file from these properties
       path: macOS/{name}.entitlements
@@ -71,7 +72,6 @@ targets:
         com.apple.security.app-sandbox: true  # the Mac App Store requires the sandbox
     settings:
       base:
-        PRODUCT_NAME: {name}
         PRODUCT_BUNDLE_IDENTIFIER: {bundle}
         ENABLE_HARDENED_RUNTIME: "YES"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
@@ -80,10 +80,10 @@ targets:
   {name}_watchOS:
     type: application
     platform: watchOS
+    productName: {name}Watch
     sources: [Shared]
     settings:
       base:
-        PRODUCT_NAME: {name}Watch
         PRODUCT_BUNDLE_IDENTIFIER: {bundle}.watchkitapp
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: {bundle}
         INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: "YES"
