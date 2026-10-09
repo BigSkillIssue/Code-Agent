@@ -22,6 +22,7 @@ flags. A project file may set `[providers]`, `[mcp_servers]` and `[hooks]` only 
 | `limits` | LimitsConfig | - | See `[limits]`. |
 | `web` | WebConfig | - | See `[web]`. |
 | `browser` | BrowserConfig | - | See `[browser]`. |
+| `apple` | AppleConfig | - | See `[apple]`. |
 | `mcp_servers` | table of McpServerConfig | `{}` | MCP servers to connect; see `[mcp_servers.<name>]`. |
 | `hooks` | table of list of HookConfig | `{}` | Shell hooks per event: session_start, prompt_submit, pre_tool, post_tool, step_done, pre_compact, stop, subagent_stop. |
 | `profiles` | table of table of Any | `{}` | Named overlays, e.g. `[profiles.ci] approval = { policy = "never" }`. |
@@ -110,6 +111,17 @@ Install Chromium once with `forge browser install`, or set `channel`.
 | `viewport_height` | int | `800` | Page height in pixels. |
 | `timeout_s` | float | `30` | Seconds a page load or action may take. |
 | `max_screenshots` | int | `60` | Screenshots per browser agent; later actions return text only. |
+
+## [apple]
+
+Building Apple apps: Xcode on this Mac, or the remote Mac a server provides.
+Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).
+
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `timeout_s` | float | `1800` | Seconds one build, test run or archive may take. |
+| `max_screenshots` | int | `40` | Simulator and Mac screenshots per session. |
+| `devices` | table of str | - | Simulator per platform (`ios`, `ipados`, `watchos`); the newest of the same family when it is missing. |
 
 ## [providers.<name>]
 

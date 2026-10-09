@@ -312,4 +312,28 @@ The gate command from `AGENTS.md` (ruff, mypy, pytest) must also pass after ever
     - Build: `forge ollama setup` (hardware-based model choice, pull, `forge-<model>` with a fitting `num_ctx`, roles and model entry written) and `forge ollama status`; warning for Ollama models without a known context window.
     - Verify: `uv run pytest tests/test_ollama_setup.py -q`; live: `FORGE_LIVE_OLLAMA=1 uv run pytest -m live tests/contract -k ollama` and an end-to-end task on `examples/buggy`.
 
+## Phase 7 · Apple apps (asked for after v1)
+
+Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple Watch. Xcode runs only on macOS, so builds go through a port: Forge's own implementation uses Xcode on the Mac Forge runs on; a server (Forge Web) implements the same port with a remote Mac. An independent reviewer checks the prompt, the plan and the product against Apple's guidelines, and the user approves the result before anything goes to Apple.
+
+- [ ] **S58a — Apple builds as a port**
+    - Contracts: Ports (`AppleBuilder`)
+    - Files: `ports.py`, `ctx.py`, `config.py` (`[apple]`), `tools.py` (`apple` group), `runtime/apple.py`, `prompts.py` (APPLE), `agent.py`, `wiring.py`, `local/xcode_builder.py`, `tests/test_apple_tools.py`, `tests/test_xcode_builder.py`
+    - Build: the `AppleBuilder` port (build, test and archive for iOS, iPadOS, macOS and watchOS; screenshots on simulated devices); tools `apple_build` and `apple_screenshot` (they ask first, like the shell, and are offered only when a builder is set); Apple guidance in the system prompt of Apple projects; `XcodeBuilder` runs XcodeGen, xcodebuild and simctl and is wired in on a Mac with Xcode.
+    - Tests: the tools report errors, warnings, test counts and screenshots; without a builder there are no `apple` tools; the local builder's commands, scheme and device choice and its parsing, against fake `xcodebuild`, `xcrun` and `xcodegen`.
+    - Verify: `uv run pytest tests/test_apple_tools.py tests/test_xcode_builder.py -q`
+- [ ] **S58b — Apple app template**
+    - Files: `apple_template.py`, `cli.py` (`forge apple new`), `.github/workflows/ci.yml` (macOS job with Xcode), `tests/test_apple_template.py`, `tests/apple/test_xcode_live.py`
+    - Build: a SwiftUI app for iPhone/iPad, Mac and Apple Watch (XcodeGen `project.yml`, shared code, XCTest, a privacy manifest); `forge apple new <name>`; a macOS CI job builds and tests the template with Xcode and takes simulator screenshots through `XcodeBuilder` (marker `apple`, off by default).
+    - Verify: `uv run pytest tests/test_apple_template.py -q`; on a Mac with Xcode: `uv run pytest -m apple -q`
+- [ ] **S59 — Independent Apple guideline reviewer**
+    - Contracts: Messages and events (`GuidelineReview`)
+    - Files: `apple_review.py`, `prompts.py` (APPLE_REVIEWER), `config.py` (role `apple_reviewer`), `events.py`, renderers, `tests/test_apple_review.py`
+    - Build: the role `apple_reviewer` works in a fresh context (none of the builder's reasoning) with read-only tools and `web_fetch` for Apple's current guidelines; `review_prompt`, `review_plan` and `review_product` return a verdict per guideline area (ok, concern, violation; guideline number, reason, fix); every review is a `GuidelineReview` event.
+    - Verify: `uv run pytest tests/test_apple_review.py -q`
+- [ ] **S60 — Apple checkpoints in the pipeline**
+    - Files: `pipeline.py`, `apple_review.py`, `cli.py` (`--apple`), `config.py` (`apple.review`), `tests/test_apple_pipeline.py`
+    - Build: with `--apple` (or `[apple] review = true`) the prompt is reviewed before planning, the plan after planning and the product after a green build with screenshots of every device; a violation stops the run until the agent revises it or the user overrides it; at the end the user approves the result before it counts as ready for Apple.
+    - Verify: `uv run pytest tests/test_apple_pipeline.py -q`
+
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.

@@ -180,3 +180,59 @@ class BrowserFactory(Protocol):
 
     async def new_browser(self) -> Browser: ...
     async def close(self) -> None: ...
+
+
+ApplePlatform = Literal["ios", "ipados", "macos", "watchos"]
+AppleAction = Literal["build", "test", "archive"]
+
+
+class AppleBuildError(Exception):
+    """An Apple build could not run at all (no Xcode, no such scheme or device, a timeout)."""
+
+    def __init__(self, message: str, hint: str = "") -> None:
+        super().__init__(message)
+        self.hint = hint
+
+
+class AppleIssue(BaseModel):
+    """A compiler, linker or build-system message."""
+
+    severity: Literal["error", "warning"]
+    message: str
+    file: str = ""
+    line: int = 0
+
+
+class AppleBuildResult(BaseModel):
+    """What a build, a test run or an archive of an Apple project ended with."""
+
+    ok: bool
+    platform: ApplePlatform
+    action: AppleAction
+    scheme: str
+    issues: list[AppleIssue] = []
+    tests_run: int = 0
+    tests_failed: int = 0
+    log_tail: str = ""  # the end of the build log
+    artifact: str = ""  # the archive (action "archive"), on the builder
+
+
+class AppleScreen(BaseModel):
+    """A screenshot of the app on a simulated device (or on the Mac)."""
+
+    platform: ApplePlatform
+    device: str
+    dark: bool
+    image: ImagePart
+
+
+class AppleBuilder(Protocol):
+    """Builds, tests, archives and shows the session's Apple project (Xcode on some Mac)."""
+
+    async def build(
+        self, platform: ApplePlatform, action: AppleAction, scheme: str | None = None
+    ) -> AppleBuildResult: ...
+    async def screenshot(
+        self, platform: ApplePlatform, device: str | None = None, dark: bool = False
+    ) -> AppleScreen: ...
+    async def close(self) -> None: ...

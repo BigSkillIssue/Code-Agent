@@ -1,6 +1,6 @@
 # Progress
 
-Next step: done (phase 6 + S57)
+Next step: S58b
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -62,7 +62,8 @@ Next step: done (phase 6 + S57)
 | S54 | 2026-10-06 | dc9ac50 | todos.py, events.py, ctx.py, tools.py, prompts.py, tui.py, local/tui_renderer.py, local/rich_renderer.py, local/json_renderer.py, docs/TOOLS.md, docs/CONTRACTS.md, tests/test_todos.py, tests/test_messages.py | todo_write per agent, TodosUpdated event; TUI side panel under the plan, plain/JSON output; prompt rule for 3+ step work |
 | S55 | 2026-10-06 | f9d72a3 | tasks_view.py, local/tasks_screen.py, tui.py, commands.py, ctx.py, tools.py, docs/quickstart.md, tests/test_tasks_view.py | /tasks [ID|stop ID] over jobs, agents and monitors; TUI bar 'N background tasks running' and ctrl+t list with output and stop |
 | S56 | 2026-10-06 | b473c6d | mcp_admin.py, mcp_cli.py, mcp_client.py, cli.py, commands.py, docs/extending.md, docs/quickstart.md, README.md, tests/test_mcp_admin.py | forge mcp add/add-json/list/get/remove (user or project scope, connection check); /mcp status, add, remove, reconnect without restart |
-| S57 | 2026-10-06 | (next) | ollama_setup.py, ollama_cli.py, config_edit.py, mcp_admin.py, cli.py, docs/quickstart.md, docs/PROVIDERS.md, README.md, docs/STEPS.md, CHANGELOG.md, tests/test_ollama_setup.py, tests/test_config_edit.py, tests/contract/test_provider_contract.py | forge ollama setup/status: hardware-based model choice, pull, forge-<model> with num_ctx, roles written; live: Ollama 0.40 on 4 CPU cores, contract test 2/2 with forge-qwen3:4b-instruct |
+| S57 | 2026-10-06 | baf8e84 | ollama_setup.py, ollama_cli.py, config_edit.py, mcp_admin.py, cli.py, docs/quickstart.md, docs/PROVIDERS.md, README.md, docs/STEPS.md, CHANGELOG.md, tests/test_ollama_setup.py, tests/test_config_edit.py, tests/contract/test_provider_contract.py | forge ollama setup/status: hardware-based model choice, pull, forge-<model> with num_ctx, roles written; live: Ollama 0.40 on 4 CPU cores, contract test 2/2 with forge-qwen3:4b-instruct |
+| S58a | 2026-10-09 | (next) | ports.py, ctx.py, config.py, config_docs.py, tools.py, runtime/apple.py, prompts.py, agent.py, wiring.py, local/xcode_builder.py, docs/config.md, docs/CONTRACTS.md, docs/TOOLS.md, docs/STEPS.md, tests/test_apple_tools.py, tests/test_xcode_builder.py | AppleBuilder port (build/test/archive for ios, ipados, macos, watchos; simulator and Mac screenshots); tools apple_build/apple_screenshot (ask first, only with a builder); APPLE prompt for Apple projects; XcodeBuilder (XcodeGen, xcodebuild, simctl) wired in on a Mac with Xcode; tested against fake Xcode tools |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -397,6 +398,12 @@ Next step: done (phase 6 + S57)
   - caches are left out of the "Files changed" list;
   - the refiner no longer asks for file contents.
 - S57 live: Forge solved examples/buggy end-to-end with only Ollama (forge-qwen3:4b-instruct, 4 CPU cores, 907 s, ok=true). The same run showed the report and the review diff still listing __pycache__ files when the step snapshot already held them; both now leave tool caches out (regression tests in tests/test_gitops.py).
+- Phase 7: after v1 the user asked Forge to build native Apple apps (Swift/SwiftUI for iPhone, iPad, Mac and Apple Watch) up to the App Store, checked by an independent guideline reviewer and approved by the user. The parts of the agent engine go into Forge on `main` (S58a–S60, added to docs/STEPS.md as Phase 7) and reach Forge Web through the forge-web-sync workflow; the remote Mac, signing and App Store upload live in Forge Web. As before, the user wants the steps built in one go.
+- S58a: builds go through a port, not the shell tool, so a server can run them on a remote Mac; the agent never sees the Mac's shell.
+- S58a: projects are described with XcodeGen (`project.yml`) and generated before every build: agents edit YAML instead of `.pbxproj`. Builds use generic destinations and `CODE_SIGNING_ALLOWED=NO`; signing belongs to the upload step, which never runs the agent's code with the keys.
+- S58a: derived data and archives go to `~/.forge/apple/<project hash>/` so builds never write into the project.
+- S58a: only the latest screenshot per platform, device and mode is kept in `SessionState.apple_screens` (for the reviewer in S59); `[apple] max_screenshots` caps them per session.
+- S58a: config docs gained per-section descriptions (`SECTION_DOCS`) because `[apple]` reuses `timeout_s` and `max_screenshots` with another meaning than `[browser]`.
 
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
@@ -416,3 +423,4 @@ Next step: done (phase 6 + S57)
 - S40: S40: --no-defaults only takes effect with --json; plain 'forge run' asks on stdin (EOF = defaults).
 - S44: S44: live eval runs (forge eval --models ... --report evals/RESULTS.md) and SWE-bench Lite need API keys and the dataset; only the offline row exists. The SWE-bench runner uses the current Python environment instead of the official per-repo Docker images.
 - S45: S45: the full suite takes ~50s on Linux but ~4 min on Windows runners (process start-up); the 60s target holds on Linux/macOS only.
+- S58a: `XcodeBuilder` is tested only against fake Xcode tools here (no Mac in this environment); the macOS CI job with real Xcode follows in S58b.

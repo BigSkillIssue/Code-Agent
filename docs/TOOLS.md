@@ -662,6 +662,19 @@ Only the `browser` role gets these tools; `research(browser=true)` starts that r
 - **Errors:** `unsupported` (no browser or Chromium is missing; the hint names `forge browser install`), `invalid_args` (local URL), `not_found` (element not found), `network` (navigation failed or timed out).
 - **Tests:** only the browser role sees the tools; a screenshot is in every action; local URLs are refused; one browser per agent, closed at the end; the screenshot limit applies; real-Chromium conformance in `tests/conformance/test_browser_conformance.py`.
 
+## Apple (added in S58a)
+
+Offered only when the session has an `AppleBuilder` (`SessionState.apple`): Forge's own `XcodeBuilder` on a Mac with Xcode, or a server's remote Mac. Read-only roles do not get them. Both tools run the project's build (and its build scripts), so they ask first, like the shell. XcodeGen makes the Xcode project from `project.yml` before every build; nothing is code-signed (simulators need no signature; archives are signed where the signing keys are).
+
+| Tool | Permission | Arguments | Does |
+|---|---|---|---|
+| `apple_build` | ask | `platform` (ios, ipados, macos, watchos), `action=build` (build, test, archive), `scheme` | build, run the tests on a simulator, or archive for the App Store |
+| `apple_screenshot` | ask | `platform`, `device` (simulator name), `dark=false` | build, start the app on the device (or the Mac) and show a PNG screenshot |
+
+- **Output:** `apple_build`: `<action> for <platform> (scheme <scheme>): succeeded|failed`, then `tests: <n> run, <m> failed` for tests, `archive: <path>`, every error and warning once as `<file>:<line>: <severity>: <message>` (paths relative to the project), and on failure the end of the build log. `apple_screenshot`: `<platform> on <device> (light|dark mode): screenshot attached` with the image; the latest screenshot of each device and mode is kept in `SessionState.apple_screens` for the reviewer (S59).
+- **Errors:** `exit_nonzero` (the build or tests failed; the report says why), `unsupported` (no builder, no Xcode or XcodeGen, no such scheme or simulator, a timeout, or `[apple] max_screenshots` reached), `invalid_args` (unknown platform or action).
+- **Tests:** no builder means no tools; reports of green and failed builds, tests and archives; screenshots kept per device and limited; the local builder against fake `xcodebuild`, `xcrun` and `xcodegen` (scheme and simulator choice, messages once, unsigned archives).
+
 ## Plan and interaction
 
 These four tools connect the agent loop to the pipeline. They read and write `ctx.session.spec` and `ctx.session.plan`, save through `ctx.store` after every change, and publish `QuestionAsked` / `PlanUpdated` / `StepDone` events.

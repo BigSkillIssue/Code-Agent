@@ -1,5 +1,7 @@
 """Wire the local port implementations into a Ctx for one session (used by cli, tui and api)."""
 
+import shutil
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -11,6 +13,7 @@ from forge.local.local_executor import LocalExecutor
 from forge.local.memory_bus import MemoryBus
 from forge.local.playwright_browser import PlaywrightBrowsers
 from forge.local.sqlite_store import SqliteStore
+from forge.local.xcode_builder import XcodeBuilder
 from forge.mcp_client import McpHub
 from forge.modelcall import publish_error
 from forge.ports import EventBus, Executor, Renderer, Session, Store
@@ -91,6 +94,8 @@ async def open_session(
     )
     ctx.state.team = AgentRegistry()
     ctx.state.browser_factory = PlaywrightBrowsers(cfg.browser)  # starts on first use
+    if sys.platform == "darwin" and shutil.which("xcodebuild"):
+        ctx.state.apple = XcodeBuilder(root, cfg.apple)
     if cfg.mcp_servers:
         await connect_mcp(ctx)
     await ctx.hooks.run("session_start", {"session_id": session.id, "cwd": str(root)}, ctx)
@@ -128,6 +133,8 @@ async def close_session(ctx: Ctx) -> None:
     ctx.state.browsers.clear()
     if ctx.state.browser_factory is not None:
         await ctx.state.browser_factory.close()
+    if ctx.state.apple is not None:
+        await ctx.state.apple.close()
     for port in (ctx.executor, ctx.store):
         close = getattr(port, "close", None)
         if close is not None:

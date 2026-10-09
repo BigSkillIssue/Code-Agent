@@ -229,6 +229,46 @@ class BrowserFactory(Protocol):        # a fresh context (no profile, no downloa
     async def close(self) -> None: ...
 ```
 
+**Apple builds (added in S58a).** Apple projects (Swift, SwiftUI) are built, tested and shown on simulated devices through this port. `local/xcode_builder.py` implements it on a Mac with Xcode (running XcodeGen first when the project has a `project.yml`); a server may implement it with a remote Mac. `SessionState.apple` holds it; without one the `apple` tools are not offered. Expected failures (no Xcode, no such scheme or device, a timeout) raise `AppleBuildError`; a build that fails is a result with `ok=False` and the compiler's messages. Settings live in `[apple]` (`timeout_s`, `max_screenshots`, `devices`: the preferred simulator per platform).
+
+```python
+ApplePlatform = Literal["ios", "ipados", "macos", "watchos"]
+AppleAction = Literal["build", "test", "archive"]
+
+class AppleBuildError(Exception):      # message + hint
+    hint: str
+
+class AppleIssue(BaseModel):
+    severity: Literal["error", "warning"]
+    message: str
+    file: str = ""
+    line: int = 0
+
+class AppleBuildResult(BaseModel):
+    ok: bool
+    platform: ApplePlatform
+    action: AppleAction
+    scheme: str
+    issues: list[AppleIssue] = []
+    tests_run: int = 0
+    tests_failed: int = 0
+    log_tail: str = ""                 # the end of the build log
+    artifact: str = ""                 # the archive (action "archive"), on the builder
+
+class AppleScreen(BaseModel):
+    platform: ApplePlatform
+    device: str                        # the simulated device ("Mac" for macOS)
+    dark: bool
+    image: ImagePart
+
+class AppleBuilder(Protocol):          # works on the session's project
+    async def build(self, platform: ApplePlatform, action: AppleAction,
+                    scheme: str | None = None) -> AppleBuildResult: ...
+    async def screenshot(self, platform: ApplePlatform, device: str | None = None,
+                         dark: bool = False) -> AppleScreen: ...
+    async def close(self) -> None: ...
+```
+
 ## Plan models — `src/forge/plan.py`
 
 ```python

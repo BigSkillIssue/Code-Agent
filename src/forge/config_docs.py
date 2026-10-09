@@ -13,6 +13,7 @@ from pydantic_core import PydanticUndefined
 
 from forge.config import (
     DEFAULT_ROLES,
+    AppleConfig,
     ApprovalConfig,
     BrowserConfig,
     ForgeConfig,
@@ -49,6 +50,7 @@ DOCS: dict[str, str] = {
     "limits": "See `[limits]`.",
     "web": "See `[web]`.",
     "browser": "See `[browser]`.",
+    "apple": "See `[apple]`.",
     "headless": "Run the browser without a window.",
     "channel": "Use an installed browser (`chrome`, `msedge`) instead of Playwright's Chromium.",
     "executable": "Path of a Chromium-based browser to start instead.",
@@ -100,6 +102,16 @@ DOCS: dict[str, str] = {
     "match": "Regex on the tool name (tool events only; empty = every tool).",
 }
 
+# Fields whose name another section already uses with a different meaning.
+SECTION_DOCS: dict[type[BaseModel], dict[str, str]] = {
+    AppleConfig: {
+        "timeout_s": "Seconds one build, test run or archive may take.",
+        "max_screenshots": "Simulator and Mac screenshots per session.",
+        "devices": "Simulator per platform (`ios`, `ipados`, `watchos`); "
+        "the newest of the same family when it is missing.",
+    },
+}
+
 SECTIONS: list[tuple[str, type[BaseModel], str]] = [
     ("[sandbox]", SandboxConfig, ""),
     ("[approval]", ApprovalConfig, ""),
@@ -110,6 +122,11 @@ SECTIONS: list[tuple[str, type[BaseModel], str]] = [
         "[browser]",
         BrowserConfig,
         "Install Chromium once with `forge browser install`, or set `channel`.",
+    ),
+    (
+        "[apple]",
+        AppleConfig,
+        "Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).",
     ),
     ("[providers.<name>]", ProviderConfig, "One table per provider name."),
     (
@@ -153,9 +170,10 @@ def default_text(value: Any) -> str:
 def table(model: type[BaseModel]) -> list[str]:
     """One row per field: key, type, default, description."""
     rows = ["| key | type | default | description |", "| --- | --- | --- | --- |"]
+    docs = DOCS | SECTION_DOCS.get(model, {})
     for name, field in model.model_fields.items():
         rows.append(
-            f"| `{name}` | {type_name(field.annotation)} | {default_text(field.default)} | {DOCS.get(name, '')} |"
+            f"| `{name}` | {type_name(field.annotation)} | {default_text(field.default)} | {docs.get(name, '')} |"
         )
     return rows
 
