@@ -73,7 +73,9 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
           </div>
         )}
-        {tab === "devices" && <AppleScreens api={client} refreshKey={refreshKey} onError={onError} />}
+        {tab === "devices" && (
+          <AppleScreens api={client} refreshKey={refreshKey} onError={onError} approvalPage={`/p/${projectId}/apple`} />
+        )}
         {opened.has("preview") && (
           <div className={tab === "preview" ? "h-full" : "hidden"}>
             <PreviewPanel api={client} canEdit={canEdit} active={tab === "preview"} onError={onError} />

@@ -1,12 +1,19 @@
-import { MessageCircleQuestion } from "lucide-react";
+import { MessageCircleQuestion, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { Entry } from "../../state/transcript";
 import { t } from "../../lib/i18n";
 import type { Answer } from "./ApprovalCard";
 
 type QuestionEntry = Extract<Entry, { kind: "question" }>;
 
-export function QuestionCard({ entry, onAnswer }: { entry: QuestionEntry; onAnswer?: Answer }) {
+interface Props {
+  entry: QuestionEntry;
+  onAnswer?: Answer;
+  approvalPage?: string; // Forge's approval of an Apple app links to the page with everything to check
+}
+
+export function QuestionCard({ entry, onAnswer, approvalPage }: Props) {
   const [values, setValues] = useState<string[][]>(entry.questions.map((q) => (q.default ? [q.default] : [])));
   const [busy, setBusy] = useState(false);
   const toggle = (index: number, option: string, multi: boolean) =>
@@ -33,6 +40,12 @@ export function QuestionCard({ entry, onAnswer }: { entry: QuestionEntry; onAnsw
         <MessageCircleQuestion className="size-4 text-accent" />
         {t("question")}
       </div>
+      {entry.appleApproval && approvalPage && !entry.resolution && (
+        <Link to={approvalPage} className="mt-2 inline-flex items-center gap-1 rounded-md border border-accent px-3 py-1 text-accent">
+          <ShieldCheck className="size-4" />
+          {t("openApproval")}
+        </Link>
+      )}
       {entry.questions.map((question, index) => (
         <div key={index} className="mt-3">
           <div className="font-medium">{question.text}</div>

@@ -61,6 +61,12 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
 - Who may build is the server's decision (`apple.enabled`, `apple.allowed`, a grant per user, Mac
   minutes per month), checked for every job with the chat's run token, which works only while its
   chat runs.
+- Guideline reviews, screenshots and Forge's approval question come from the project's sandbox and are
+  shown as they came (review links only to apple.com pages). An approval is only the user's own
+  answer "Ready for Apple" to that question, recorded by the server once Forge took it (a second answer
+  to the same question is refused), with who gave it, when, the project's commit and whether anything
+  was uncommitted, and written to the audit log. Opening the approval page approves nothing. The App
+  Store step (W22) works from that commit and asks the user again before anything goes to Apple.
 
 ### Containers
 

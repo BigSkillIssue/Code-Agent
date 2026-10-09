@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DeviceScreen } from "../api/apple";
 import type { ProjectApi } from "../api/project";
@@ -48,8 +49,13 @@ describe("AppleScreens", () => {
     render(<ProjectPanel projectId="p1" canEdit refreshKey={0} onClose={vi.fn()} onError={vi.fn()} api={fakeApi()} />);
     expect(screen.queryByRole("tab", { name: /^(Devices|Geräte)$/ })).toBeNull();
     cleanup();
-    render(<ProjectPanel projectId="p1" canEdit apple refreshKey={0} onClose={vi.fn()} onError={vi.fn()} api={fakeApi()} />);
+    render(
+      <MemoryRouter>
+        <ProjectPanel projectId="p1" canEdit apple refreshKey={0} onClose={vi.fn()} onError={vi.fn()} api={fakeApi()} />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByRole("tab", { name: /^(Devices|Geräte)$/ }));
     expect(await screen.findByTestId("apple-screens")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Ready for approval|Zur Freigabe/ }).getAttribute("href")).toBe("/p/p1/apple");
   });
 });

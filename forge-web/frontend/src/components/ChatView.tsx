@@ -160,7 +160,11 @@ export function ChatView({ chat }: { chat: Chat }) {
           )}
         </header>
         <main className="flex-1 overflow-y-auto">
-          <Transcript entries={transcript.entries} onAnswer={chat.mine ? (id, value) => answer(chat.id, id, value) : undefined} />
+          <Transcript
+            entries={transcript.entries}
+            onAnswer={chat.mine ? (id, value) => answer(chat.id, id, value) : undefined}
+            approvalPage={project?.kind === "apple" ? `/p/${chat.project_id}/apple` : undefined}
+          />
         </main>
         <TodoPanel todos={transcript.todos} />
         {chat.mine && (

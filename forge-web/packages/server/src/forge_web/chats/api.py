@@ -13,7 +13,8 @@ from forge_sandbox.methods import ChatMode
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
 from forge_web.access import require_chat, require_project
-from forge_web.auth.sessions import CurrentUser
+from forge_web.apple.approvals import note_answer
+from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.containers.driver import SandboxError
 from forge_web.db.models import Chat, ChatEvent, User
 from forge_web.quotas import check_disk
@@ -207,6 +208,9 @@ def chats_router() -> APIRouter:
             accepted = await services.runs.answer(chat, body.request_id, body.answer)
         except (RpcError, ChannelClosed, SandboxError, OSError, TimeoutError) as err:
             raise sandbox_failure(err) from None
+        if accepted:  # "Ready for Apple" is recorded only once Forge has taken the answer
+            await note_answer(services, chat, user, body.request_id, body.answer,
+                              client_ip(request))  # fmt: skip
         return {"accepted": accepted}
 
     @router.post("/api/chats/{chat_id}/cancel")

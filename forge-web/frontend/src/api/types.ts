@@ -96,6 +96,7 @@ export type ChatItem =
       id: string;
       kind: "approval" | "question";
       payload: { call?: ToolCall; reason?: string; questions?: Question[] };
+      purpose?: "apple_approval"; // Forge's "Is the app ready for Apple?"
     }
   | { type: "request_resolved"; id: string; answer?: Record<string, unknown>; cancelled?: boolean }
   | { type: "command_result"; command: string; text: string }

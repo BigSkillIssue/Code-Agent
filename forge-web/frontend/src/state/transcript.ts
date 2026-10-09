@@ -2,6 +2,7 @@
 // shows: messages, tool cards, approvals, questions, the plan, turn reports. Pure functions, so
 // the same items always give the same transcript.
 
+import type { GuidelineReview } from "../api/apple";
 import type {
   ChatItem,
   ChatState,
@@ -43,7 +44,9 @@ export type Entry =
       questions: Question[];
       resolution?: "answered" | "dismissed" | "cancelled";
       answers?: string[][];
+      appleApproval?: boolean; // Forge's final question in an Apple app's chat
     }
+  | { kind: "guideline"; key: string; review: GuidelineReview }
   | { kind: "plan"; key: string; goal: string; steps: PlanStep[] }
   | {
       kind: "agent";
@@ -194,6 +197,15 @@ function finishTool(b: Builder, key: string, agent: string, result: ToolResult):
 function addEvent(b: Builder, seq: number, event: Record<string, unknown>): void {
   const agent = String(event.agent_id ?? "main");
   const key = `e${seq}`;
+  if (event.kind === "guideline_review") {
+    // The reviewer runs as an agent of its own, but its verdict belongs in the main transcript;
+    // it also ends the reviewer's card (nobody spawned it, so no spawn result will).
+    const card = b.agents.get(agent);
+    const entry = card ? b.entries[card.index] : undefined;
+    if (card && entry?.kind === "agent") b.entries[card.index] = { ...entry, role: entry.role || "apple_reviewer", status: "ok" };
+    b.entries.push({ kind: "guideline", key, review: event as unknown as GuidelineReview });
+    return;
+  }
   if (agent !== "main" && !b.nested && event.kind !== "agent_finished") {
     addEvent(agentBuilder(b, agent, key), seq, event);
     return;
@@ -276,7 +288,8 @@ function addItem(b: Builder, seq: number, item: ChatItem): void {
           reason: item.payload.reason ?? "",
         });
       } else {
-        b.entries.push({ kind: "question", key, id: item.id, questions: item.payload.questions ?? [] });
+        const appleApproval = item.purpose === "apple_approval";
+        b.entries.push({ kind: "question", key, id: item.id, questions: item.payload.questions ?? [], appleApproval });
       }
       return;
     case "request_resolved":

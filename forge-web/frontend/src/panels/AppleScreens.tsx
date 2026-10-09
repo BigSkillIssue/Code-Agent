@@ -1,8 +1,9 @@
 // The Devices tab of an Apple app: the latest picture of each device, light and dark, as Forge's
 // checks took them on the server's Macs (`.forge/out/apple/`).
 
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { DeviceScreen } from "../api/apple";
 import type { ProjectApi } from "../api/project";
 import { t } from "../lib/i18n";
@@ -18,9 +19,10 @@ interface Props {
   api: ProjectApi;
   refreshKey: number; // a new turn may have taken new pictures
   onError: (message: string) => void;
+  approvalPage?: string; // a link to the page with everything to check before approving
 }
 
-export function AppleScreens({ api, refreshKey, onError }: Props) {
+export function AppleScreens({ api, refreshKey, onError, approvalPage }: Props) {
   const [screens, setScreens] = useState<DeviceScreen[] | null>(null);
   const load = useCallback(async () => {
     try {
@@ -36,6 +38,12 @@ export function AppleScreens({ api, refreshKey, onError }: Props) {
     <div className="h-full space-y-4 overflow-y-auto p-3" data-testid="apple-screens">
       <div className="flex items-center">
         <h2 className="flex-1 text-sm font-medium">{t("devices")}</h2>
+        {approvalPage && (
+          <Link to={approvalPage} className="mr-2 inline-flex items-center gap-1 text-xs text-accent">
+            <ShieldCheck className="size-4" />
+            {t("readyForApproval")}
+          </Link>
+        )}
         <button type="button" title={t("reloadPreview")} className="p-1 text-muted" onClick={() => void load()}>
           <RefreshCw className="size-4" />
         </button>

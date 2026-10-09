@@ -1,7 +1,7 @@
 """A new Apple app project starts from Forge's SwiftUI template (`forge apple new`).
 
-The files are made on the server from the template (no project code runs here) and written into
-the project's sandbox by its daemon.
+The files are made on the server from the template (no project code runs here), written into
+the project's sandbox by its daemon and committed, so the project starts clean.
 """
 
 import base64
@@ -10,10 +10,13 @@ import re
 from fastapi import HTTPException
 from forge.apple_template import app_files, bundle_problem, name_problem
 
+from forge_web.db.models import User
+from forge_web.git_api import committer
 from forge_web.services import Services
 
 GERMAN = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"}
 MAX_NAME = 30
+MESSAGE = "Start from Forge's Apple app template"
 
 
 def app_name(project_name: str) -> str:
@@ -35,8 +38,15 @@ def checked_bundle_id(name: str, bundle_id: str) -> str:
     return chosen
 
 
-async def write_template(services: Services, project_id: str, name: str, bundle_id: str) -> None:
-    """Write the template's files into the project's sandbox."""
-    for path, data in app_files(name, bundle_id).items():
+async def write_template(
+    services: Services, project_id: str, name: str, bundle_id: str, user: User
+) -> None:
+    """Write the template's files into the project's sandbox and commit them as the user."""
+    files = app_files(name, bundle_id)
+    for path, data in files.items():
         params = {"path": path, "base64": base64.b64encode(data).decode(), "create_dirs": True}
         await services.runs.call(project_id, "fs.write", params)
+    await services.runs.call(project_id, "git.stage", {"paths": sorted(files)})
+    author, email = committer(user)
+    commit = {"message": MESSAGE, "name": author, "email": email}
+    await services.runs.call(project_id, "git.commit", commit)

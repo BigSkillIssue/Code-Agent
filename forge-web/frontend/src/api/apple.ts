@@ -52,3 +52,63 @@ export const appleAdmin = {
   users: () => api.get<AppleUser[]>("/api/admin/apple/users"),
   grant: (userId: string, allowed: boolean) => api.put(`/api/admin/apple/users/${id(userId)}`, { allowed }),
 };
+
+export type Verdict = "ok" | "concern" | "violation";
+
+export interface GuidelineFinding {
+  area: "safety" | "performance" | "business" | "design" | "legal" | "hig";
+  status: Verdict;
+  guideline: string; // e.g. "5.1.1" or "HIG Accessibility"
+  reason: string;
+  fix: string;
+}
+
+/** The Apple reviewer's verdict on the request ("prompt"), the plan or the finished app. */
+export interface GuidelineReview {
+  stage: "prompt" | "plan" | "product";
+  verdict: Verdict;
+  summary: string;
+  findings: GuidelineFinding[];
+  sources: string[];
+  error: string;
+  chat_id?: string;
+}
+
+export interface AppleBuild {
+  id: string;
+  kind: "build" | "screenshot";
+  params: { platform?: string; action?: string; dark?: boolean };
+  status: AppleJob["status"];
+  outcome: string;
+  seconds: number;
+  created_at: number;
+}
+
+export interface AppApproval {
+  id: string;
+  chat_id: string;
+  user: string;
+  at: number;
+  commit: string;
+  clean: boolean;
+  summary: string;
+}
+
+/** What the approval page shows besides the pictures. */
+export interface AppleReviewData {
+  reviews: GuidelineReview[];
+  pending: { chat_id: string; request_id: string; text: string } | null;
+  choices: { approve: string; send_back: string; not_yet: string };
+  builds: AppleBuild[];
+  approvals: AppApproval[];
+}
+
+export const appleReview = (projectId: string) =>
+  api.get<AppleReviewData>(`/api/projects/${id(projectId)}/apple/review`);
+
+/** Answer Forge's approval question with one of its choices. */
+export const decideApproval = (chatId: string, requestId: string, choice: string) =>
+  api.post<{ accepted: boolean }>(`/api/chats/${id(chatId)}/answer`, {
+    request_id: requestId,
+    answer: { answers: [{ question_index: 0, values: [choice] }] },
+  });

@@ -97,7 +97,7 @@ def projects_router() -> APIRouter:
         try:
             await fill(services, project, user, client_ip(request))
             if body.source == "apple":
-                await write_template(services, project.id, app_name(body.name), bundle_id)
+                await write_template(services, project.id, app_name(body.name), bundle_id, user)
         except HTTPException:
             await delete_project(request, project)
             raise

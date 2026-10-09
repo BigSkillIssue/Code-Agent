@@ -147,8 +147,8 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
 - [x] **W20 — "Apple app" projects**
     - Files: `frontend/src/components/NewProjectDialog.tsx`, `frontend/src/pages/AdminApple.tsx`, `frontend/src/panels/AppleScreens.tsx`, `forge_web/projects.py`, `forge_web/apple/{template,screens_api}.py`, tests
     - Build: the new-project dialog offers "Apple app" (writes `forge apple new`'s template into the project, kind `apple`); Apple projects' chats check the guidelines; developer.apple.com in the egress list for the reviewer; the Preview tab shows the latest screenshot of each device; the admin page for Macs, jobs, grants and minutes; a separate reviewer model can be chosen.
-- [ ] **W21 — Guideline reviews and approval**
-    - Files: `frontend/src/components/cards/GuidelineCard.tsx`, `frontend/src/pages/AppleReview.tsx`, `forge_web/apple/approvals.py`, tests
+- [x] **W21 — Guideline reviews and approval**
+    - Files: `frontend/src/components/cards/GuidelineCard.tsx`, `frontend/src/pages/AppleReview.tsx`, `forge_web/apple/{approvals,questions}.py`, migration `0007`, tests
     - Build: a card per guideline review (request, plan, product) with every finding; a page "Ready for approval" with the screenshots of every device, the reviews and the build results; "Approve" / "Back to the agent"; only an approval by the user (audit log) opens the App Store step.
 - [ ] **W22 — TestFlight and the App Store**
     - Files: `forge_web/apple/{appstore,signing}.py`, `forge_macworker/export.py`, `frontend/src/pages/AppleRelease.tsx`, tests

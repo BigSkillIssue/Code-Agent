@@ -269,3 +269,20 @@ class AppleJob(Base):
     seconds: Mapped[float] = mapped_column(Float, default=0.0)  # Mac time, for the monthly limit
     outcome: Mapped[str] = mapped_column(Text, default="")  # a short summary for the admin page
     archive: Mapped[bool] = mapped_column(Boolean, default=False)  # an .xcarchive is kept
+
+
+class AppleApproval(Base):
+    """A user's "Ready for Apple" for an Apple project: who, when, and which commit (W21)."""
+
+    __tablename__ = "apple_approvals"
+    __table_args__ = (Index("apple_approvals_by_project", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    chat_id: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    request_id: Mapped[str] = mapped_column(String(64))
+    commit: Mapped[str] = mapped_column(String(64), default="")  # the project's HEAD then
+    clean: Mapped[bool] = mapped_column(Boolean, default=False)  # no uncommitted changes then
+    summary: Mapped[str] = mapped_column(Text, default="")  # the last product review's summary
+    created_at: Mapped[float] = mapped_column(Float)
