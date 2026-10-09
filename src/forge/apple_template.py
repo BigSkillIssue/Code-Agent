@@ -47,12 +47,13 @@ targets:
   {name}_iOS:
     type: application
     platform: iOS
+    productName: {name}
     sources: [Shared]
     dependencies:
       - target: {name}_watchOS  # the Watch app ships inside the iPhone app
     settings:
       base:
-        PRODUCT_NAME: {name}
+        PRODUCT_NAME: {name}  # with productName above: the app and its tests' host agree
         PRODUCT_BUNDLE_IDENTIFIER: {bundle}
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
@@ -64,6 +65,7 @@ targets:
   {name}_macOS:
     type: application
     platform: macOS
+    productName: {name}
     sources: [Shared]
     entitlements:  # XcodeGen writes this file from these properties
       path: macOS/{name}.entitlements
@@ -80,6 +82,7 @@ targets:
   {name}_watchOS:
     type: application
     platform: watchOS
+    productName: {name}Watch
     sources: [Shared]
     settings:
       base:

@@ -32,8 +32,10 @@ def app(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def builder(app: Path) -> XcodeBuilder:
-    # One DerivedData for the module: later builds reuse what earlier ones made.
-    return XcodeBuilder(app, AppleConfig(), data_dir=app.parent / "data", launch_wait_s=8)
+    # One DerivedData for the module: later builds reuse what earlier ones made. A step that
+    # hangs ends after 15 minutes instead of using up the CI job.
+    cfg = AppleConfig(timeout_s=900)
+    return XcodeBuilder(app, cfg, data_dir=app.parent / "data", launch_wait_s=8)
 
 
 @pytest.mark.parametrize("platform", ["ios", "macos", "watchos"])
@@ -61,7 +63,11 @@ async def test_the_iphone_archive_carries_the_watch_app(app: Path) -> None:
     ("platform", "dark"), [("ios", False), ("ipados", True), ("watchos", True), ("macos", False)]
 )
 async def test_screenshots_of_every_device(app: Path, platform: ApplePlatform, dark: bool) -> None:
-    screen = await builder(app).screenshot(platform, dark=dark)
+    apple = builder(app)
+    try:
+        screen = await apple.screenshot(platform, dark=dark)
+    finally:
+        await apple.close()  # its simulator goes down before the next device starts
     data = base64.b64decode(screen.image.data_b64)
     assert data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) > 2_000, screen.device
     folder = os.environ.get("APPLE_SHOTS_DIR")

@@ -206,7 +206,34 @@ async def test_a_simulator_screenshot(
     assert ["install", "TABLET", app] in simctl
     assert ["launch", "--terminate-running-process", "TABLET", "com.example.demo"] in simctl
     assert any(c[:3] == ["io", "TABLET", "screenshot"] for c in simctl)
-    assert "platform=iOS Simulator,id=TABLET" in fakes.calls("xcodebuild")[-1]
+    # Built for any simulator first (Xcode need not know the device), then booted.
+    order = [json.loads(line)[:3] for line in fakes.log.read_text().splitlines()]
+    build = next(i for i, c in enumerate(order) if c[0] == "xcodebuild" and c[1] != "-list")
+    assert build < order.index(["xcrun", "simctl", "boot"])
+    assert "generic/platform=iOS Simulator" in fakes.calls("xcodebuild")[-1]
+
+
+async def test_forge_shuts_down_the_simulators_it_started(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes = Fakes(tmp_path, monkeypatch)
+    apple = builder(project, tmp_path)
+    await apple.screenshot("ios")
+    await apple.screenshot("ipados")  # one simulator at a time: the iPhone goes first
+    shutdowns = [c[2] for c in fakes.calls("xcrun") if c[:2] == ["simctl", "shutdown"]]
+    assert shutdowns == ["PHONE"]
+    await apple.screenshot("ipados", dark=True)  # the same device stays up
+    await apple.close()
+    shutdowns = [c[2] for c in fakes.calls("xcrun") if c[:2] == ["simctl", "shutdown"]]
+    assert shutdowns == ["PHONE", "TABLET"]
+    fakes.set(booted=True)  # running before Forge came: Forge leaves it running
+    other = builder(project, tmp_path)
+    await other.screenshot("watchos")
+    await other.close()
+    assert [c[2] for c in fakes.calls("xcrun") if c[:2] == ["simctl", "shutdown"]] == [
+        "PHONE",
+        "TABLET",
+    ]
 
 
 async def test_a_watch_screenshot_is_always_dark(
