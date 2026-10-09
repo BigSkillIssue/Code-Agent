@@ -21,7 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FORGE_WEB_BRANCH: claude/elegant-tesla-h2iugo
+  # Not FORGE_*: Forge reads every FORGE_* variable as a setting. sync-core.sh reads this one.
+  SYNC_BRANCH: claude/elegant-tesla-h2iugo
 
 jobs:
   sync:
@@ -30,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.FORGE_WEB_BRANCH }}
+          ref: ${{ env.SYNC_BRANCH }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
         with:
@@ -46,7 +47,17 @@ jobs:
         if: steps.sync.outputs.result == 'pushed'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run forge-web.yml --ref "$FORGE_WEB_BRANCH"
+        run: gh workflow run forge-web.yml --ref "$SYNC_BRANCH"
+      - name: Close the report of an earlier failure
+        if: steps.sync.outputs.result == 'pushed' || steps.sync.outputs.result == 'current'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Forge Web: Kern-Änderung nicht übernommen"
+          open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue close "$open" --comment "Der Abgleich ist wieder gelungen: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
       - name: Report what needs a person
         if: steps.sync.outputs.result != 'pushed' && steps.sync.outputs.result != 'current'
         env:
@@ -63,7 +74,7 @@ jobs:
 
           Lauf: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Stand von main: $GITHUB_SHA
-          Von Hand nachholen: \`bash forge-web/scripts/sync-core.sh\` im Branch \`$FORGE_WEB_BRANCH\`."
+          Von Hand nachholen: \`bash forge-web/scripts/sync-core.sh\` im Branch \`$SYNC_BRANCH\`."
           open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then
             gh issue comment "$open" --body "$body"
