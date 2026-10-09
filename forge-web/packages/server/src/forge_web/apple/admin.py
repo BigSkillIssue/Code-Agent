@@ -90,6 +90,18 @@ def apple_admin_router() -> APIRouter:
     async def jobs(request: Request, admin: AdminUser, limit: int = 100) -> list[dict[str, Any]]:
         return await recent_jobs(request, min(max(limit, 1), 500))
 
+    @router.get("/users")
+    async def users(request: Request, admin: AdminUser) -> list[dict[str, Any]]:
+        services = services_of(request)
+        async with services.db.session() as session:
+            rows = list(await session.scalars(select(User).order_by(User.created_at)))
+        minutes = services.apple.minutes_used
+        return [
+            {"id": u.id, "email": u.email or "", "name": u.name, "role": u.role,
+             "allowed": u.apple_allowed, "minutes_this_month": await minutes(u.id)}
+            for u in rows
+        ]  # fmt: skip
+
     @router.put("/users/{user_id}")
     async def grant(
         user_id: str, body: Grant, request: Request, admin: AdminUser

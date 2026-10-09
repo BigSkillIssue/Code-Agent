@@ -73,8 +73,7 @@ async def may_build(jobs: AppleJobs, settings: AppleSettings, user: User) -> Res
     if not settings.enabled:
         return problem(403, "Apple builds are turned off on this server",
                        "an admin can turn them on (Admin > Apple)")  # fmt: skip
-    granted = user.role == "admin" or (settings.allowed == "granted" and user.apple_allowed)
-    if settings.allowed != "everyone" and not granted:
+    if not settings.allows(user.role, user.apple_allowed):
         return problem(403, "you may not build Apple apps on this server",
                        "ask an admin to allow it for your account")  # fmt: skip
     limit = settings.minutes_per_month

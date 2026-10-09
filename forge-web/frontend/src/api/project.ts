@@ -1,5 +1,6 @@
 // A project's files and git repository (the server forwards these to the project's sandbox).
 
+import type { DeviceScreen } from "./apple";
 import { api } from "./client";
 
 export interface FileEntry {
@@ -131,6 +132,7 @@ export function projectApi(projectId: string) {
     programOutput: (id: string, since: number) =>
       api.get<ProgramOutput>(`${base}/preview/programs/${encodeURIComponent(id)}/output?${q({ since: String(since) })}`),
     openPreview: (port: number) => api.post<{ url: string }>(`${base}/preview/${port}/open`, {}),
+    screens: () => api.get<DeviceScreen[]>(`${base}/apple/screens`),
   };
 }
 

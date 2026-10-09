@@ -178,6 +178,7 @@ export function ChatView({ chat }: { chat: Chat }) {
           <ProjectPanel
             projectId={chat.project_id}
             canEdit={project?.role !== "viewer"}
+            apple={project?.kind === "apple"}
             refreshKey={turns}
             onClose={() => togglePanel(false)}
             onError={setError}

@@ -1,5 +1,5 @@
-// Creating a project: empty, cloned from a git URL, unpacked from a ZIP file, or (admins) a folder
-// on the server.
+// Creating a project: empty, cloned from a git URL, unpacked from a ZIP file, (admins) a folder
+// on the server, or (when this server builds them) an Apple app from Forge's SwiftUI template.
 
 import { X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -14,6 +14,7 @@ type Source = NonNullable<NewProject["source"]>;
 
 interface Props {
   isAdmin: boolean;
+  appleApps?: boolean; // this user may build Apple apps here
   create: (body: NewProject) => Promise<Project>;
   forget: (projectId: string) => void;
   onCreated: (project: Project) => void;
@@ -25,14 +26,16 @@ const SOURCES: [Source, TextKey][] = [
   ["git", "sourceGit"],
   ["zip", "sourceZip"],
   ["folder", "sourceFolder"],
+  ["apple", "sourceApple"],
 ];
 
-export function NewProjectDialog({ isAdmin, create, forget, onCreated, onClose }: Props) {
+export function NewProjectDialog({ isAdmin, appleApps = false, create, forget, onCreated, onClose }: Props) {
   const [name, setName] = useState("");
   const [source, setSource] = useState<Source>("empty");
   const [url, setUrl] = useState("");
   const [folder, setFolder] = useState("");
   const [zip, setZip] = useState<File | null>(null);
+  const [bundleId, setBundleId] = useState("");
   const [busy, setBusy] = useState<TextKey | null>(null);
   const [error, setError] = useState("");
 
@@ -44,7 +47,9 @@ export function NewProjectDialog({ isAdmin, create, forget, onCreated, onClose }
     setBusy(source === "git" ? "cloning" : source === "zip" ? "unpacking" : "creating");
     let project: Project | null = null;
     try {
-      project = await create({ name: name.trim(), source, url: url.trim(), folder: folder.trim() });
+      const body: NewProject = { name: name.trim(), source, url: url.trim(), folder: folder.trim() };
+      if (source === "apple") body.bundle_id = bundleId.trim();
+      project = await create(body);
       if (source === "zip" && zip) await projectApi(project.id).importZip(zip);
       onCreated(project);
     } catch (err) {
@@ -75,7 +80,7 @@ export function NewProjectDialog({ isAdmin, create, forget, onCreated, onClose }
         <fieldset className="space-y-1 text-sm">
           <legend className="text-muted">{t("source")}</legend>
           <div className="flex flex-wrap gap-2">
-            {SOURCES.filter(([id]) => id !== "folder" || isAdmin).map(([id, label]) => (
+            {SOURCES.filter(([id]) => (id !== "folder" || isAdmin) && (id !== "apple" || appleApps)).map(([id, label]) => (
               <label key={id} className={`cursor-pointer rounded-full border px-3 py-1 ${source === id ? "border-accent bg-accent text-on-accent" : "border-line"}`}>
                 <input type="radio" name="source" value={id} className="sr-only" checked={source === id} onChange={() => setSource(id)} />
                 {t(label)}
@@ -101,6 +106,15 @@ export function NewProjectDialog({ isAdmin, create, forget, onCreated, onClose }
             <span className="text-muted">{t("folderPath")}</span>
             <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="/srv/projects/…" value={folder} onChange={(e) => setFolder(e.target.value)} />
           </label>
+        )}
+        {source === "apple" && (
+          <div className="space-y-2 text-sm">
+            <p className="text-xs text-muted">{t("appleAppHint")}</p>
+            <label className="block space-y-1">
+              <span className="text-muted">{t("bundleId")}</span>
+              <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="com.example.app" value={bundleId} onChange={(e) => setBundleId(e.target.value)} />
+            </label>
+          </div>
         )}
         {error && (
           <p className="text-sm text-bad" role="alert">

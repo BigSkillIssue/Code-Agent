@@ -18,9 +18,10 @@ import type {
 
 export interface NewProject {
   name: string;
-  source?: "empty" | "git" | "zip" | "folder";
+  source?: "empty" | "git" | "zip" | "folder" | "apple";
   url?: string;
   folder?: string;
+  bundle_id?: string; // apple
 }
 
 export interface ChatData {

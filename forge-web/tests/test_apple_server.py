@@ -273,6 +273,8 @@ def test_admins_add_macs_and_allow_users(tmp_path: Path) -> None:
         granted = httpx.put(f"{server.url}/api/admin/apple/users/{user_id}",
                             json={"allowed": True}, headers=server.headers())  # fmt: skip
         assert granted.status_code == 200 and granted.json()["minutes_this_month"] == 0
+        people = httpx.get(f"{server.url}/api/admin/apple/users", headers=server.headers()).json()
+        assert [(p["id"], p["allowed"]) for p in people] == [(user_id, True)]
         assert httpx.get(f"{server.url}/api/admin/apple/jobs",
                          headers=server.headers()).json() == []  # fmt: skip
         gone = httpx.delete(f"{server.url}/api/admin/apple/macs/{mac_id}", headers=server.headers())

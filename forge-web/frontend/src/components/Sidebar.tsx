@@ -104,6 +104,7 @@ export function Sidebar({ activeChat, onNavigate }: { activeChat?: string; onNav
       {creating && (
         <NewProjectDialog
           isAdmin={user?.role === "admin"}
+          appleApps={user?.apple_apps === true}
           create={createProject}
           forget={forgetProject}
           onClose={() => setCreating(false)}

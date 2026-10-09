@@ -10,10 +10,10 @@ afterEach(() => {
 
 const project: Project = { id: "p1", name: "App", role: "owner", source: "git", created_at: 0, updated_at: 0 };
 
-function setup(isAdmin = false, create = vi.fn().mockResolvedValue(project)) {
+function setup(isAdmin = false, create = vi.fn().mockResolvedValue(project), appleApps = false) {
   const onCreated = vi.fn();
   const forget = vi.fn();
-  render(<NewProjectDialog isAdmin={isAdmin} create={create} forget={forget} onCreated={onCreated} onClose={vi.fn()} />);
+  render(<NewProjectDialog isAdmin={isAdmin} appleApps={appleApps} create={create} forget={forget} onCreated={onCreated} onClose={vi.fn()} />);
   fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: " App " } });
   return { create, forget, onCreated };
 }
@@ -59,5 +59,19 @@ describe("NewProjectDialog", () => {
     cleanup();
     setup(true);
     expect(screen.getByLabelText(/^(Server folder|Ordner auf dem Server)$/)).toBeTruthy();
+  });
+
+  it("offers Apple apps where this user may build them, with an optional bundle id", async () => {
+    setup();
+    expect(screen.queryByLabelText(/^(Apple app|Apple-App)$/)).toBeNull();
+    cleanup();
+    const { create } = setup(false, vi.fn().mockResolvedValue({ ...project, source: "apple", kind: "apple" }), true);
+    pick(/^(Apple app|Apple-App)$/);
+    expect(screen.getByText(/SwiftUI/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("com.example.app"), { target: { value: " de.ada.app " } });
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    });
+    expect(create).toHaveBeenCalledWith({ name: "App", source: "apple", url: "", folder: "", bundle_id: "de.ada.app" });
   });
 });

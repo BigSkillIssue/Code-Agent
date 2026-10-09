@@ -1,0 +1,42 @@
+"""A new Apple app project starts from Forge's SwiftUI template (`forge apple new`).
+
+The files are made on the server from the template (no project code runs here) and written into
+the project's sandbox by its daemon.
+"""
+
+import base64
+import re
+
+from fastapi import HTTPException
+from forge.apple_template import app_files, bundle_problem, name_problem
+
+from forge_web.services import Services
+
+GERMAN = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"}
+MAX_NAME = 30
+
+
+def app_name(project_name: str) -> str:
+    """A Swift name for the app from the project's name: letters and digits, starting with a
+    letter ("Mein Zähler" -> "MeinZaehler", "2048" -> "App2048")."""
+    spelled = "".join(GERMAN.get(c, c) for c in project_name)
+    kept = re.sub(r"[^A-Za-z0-9]", "", spelled)
+    if not kept or not kept[0].isalpha():
+        kept = "App" + kept
+    return kept[:MAX_NAME]
+
+
+def checked_bundle_id(name: str, bundle_id: str) -> str:
+    """The bundle id to use (com.example.<name> when none is given); 422 when it is invalid."""
+    chosen = bundle_id.strip() or f"com.example.{name.lower()}"
+    problem = bundle_problem(chosen) or name_problem(name)
+    if problem:
+        raise HTTPException(422, f"bundle id {chosen!r}: {problem}")
+    return chosen
+
+
+async def write_template(services: Services, project_id: str, name: str, bundle_id: str) -> None:
+    """Write the template's files into the project's sandbox."""
+    for path, data in app_files(name, bundle_id).items():
+        params = {"path": path, "base64": base64.b64encode(data).decode(), "create_dirs": True}
+        await services.runs.call(project_id, "fs.write", params)

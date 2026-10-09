@@ -117,3 +117,23 @@ def test_local_changes_are_left_alone(repos: tuple[Path, Path, Path]) -> None:
     done = sync(web)
     assert done.returncode == 4 and "commit or stash" in done.stderr
     assert (web / "forge-web" / "app.py").read_text() == "print('unsaved')\n"
+
+
+def test_a_push_while_checking_starts_the_sync_over(
+    repos: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    remote, web, core = repos
+    commit(core, "src/forge/engine.py", "VERSION = 2\n", "better core")
+    git(core, "push", "-q", "origin", "HEAD:main")
+    other = tmp_path / "other"
+    git(tmp_path, "clone", "-q", "-b", BRANCH, str(remote), str(other))
+    flag = tmp_path / "pushed-once"
+    # Someone pushes to the branch while the first round of checks runs (seen on GitHub).
+    late = (f"touch {flag} && cd {other} && echo late > forge-web/late.py && git add -A"
+            f" && git commit -qm late && git push -q origin HEAD:{BRANCH}")  # fmt: skip
+    done = sync(web, gate=f"test -f {flag} || ({late})")
+    assert done.returncode == 0, done.stderr
+    assert "starting over" in done.stderr
+    pushed = on_remote(remote, BRANCH)
+    assert git(web, "show", f"{pushed}:forge-web/late.py") == "late"  # nothing was lost
+    assert git(web, "show", f"{pushed}:src/forge/engine.py") == "VERSION = 2"

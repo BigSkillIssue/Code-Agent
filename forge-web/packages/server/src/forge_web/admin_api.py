@@ -37,6 +37,7 @@ FIELDS: dict[str, tuple[str, str]] = {
     "monthly_limit_usd": ("gateway", "monthly_limit_usd"),
     "apple_enabled": ("apple", "enabled"), "apple_allowed": ("apple", "allowed"),
     "apple_minutes_per_month": ("apple", "minutes_per_month"),
+    "apple_reviewer_model": ("apple", "reviewer_model"),
 }  # fmt: skip
 
 
@@ -60,6 +61,9 @@ class AdminSettings(BaseModel):
     apple_enabled: bool | None = None
     apple_allowed: Literal["admins", "granted", "everyone"] | None = None
     apple_minutes_per_month: float | None = Field(default=None, ge=0, le=1_000_000)
+    apple_reviewer_model: str | None = Field(
+        default=None, max_length=200, pattern=r"^$|^[\w.-]+/[\w.:@/-]+$"
+    )
 
     @model_validator(mode="after")
     def no_nulls(self) -> "AdminSettings":

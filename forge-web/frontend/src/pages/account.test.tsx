@@ -16,6 +16,7 @@ const serverSettings: ServerSettings = {
   signup: "invite", allowed_domains: [], passwords: true, admin_two_factor: false,
   projects_per_user: 20, project_disk_mb: 10000, sandbox_cpus: 2, sandbox_memory: "4g",
   sandbox_pids: 1024, sandbox_idle_minutes: 30, server_keys_for: "granted", monthly_limit_usd: 20,
+  apple_enabled: false, apple_allowed: "granted", apple_minutes_per_month: 600, apple_reviewer_model: "",
 };
 
 const mocks = vi.hoisted(() => ({ account: {} as Record<string, ReturnType<typeof vi.fn>>, admin: {} as Record<string, ReturnType<typeof vi.fn>> }));

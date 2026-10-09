@@ -1,14 +1,15 @@
 // Administration: accounts and invites here; server keys, usage, server settings and the audit
-// log in AdminServer. Only admins see the page; the server refuses everyone else anyway.
+// log in AdminServer; Apple builds in AdminApple. Only admins see the page; the server refuses everyone else anyway.
 
 import { type FormEvent, useCallback, useState } from "react";
 import { type Account, admin, type Grant } from "../api/account";
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { AppleTab } from "./AdminApple";
 import { AuditTab, ServerKeysTab, ServerSettingsTab, UsageTab } from "./AdminServer";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 
-const TABS = ["users", "invites", "serverKeys", "usage", "serverSettings", "auditLog"] as const;
+const TABS = ["users", "invites", "serverKeys", "usage", "serverSettings", "appleBuilds", "auditLog"] as const;
 type Tab = (typeof TABS)[number];
 const STATUS: Record<Account["status"], TextKey> = {
   active: "statusActive",
@@ -44,6 +45,7 @@ export function AdminPage() {
         {tab === "serverKeys" && <ServerKeysTab />}
         {tab === "usage" && <UsageTab />}
         {tab === "serverSettings" && <ServerSettingsTab />}
+        {tab === "appleBuilds" && <AppleTab />}
         {tab === "auditLog" && <AuditTab />}
       </div>
     </div>

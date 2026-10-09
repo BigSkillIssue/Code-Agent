@@ -63,6 +63,8 @@ def chat_options(settings: WebSettings) -> Any:
                 # Builds go through the gateway to the Macs; the guidelines are checked.
                 options.update(apple_url=base, apple_token_env=TOKEN_ENV, apple_review=True,
                                apple_max_mb=settings.apple.max_source_mb)  # fmt: skip
+                if settings.apple.reviewer_model:  # its own model: it should not share blind spots
+                    options["roles"] = {"apple_reviewer": [settings.apple.reviewer_model]}
         if script is not None:
             options["fake_script"] = script
         return options

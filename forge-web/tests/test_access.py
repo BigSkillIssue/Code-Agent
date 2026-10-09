@@ -48,7 +48,7 @@ OWN = {
 SANDBOX_PATHS = (
     "/api/projects/{project_id}/files", "/api/projects/{project_id}/git/",
     "/api/projects/{project_id}/usage", "/api/projects/{project_id}/terminals",
-    "/api/projects/{project_id}/preview",
+    "/api/projects/{project_id}/preview", "/api/projects/{project_id}/apple/",
 )  # fmt: skip
 # Changing calls that viewers may make too (they change nothing in the project).
 VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}

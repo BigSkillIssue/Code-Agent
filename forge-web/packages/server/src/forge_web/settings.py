@@ -63,6 +63,7 @@ DEFAULT_EGRESS = [
     "raw.githubusercontent.com", "gitlab.com", "bitbucket.org", "crates.io", "static.crates.io",
     "index.crates.io", "proxy.golang.org", "sum.golang.org", "rubygems.org",
     "repo.maven.apache.org", "deb.debian.org", "security.debian.org",
+    "developer.apple.com",  # Apple's guidelines, read by the Apple reviewer
 ]  # fmt: skip
 
 
@@ -170,6 +171,16 @@ class AppleSettings(_Strict):
     max_archive_mb: int = Field(default=4_096, ge=1)  # an .xcarchive coming back
     job_timeout_s: float = Field(default=2_400, gt=0)  # waiting for a Mac included
     keep_archives_days: float = Field(default=14, gt=0)
+    # The guideline reviewer's model ("provider/model"); empty: the chat's model.
+    reviewer_model: str = Field(default="", pattern=r"^$|^[\w.-]+/[\w.:@/-]+$")
+
+    def allows(self, role: str, granted: bool) -> bool:
+        """Whether a user with this role (and grant) may build Apple apps on this server."""
+        if not self.enabled:
+            return False
+        return (
+            self.allowed == "everyone" or role == "admin" or (self.allowed == "granted" and granted)
+        )
 
 
 class DevSettings(_Strict):

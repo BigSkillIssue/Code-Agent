@@ -16,6 +16,8 @@ def user_view(user: User, services: Services | None = None) -> dict[str, Any]:
         "avatar_url": user.avatar_url, "default_model": user.default_model,
         "has_password": user.password_hash is not None, "totp_enabled": user.totp_enabled,
         "two_factor_required": required and user.role == "admin" and not user.totp_enabled,
+        "apple_apps": services is not None and services.settings.apple.allows(user.role,
+                                                                              user.apple_allowed),
     }  # fmt: skip
 
 

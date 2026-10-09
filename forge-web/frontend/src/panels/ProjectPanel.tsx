@@ -1,28 +1,30 @@
-// The panel next to a chat: the project's files, its changes, (for editors) its terminals and
-// the live preview.
+// The panel next to a chat: the project's files, its changes, (for editors) its terminals, the
+// live preview and (for Apple apps) the pictures of its devices.
 
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { projectApi, type ProjectApi } from "../api/project";
 import { t } from "../lib/i18n";
+import { AppleScreens } from "./AppleScreens";
 import { Changes } from "./Changes";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { PreviewPanel } from "./Preview";
 import { TerminalPanel } from "./Terminal";
 
-type Tab = "files" | "changes" | "terminal" | "preview";
+type Tab = "files" | "changes" | "terminal" | "preview" | "devices";
 
 interface Props {
   projectId: string;
   canEdit: boolean;
+  apple?: boolean; // an Apple app: show its devices
   refreshKey: number;
   onClose: () => void;
   onError: (message: string) => void;
   api?: ProjectApi; // tests pass their own
 }
 
-export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError, api }: Props) {
+export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, onClose, onError, api }: Props) {
   const client = useMemo(() => api ?? projectApi(projectId), [api, projectId]);
   const [tab, setTab] = useState<Tab>("files");
   const [file, setFile] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
     ["changes", t("changes")],
     ...(canEdit ? [["terminal", t("terminal")] as [Tab, string]] : []),
     ["preview", t("preview")],
+    ...(apple ? [["devices", t("devices")] as [Tab, string]] : []),
   ];
   const choose = (next: Tab) => {
     setTab(next);
@@ -70,6 +73,7 @@ export function ProjectPanel({ projectId, canEdit, refreshKey, onClose, onError,
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
           </div>
         )}
+        {tab === "devices" && <AppleScreens api={client} refreshKey={refreshKey} onError={onError} />}
         {opened.has("preview") && (
           <div className={tab === "preview" ? "h-full" : "hidden"}>
             <PreviewPanel api={client} canEdit={canEdit} active={tab === "preview"} onError={onError} />

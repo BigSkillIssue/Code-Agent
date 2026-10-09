@@ -12,6 +12,7 @@ export interface User {
   email: string | null;
   name: string;
   role: "admin" | "member";
+  apple_apps?: boolean; // may build Apple apps on this server
 }
 
 export interface Project {
@@ -19,6 +20,7 @@ export interface Project {
   name: string;
   role: Role;
   source: string;
+  kind?: "code" | "apple"; // apple: an Apple app (builds on the server's Macs)
   created_at: number;
   updated_at: number;
 }
