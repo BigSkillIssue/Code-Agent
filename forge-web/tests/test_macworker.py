@@ -225,3 +225,37 @@ def test_job_offers_carry_the_right_parameters() -> None:
     with pytest.raises(ValueError, match="screenshot parameters"):
         JobOffer.model_validate({"id": "4" * 32, "kind": "screenshot", "project": PROJECT,
                                  "timeout_s": 1, "build": {"platform": "ios"}})  # fmt: skip
+
+
+async def test_the_image_gets_the_worker_with_forges_own_core(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from forge_macworker import images
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    (wheels / "forge_macworker-0.1.0-py3-none-any.whl").write_bytes(b"")
+    assert await images.prepare_image("base", "forge-xcode", wheels) == 2  # Forge's wheel too
+    (wheels / "forge-1.0.0-py3-none-any.whl").write_bytes(b"")
+    seen: list[tuple[str, ...]] = []
+
+    async def tart(*args: str, quiet: bool = False) -> int:
+        seen.append(args)
+        return 0
+
+    class Vm:
+        async def wait(self) -> int:
+            return 0
+
+    async def start(*args: str, **_: Any) -> Vm:
+        seen.append(args)
+        return Vm()
+
+    monkeypatch.setattr(images, "tart", tart)
+    monkeypatch.setattr(images.asyncio, "create_subprocess_exec", start)
+    assert await images.prepare_image("base", "forge-xcode", wheels) == 0
+    install = next(a for a in seen if a[:3] == ("exec", "forge-xcode", "/bin/zsh"))[-1]
+    mount = images.SETUP_MOUNT
+    assert f'"{mount}/forge_macworker-0.1.0-py3-none-any.whl"' in install
+    assert f'--with "{mount}/forge-1.0.0-py3-none-any.whl"' in install
+    assert "--find-links" not in install  # PyPI has an unrelated package called "forge"

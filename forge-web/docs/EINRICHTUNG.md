@@ -331,7 +331,171 @@ Logs ansehen: `docker compose logs -f forge-web`.
 
 ---
 
-## 9. Sicherheit in Kürze
+## 9. Apple-Apps: einen Mac anschließen (optional)
+
+Forge kann fertige, native Apps für **iPhone, iPad, Mac und Apple Watch** bauen (Swift und SwiftUI).
+Xcode gibt es nur für macOS, deshalb braucht Forge Web dafür mindestens einen Mac. Der Mac
+verbindet sich **von selbst** mit deinem Server (nur ausgehend): Du musst am Mac keinen Port öffnen,
+und er kann auch zu Hause oder bei einem Mac-Vermieter stehen.
+
+So läuft es ab: Wer in Forge ein Projekt „Apple-App“ anlegt, bekommt eine SwiftUI-Vorlage für alle
+vier Geräte. Jeder Bau, jeder Test und jedes Bildschirmfoto geht als Auftrag an einen Mac. Dort
+läuft jedes Projekt in einer **eigenen macOS-VM** (mit Tart), getrennt vom Mac selbst und von
+anderen Projekten. Ein unabhängiger Prüfer vergleicht Anfrage, Plan und fertige App mit Apples
+Richtlinien; am Ende gibst du die App auf der Seite „Zur Freigabe“ selbst frei.
+
+### 9.1 Einen Mac mieten
+
+Jeder Mac mit **Apple-Chip (M1 oder neuer)** geht, auch ein gemieteter Cloud-Mac. Achte auf:
+
+- **macOS 15** oder neuer, **mindestens 16 GB** Arbeitsspeicher, **mindestens 200 GB** Platte
+  (Xcode und die Simulatoren brauchen viel Platz),
+- **SSH-Zugang** (zum Einrichten) und einen Benutzer mit Admin-Rechten.
+
+Ein Mac baut höchstens **zwei Projekte gleichzeitig** (Apples Lizenz erlaubt zwei macOS-VMs pro
+Mac); weitere Aufträge warten, bis einer frei wird. Für mehr Leute einfach einen zweiten Mac
+anschließen.
+
+### 9.2 Werkzeuge installieren
+
+Per SSH auf dem Mac:
+
+```bash
+# Homebrew, falls noch nicht da: siehe https://brew.sh
+brew install cirruslabs/cli/tart cirruslabs/cli/softnet
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+- **Tart** startet die macOS-VMs.
+- **softnet** sorgt dafür, dass eine VM ins Internet kommt (für Swift-Pakete), aber **nicht** an
+  den Mac und dein restliches Netz.
+
+### 9.3 Forge auf den Mac bringen
+
+Lege die beiden Wheels aus dem Release in einen Ordner, z. B. `~/forge-wheels`:
+`forge-….whl` (Forges Kern) und `forge_macworker-….whl` (der Mac-Dienst). Dann:
+
+```bash
+cd ~/forge-wheels
+uv tool install --python 3.12 ./forge_macworker-*.whl --with ./forge-*.whl
+```
+
+Wichtig: Gib die Dateien so an wie oben. Auf PyPI gibt es ein fremdes Paket, das auch „forge“
+heißt; ein einfaches `uv tool install forge-macworker` würde das falsche erwischen.
+
+### 9.4 Das VM-Image vorbereiten
+
+Forge braucht ein macOS-Image mit Xcode. Cirrus Labs stellt fertige Images bereit; Forge legt davon
+eine Kopie an und installiert XcodeGen, uv und den Auftrags-Runner hinein:
+
+```bash
+forge-mac-worker prepare-image --from ghcr.io/cirruslabs/macos-sequoia-xcode:latest \
+  --name forge-xcode --wheels ~/forge-wheels
+forge-mac-worker check
+```
+
+Das Herunterladen dauert beim ersten Mal (das Image ist rund 50 GB groß). `check` sagt
+„this Mac is ready“, wenn alles da ist, sonst, was fehlt.
+
+### 9.5 Den Mac in Forge anmelden
+
+1. In Forge: **Verwaltung → Apple → Mac hinzufügen**, einen Namen eingeben (z. B. `mac-mini-1`).
+2. Forge zeigt **einmalig** einen Schlüssel und den Befehl zum Starten. Lege den Schlüssel auf dem
+   Mac in eine Datei, die nur du lesen kannst:
+
+   ```bash
+   nano ~/.forge-mac-token        # Schlüssel einfügen, speichern
+   chmod 600 ~/.forge-mac-token
+   ```
+
+3. Zum Ausprobieren im Vordergrund starten:
+
+   ```bash
+   forge-mac-worker run --server https://forge.example.com --token-file ~/.forge-mac-token
+   ```
+
+   In der Verwaltung steht der Mac jetzt als **verbunden**.
+
+4. Auf derselben Seite: **„Apple-Apps auf den Macs dieses Servers bauen“** einschalten, festlegen,
+   **wer** bauen darf (nur Admins, Freigegebene oder alle) und wie viele **Mac-Minuten** jede Person
+   im Monat hat. Optional ein eigenes **Prüfer-Modell** eintragen (z. B. `openai/gpt-5`): Der
+   Richtlinien-Prüfer sollte ein anderes Modell sein als das, das die App baut, damit er nicht
+   dieselben blinden Flecken hat.
+
+Wer einen Schlüssel verliert: Mac in der Verwaltung löschen und neu hinzufügen; der alte Schlüssel
+gilt dann nicht mehr.
+
+### 9.6 Den Mac-Dienst dauerhaft laufen lassen
+
+Damit der Dienst nach einem Neustart von selbst startet, legst du einen launchd-Dienst an. Datei
+`~/Library/LaunchAgents/de.forge.mac-worker.plist` (Benutzername und Server anpassen):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.forge.mac-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/DEINNAME/.local/bin/forge-mac-worker</string>
+    <string>run</string>
+    <string>--server</string><string>https://forge.example.com</string>
+    <string>--token-file</string><string>/Users/DEINNAME/.forge-mac-token</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/Users/DEINNAME/Library/Logs/forge-mac-worker.log</string>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/de.forge.mac-worker.plist
+tail -f ~/Library/Logs/forge-mac-worker.log
+```
+
+Damit die VMs laufen, muss der Benutzer **angemeldet** sein (bei einem Cloud-Mac: automatische
+Anmeldung in den Systemeinstellungen einschalten).
+
+### 9.7 Ohne VMs: der Direktmodus
+
+`forge-mac-worker run … --direct` baut ohne VM direkt auf dem Mac. Das ist nur für Macs gedacht,
+auf denen ausschließlich **deine eigenen, vertrauenswürdigen Projekte** gebaut werden, und für die
+automatischen Tests (GitHubs Macs können keine VMs starten). Für einen Server, auf dem andere
+Leute arbeiten, immer mit VMs.
+
+### 9.8 Für den App Store: das Apple-Entwicklerkonto
+
+Bauen, Testen und Bildschirmfotos gehen ohne Konto. Für **TestFlight und den App Store** brauchst
+du eine Mitgliedschaft im **Apple Developer Program** (99 $ im Jahr, <https://developer.apple.com/programs/>)
+und einen **App-Store-Connect-API-Schlüssel**:
+
+1. <https://appstoreconnect.apple.com> → **Benutzer und Zugriff → Integrationen → App Store Connect
+   API → Teamschlüssel** → **Schlüssel generieren**, Zugriff **App-Manager**.
+2. Die Datei `AuthKey_….p8` herunterladen (das geht **nur einmal**) und sicher aufbewahren; die
+   **Schlüssel-ID** und die **Aussteller-ID** (Issuer ID) stehen auf derselben Seite.
+
+Diesen Schlüssel trägst du später in Forge ein; er wird verschlüsselt gespeichert und kommt nie in
+eine VM oder die Sandbox eines Projekts. Eingereicht wird bei Apple **nur, wenn du selbst klickst**.
+
+### 9.9 Wenn etwas nicht geht
+
+| Problem | Lösung |
+| --- | --- |
+| Mac steht als „nicht verbunden“ | `forge-mac-worker run …` läuft? Server-Adresse richtig (mit `https://`)? Log ansehen |
+| „no Mac is connected to this server“ im Chat | Mac-Dienst starten (9.5) und in der Verwaltung prüfen |
+| „Apple builds are turned off“ | Verwaltung → Apple → „Apple-Apps … bauen“ einschalten |
+| „you may not build Apple apps“ | Unter Verwaltung → Apple bei der Person „Darf Apple-Apps bauen“ anhaken |
+| „Mac minutes of this month are used up“ | Minuten pro Monat erhöhen oder bis zum nächsten Monat warten |
+| `check`: „the image … does not exist“ | `prepare-image` ausführen (9.4) |
+| `check`: „softnet is missing“ | `brew install cirruslabs/cli/softnet` |
+
+---
+
+## 10. Sicherheit in Kürze
 
 - **Der Docker-Zugang ist so mächtig wie root.** Forge Web braucht ihn, um Projekt-Container zu
   starten. Betreibe Forge Web deshalb auf einem eigenen Server (oder einer eigenen VM), auf dem

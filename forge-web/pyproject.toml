@@ -54,7 +54,7 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]  # `support` for tests in subfolders (tests/e2e) too
-addopts = "-m 'not docker and not e2e and not postgres and not live'"
+addopts = "-m 'not docker and not e2e and not postgres and not live and not mac'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
@@ -62,4 +62,5 @@ markers = [
     "e2e: drives the web UI in Chromium (needs the built frontend)",
     "postgres: needs FORGE_WEB_TEST_POSTGRES pointing at a Postgres database",
     "live: calls a real provider API (needs API keys)",
+    "mac: builds with the real Xcode on this Mac (needs Xcode and XcodeGen)",
 ]

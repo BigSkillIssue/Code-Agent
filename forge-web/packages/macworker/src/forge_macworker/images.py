@@ -40,9 +40,10 @@ def check_setup(image: str, *, direct: bool) -> list[str]:
 
 async def prepare_image(base: str, name: str, wheels: Path) -> int:
     """Clone `base` into `name` and install XcodeGen, uv and the job runner in it."""
-    found = sorted(p.name for p in wheels.glob("*.whl"))
-    if not any(w.startswith("forge_macworker-") for w in found):
-        print(f"no forge_macworker wheel in {wheels} (uv build packages/macworker)")
+    worker, core = newest(wheels, "forge_macworker-*.whl"), newest(wheels, "forge-*.whl")
+    if worker is None or core is None:
+        print(f"{wheels} needs the forge and forge_macworker wheels (from the release, or "
+              "uv build --wheel . and uv build --wheel forge-web/packages/macworker)")  # fmt: skip
         return 2
     if await tart("clone", base, name) != 0:
         return 1
@@ -58,7 +59,8 @@ async def prepare_image(base: str, name: str, wheels: Path) -> int:
         install = (
             "export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH && "
             "brew install xcodegen uv && "
-            f'uv tool install --python 3.12 --find-links "{SETUP_MOUNT}" forge-macworker'
+            # By file: PyPI has an unrelated package called "forge" with higher versions.
+            f'uv tool install --python 3.12 "{SETUP_MOUNT}/{worker}" --with "{SETUP_MOUNT}/{core}"'
         )
         code = await tart("exec", name, "/bin/zsh", "-lc", install)
     finally:
@@ -66,6 +68,12 @@ async def prepare_image(base: str, name: str, wheels: Path) -> int:
         await vm.wait()
     print("the image is ready" if code == 0 else "installing into the image failed")
     return 0 if code == 0 else 1
+
+
+def newest(folder: Path, pattern: str) -> str | None:
+    """The newest wheel's file name that matches, or None."""
+    found = sorted(p.name for p in folder.glob(pattern))
+    return found[-1] if found else None
 
 
 async def tart(*args: str, quiet: bool = False) -> int:

@@ -51,7 +51,10 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
 - Each project builds in a macOS VM of its own (Tart), cloned from a prepared image and deleted after
   10 minutes without a job; projects never share a VM, and nothing secret is in the image. With
   `softnet` (the default) a VM reaches the internet but not the Mac's own network. Direct mode builds
-  on the Mac itself and is meant only for CI and for projects the Mac's owner trusts.
+  on the Mac itself and is meant only for CI (GitHub's Macs cannot run VMs) and for projects the
+  Mac's owner trusts; `docs/EINRICHTUNG.md` (section 9) says so too.
+- The image gets Forge's own wheels by file name: PyPI has an unrelated package called "forge" with
+  higher version numbers, which a name-based install would pick.
 - The worker connects out; it signs in with a token admins create (shown once, stored as a SHA-256
   hash) and sees only the jobs it took, while they run. Mac routes refuse browser sessions.
 - The server never unpacks a project or an archive: the sandbox sends a tar.gz (size-limited), the

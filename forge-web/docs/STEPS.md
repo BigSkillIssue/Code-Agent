@@ -153,7 +153,7 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
 - [ ] **W22 — TestFlight and the App Store**
     - Files: `forge_web/apple/{appstore,signing}.py`, `forge_macworker/export.py`, `frontend/src/pages/AppleRelease.tsx`, tests
     - Build: an App Store Connect API key per user (encrypted, never in a VM or sandbox); signing and export in a second, clean job without the user's code running; upload to TestFlight; App Store texts, keywords, privacy answers, age rating and screenshots drafted by the agent, checked by the reviewer, edited by the user; submission only on the user's click; Apple's review status shown.
-- [ ] **W23 — End to end and the guide**
-    - Files: `../.github/workflows/forge-web.yml` (macOS job), `tests/e2e/`, `docs/EINRICHTUNG.md`, `docs/SECURITY.md`
+- [x] **W23 — End to end and the guide**
+    - Files: `../.github/workflows/forge-web.yml` (macOS job), `tests/test_apple_flow.py`, `docs/EINRICHTUNG.md`, `docs/SECURITY.md`
     - Build: a CI job on a macOS runner builds the template through server, sandbox and a Mac worker in direct mode (GitHub's Macs cannot run VMs); a German guide: renting a Mac, Tart and softnet, the image, the worker as a service, the Apple developer account and the API key.
 
