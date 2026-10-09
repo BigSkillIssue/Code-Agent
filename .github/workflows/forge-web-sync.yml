@@ -68,6 +68,7 @@ jobs:
           case "$RESULT" in
             conflict) reason="Die Änderungen auf main lassen sich nicht ohne Konflikt in den Forge-Web-Branch mischen." ;;
             failed) reason="Mit den Änderungen auf main schlagen die Prüfungen von Forge Web fehl." ;;
+            push) reason="Der geprüfte Stand ließ sich nicht in den Forge-Web-Branch pushen." ;;
             *) reason="Der Abgleich ist unerwartet abgebrochen ($RESULT)." ;;
           esac
           body="$reason
