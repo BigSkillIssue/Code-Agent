@@ -76,6 +76,7 @@ forge eval                 run the benchmark tasks (--fake: offline)
 forge browser install      download the Chromium the browser agent uses
 forge mcp add NAME -- CMD  add an MCP server (also: add-json, list, get, remove)
 forge ollama setup         run locally: pick, download and configure an Ollama model
+forge apple new NAME       a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 ```
 
 Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything), `--solo`/`--team`,

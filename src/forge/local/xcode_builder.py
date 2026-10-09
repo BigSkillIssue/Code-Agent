@@ -43,8 +43,8 @@ RUNTIME = {"ios": "iOS", "ipados": "iOS", "watchos": "watchOS"}
 FAMILY = {"ios": "iPhone", "ipados": "iPad", "watchos": "Apple Watch"}
 PRODUCTS = {"ios": "Debug-iphonesimulator", "ipados": "Debug-iphonesimulator",
             "watchos": "Debug-watchsimulator", "macos": "Debug"}  # fmt: skip
-SCHEME_WORDS = {"ios": ("ios", "iphone"), "ipados": ("ipad", "ios"), "macos": ("macos", "mac"),
-                "watchos": ("watch",)}  # fmt: skip
+SCHEME_WORDS = {"ios": ("ios", "iphone"), "ipados": ("ipados", "ipad", "ios"),
+                "macos": ("macos", "mac"), "watchos": ("watchos", "watch")}  # fmt: skip
 ISSUE = re.compile(
     r"^(?P<file>/[^:\n]+):(?P<line>\d+)(?::\d+)?: (?P<sev>error|warning): (?P<msg>.+)$", re.M
 )
@@ -101,10 +101,11 @@ class XcodeBuilder:
         await self.run(["xcrun", "simctl", "boot", udid], 120)  # fails harmlessly when running
         await self.checked(["xcrun", "simctl", "bootstatus", udid, "-b"], 300)
         app = await self.built_app(platform, self.destination(platform, udid))
-        bundle = await self.bundle_id(app / "Info.plist")
-        await self.checked(
-            ["xcrun", "simctl", "ui", udid, "appearance", "dark" if dark else "light"]
-        )
+        bundle = await self.plist_value(app / "Info.plist", "CFBundleIdentifier")
+        if platform != "watchos":  # the Watch has no light appearance
+            await self.checked(
+                ["xcrun", "simctl", "ui", udid, "appearance", "dark" if dark else "light"]
+            )
         await self.checked(["xcrun", "simctl", "install", udid, str(app)], 300)
         await self.checked(
             ["xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle], 120
@@ -113,21 +114,42 @@ class XcodeBuilder:
         shot = self.data / "shots" / f"{platform}-{udid}.png"
         shot.parent.mkdir(parents=True, exist_ok=True)
         await self.checked(["xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(shot)])
+        dark = dark or platform == "watchos"
         return AppleScreen(platform=platform, device=name, dark=dark, image=png(shot))
 
     async def mac_screenshot(self, dark: bool) -> AppleScreen:
-        """Start the Mac app and take a picture of the screen."""
+        """Start the Mac app in the wanted appearance and take a picture of the screen."""
         app = await self.built_app("macos", GENERIC["macos"])
-        bundle = await self.bundle_id(app / "Contents" / "Info.plist")
-        await self.checked(["open", "-n", str(app)], 60)
-        await asyncio.sleep(self.launch_wait_s)
-        shot = self.data / "shots" / "macos.png"
-        shot.parent.mkdir(parents=True, exist_ok=True)
+        executable = await self.plist_value(app / "Contents" / "Info.plist", "CFBundleExecutable")
+        shots = self.data / "shots"
+        shots.mkdir(parents=True, exist_ok=True)
+        # Started directly (not with `open`), the app is ours to stop, and a defaults argument
+        # sets the appearance for this app alone instead of for the whole Mac.
+        argv = [str(app / "Contents" / "MacOS" / executable), "-AppleInterfaceStyle",
+                "Dark" if dark else "Light"]  # fmt: skip
+        log = shots / "macos.log"
+        proc = await self.start(argv, log)
         try:
-            await self.checked(["screencapture", "-x", str(shot)], 60)
+            await self.expect_running(proc, log)
+            await self.checked(["screencapture", "-x", str(shots / "macos.png")], 60)
         finally:
-            await self.run(["osascript", "-e", f'tell application id "{bundle}" to quit'], 30)
-        return AppleScreen(platform="macos", device="Mac", dark=dark, image=png(shot))
+            await stop(proc)
+        return AppleScreen(
+            platform="macos", device="Mac", dark=dark, image=png(shots / "macos.png")
+        )
+
+    async def expect_running(self, proc: asyncio.subprocess.Process, log: Path) -> None:
+        """Wait for the app to show itself; an app that quits by then is an error."""
+        try:
+            code = await asyncio.wait_for(proc.wait(), self.launch_wait_s)
+        except TimeoutError:
+            return
+        last = log.read_text("utf-8", "replace").strip().splitlines()[-1:]
+        reason = f": {last[0][:300]}" if last else ""
+        raise AppleBuildError(
+            f"the app quit right after it started (exit code {code}){reason}",
+            hint="run its tests with apple_build, or read its log",
+        )
 
     async def close(self) -> None:
         """Nothing stays running between calls."""
@@ -159,12 +181,9 @@ class XcodeBuilder:
         listing = json.loads(await self.checked(["xcodebuild", "-list", "-json", *project]) or "{}")
         found = (listing.get("workspace") or listing.get("project") or {}).get("schemes", [])
         schemes = [str(s) for s in found]
-        for word in SCHEME_WORDS[platform]:
-            matching = [s for s in schemes if word in s.lower()]
-            if matching:
-                return matching[0]
-        if len(schemes) == 1:
-            return schemes[0]
+        chosen = pick_scheme(schemes, platform)
+        if chosen:
+            return chosen
         raise AppleBuildError(
             f"which scheme builds {platform}? found: {', '.join(schemes) or 'none'}",
             hint="pass scheme, or name schemes after their platform (App_iOS, App_macOS)",
@@ -218,9 +237,8 @@ class XcodeBuilder:
             raise AppleBuildError(f"the build made no app in {products}")
         return apps[0]
 
-    async def bundle_id(self, plist: Path) -> str:
-        out = await self.checked(["plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-",
-                                  str(plist)])  # fmt: skip
+    async def plist_value(self, plist: Path, key: str) -> str:
+        out = await self.checked(["plutil", "-extract", key, "raw", "-o", "-", str(plist)])
         return out.strip()
 
     # running tools ------------------------------------------------------------------------
@@ -246,6 +264,14 @@ class XcodeBuilder:
             "utf-8", "replace"
         )
 
+    async def start(self, argv: list[str], log: Path) -> asyncio.subprocess.Process:
+        """Start a program that keeps running; its output goes to `log`."""
+        with log.open("wb") as out:
+            return await asyncio.create_subprocess_exec(
+                *argv, cwd=self.root, stdin=asyncio.subprocess.DEVNULL, stdout=out,
+                stderr=asyncio.subprocess.STDOUT,
+            )  # fmt: skip
+
     async def checked(self, argv: list[str], timeout: float = 120) -> str:
         """Output of a command that has to work."""
         code, out = await self.run(argv, timeout)
@@ -253,6 +279,32 @@ class XcodeBuilder:
             last = out.strip().splitlines()[-1] if out.strip() else f"exit code {code}"
             raise AppleBuildError(f"{' '.join(argv[:3])} failed: {last[:300]}")
         return out
+
+
+async def stop(proc: asyncio.subprocess.Process) -> None:
+    """Ask a started program to quit; kill it when it does not within 10 s."""
+    if proc.returncode is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        proc.terminate()
+    try:
+        await asyncio.wait_for(proc.wait(), 10)
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+
+
+def pick_scheme(schemes: list[str], platform: ApplePlatform) -> str | None:
+    """The scheme named after the platform, by the end of its name first (Stopwatch_iOS builds
+    iOS, not watchOS), else the only scheme there is."""
+    names = [(scheme, scheme.lower()) for scheme in schemes]
+    for at_end in (True, False):
+        for word in SCHEME_WORDS[platform]:
+            found = [s for s, low in names if (low.endswith(word) if at_end else word in low)]
+            if found:
+                return found[0]
+    return schemes[0] if len(schemes) == 1 else None
 
 
 def parse_build(

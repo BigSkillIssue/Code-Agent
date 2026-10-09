@@ -70,9 +70,10 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not live'"
+addopts = "-m 'not live and not apple'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "live: calls a real provider API (needs API keys; skipped by default)",
+    "apple: builds with a real Xcode (needs a Mac with Xcode and XcodeGen; skipped by default)",
 ]

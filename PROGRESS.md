@@ -1,6 +1,6 @@
 # Progress
 
-Next step: S58b
+Next step: S59
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -63,7 +63,8 @@ Next step: S58b
 | S55 | 2026-10-06 | f9d72a3 | tasks_view.py, local/tasks_screen.py, tui.py, commands.py, ctx.py, tools.py, docs/quickstart.md, tests/test_tasks_view.py | /tasks [ID|stop ID] over jobs, agents and monitors; TUI bar 'N background tasks running' and ctrl+t list with output and stop |
 | S56 | 2026-10-06 | b473c6d | mcp_admin.py, mcp_cli.py, mcp_client.py, cli.py, commands.py, docs/extending.md, docs/quickstart.md, README.md, tests/test_mcp_admin.py | forge mcp add/add-json/list/get/remove (user or project scope, connection check); /mcp status, add, remove, reconnect without restart |
 | S57 | 2026-10-06 | baf8e84 | ollama_setup.py, ollama_cli.py, config_edit.py, mcp_admin.py, cli.py, docs/quickstart.md, docs/PROVIDERS.md, README.md, docs/STEPS.md, CHANGELOG.md, tests/test_ollama_setup.py, tests/test_config_edit.py, tests/contract/test_provider_contract.py | forge ollama setup/status: hardware-based model choice, pull, forge-<model> with num_ctx, roles written; live: Ollama 0.40 on 4 CPU cores, contract test 2/2 with forge-qwen3:4b-instruct |
-| S58a | 2026-10-09 | (next) | ports.py, ctx.py, config.py, config_docs.py, tools.py, runtime/apple.py, prompts.py, agent.py, wiring.py, local/xcode_builder.py, docs/config.md, docs/CONTRACTS.md, docs/TOOLS.md, docs/STEPS.md, tests/test_apple_tools.py, tests/test_xcode_builder.py | AppleBuilder port (build/test/archive for ios, ipados, macos, watchos; simulator and Mac screenshots); tools apple_build/apple_screenshot (ask first, only with a builder); APPLE prompt for Apple projects; XcodeBuilder (XcodeGen, xcodebuild, simctl) wired in on a Mac with Xcode; tested against fake Xcode tools |
+| S58a | 2026-10-09 | 13e9574 | ports.py, ctx.py, config.py, config_docs.py, tools.py, runtime/apple.py, prompts.py, agent.py, wiring.py, local/xcode_builder.py, docs/config.md, docs/CONTRACTS.md, docs/TOOLS.md, docs/STEPS.md, tests/test_apple_tools.py, tests/test_xcode_builder.py | AppleBuilder port (build/test/archive for ios, ipados, macos, watchos; simulator and Mac screenshots); tools apple_build/apple_screenshot (ask first, only with a builder); APPLE prompt for Apple projects; XcodeBuilder (XcodeGen, xcodebuild, simctl) wired in on a Mac with Xcode; tested against fake Xcode tools |
+| S58b | 2026-10-09 | (next) | apple_template.py, cli.py, local/xcode_builder.py, .github/workflows/ci.yml, pyproject.toml, README.md, CHANGELOG.md, tests/test_apple_template.py, tests/test_xcode_builder.py, tests/apple/test_xcode_live.py | `forge apple new NAME [--bundle-id]`: SwiftUI app for iPhone/iPad, Mac and Apple Watch (XcodeGen project.yml, shared code, XCTest on iPhone and Mac, privacy manifest, Mac sandbox, generated placeholder icons); CI job `apple` on macOS builds, tests, archives and photographs it with real Xcode (marker `apple`) |
 
 ## Decisions
 - Session: the user asked for all steps to be built in one go, without stopping between steps, directly on `main`. This overrides "one step per session" (user instruction > AGENTS.md); every step still gets its own tests, gate run, PROGRESS.md entry and commit.
@@ -405,6 +406,10 @@ Next step: S58b
 - S58a: only the latest screenshot per platform, device and mode is kept in `SessionState.apple_screens` (for the reviewer in S59); `[apple] max_screenshots` caps them per session.
 - S58a: config docs gained per-section descriptions (`SECTION_DOCS`) because `[apple]` reuses `timeout_s` and `max_screenshots` with another meaning than `[browser]`.
 
+- S58b: the template keeps one code base in `Shared/` for every platform and embeds the Watch app in the iPhone app (one App Store record; Mac and iPhone share the bundle id for universal purchase). Unit tests use XCTest, whose summary line `apple_build` reads; they run on iPhone and Mac.
+- S58b: icons are generated with the standard library (zlib PNG writer, opaque RGB as the App Store requires), so the template needs no image files or new packages.
+- S58b: `XcodeBuilder` changed in three places found while preparing real-Xcode runs (S58a files): the scheme is matched by the end of its name first (`Stopwatch_iOS` is not the Watch scheme); the Mac app is started directly with `-AppleInterfaceStyle Dark|Light` and stopped afterwards, instead of `open` and an AppleScript quit (that needs Automation permission, and S58a's dark mode on the Mac was not applied); the Watch is always shown dark (simctl has no light appearance for it).
+- S58b: the `apple` marker is off by default (`addopts`), like `live`; `pytest -m apple` runs only those tests.
 ## Open issues
 - S05: `Provider.stream` is declared `def stream(...) -> AsyncIterator[StreamItem]` in the Protocol instead of `async def`: implementations are async generators, and mypy only matches those against a plain `def` returning an iterator. Callers use it exactly as the contract shows (`async for item in provider.stream(req)`).
 - S07: TOOLS.md asks read_file to downscale images to 1568 px; no image library is in the dependency list, so images are sent as they are (dimensions read from the file header) and refused above 5 MB. Adding Pillow would allow downscaling.
@@ -423,4 +428,4 @@ Next step: S58b
 - S40: S40: --no-defaults only takes effect with --json; plain 'forge run' asks on stdin (EOF = defaults).
 - S44: S44: live eval runs (forge eval --models ... --report evals/RESULTS.md) and SWE-bench Lite need API keys and the dataset; only the offline row exists. The SWE-bench runner uses the current Python environment instead of the official per-repo Docker images.
 - S45: S45: the full suite takes ~50s on Linux but ~4 min on Windows runners (process start-up); the 60s target holds on Linux/macOS only.
-- S58a: `XcodeBuilder` is tested only against fake Xcode tools here (no Mac in this environment); the macOS CI job with real Xcode follows in S58b.
+- S58a/S58b: no Mac in this environment: `XcodeBuilder` is tested here against fake Xcode tools, and against a real Xcode only in CI's `apple` job (macOS runner).
