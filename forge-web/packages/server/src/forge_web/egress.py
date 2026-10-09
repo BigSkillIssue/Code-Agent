@@ -51,12 +51,16 @@ class Denied(Exception):
     """A connection the policy forbids."""
 
 
+class Unresolved(Denied):
+    """A name this server cannot resolve itself (its own proxy may)."""
+
+
 async def resolve(host: str, port: int, policy: EgressPolicy) -> str:
     """One checked address of `host`; Denied if any address is not allowed."""
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
-        raise Denied(f"{host} cannot be resolved") from None
+        raise Unresolved(f"{host} cannot be resolved") from None
     addresses = [str(info[4][0]) for info in infos]
     if not addresses or not all(policy.address_allowed(a) for a in addresses):
         raise Denied(f"{host} resolves to an address that is not public")
@@ -91,10 +95,12 @@ async def open_target(
     chained = upstream_proxy() if port == 443 else None
     try:
         address = await resolve(host, port, policy)
-    except Denied:
+    except Unresolved:
+        # Only a name this server cannot look up goes to its proxy; one that resolves to a
+        # private address never does (the server's proxy may well reach inside).
         if chained is None:
             raise
-        address = ""  # the server's proxy resolves it (it is on the allow list)
+        address = ""
     if chained is None:
         return await asyncio.open_connection(address, port)
     reader, writer = await asyncio.open_connection(*chained)

@@ -101,8 +101,9 @@ def objects(found: Any) -> list[dict[str, Any]]:
 
 def preview_hosts_router() -> APIRouter:
     """`GET /api/preview/allowed-host?domain=`: may the reverse proxy get a certificate for this
-    host? (Caddy's on-demand TLS asks before it does.) Yes only for preview hosts of projects
-    that exist, so nobody can make the server request certificates for made-up names."""
+    host? (Caddy's on-demand TLS asks before it does.) Yes only for previews of existing
+    projects that a member opened just now, and for a few ports per project a day, so nobody
+    can make the server request certificates for made-up names or use up its limits."""
     router = APIRouter()
 
     @router.get("/api/preview/allowed-host")
@@ -112,8 +113,9 @@ def preview_hosts_router() -> APIRouter:
         target = preview_target(base, domain) if base is not None else None
         if target is not None:
             async with services.db.session() as session:
-                if await session.get(Project, target.project_id) is not None:
-                    return {"ok": True}
+                found = await session.get(Project, target.project_id) is not None
+            if found and services.previews.may_certify(target.project_id, target.port):
+                return {"ok": True}
         raise HTTPException(404, "not a preview host")
 
     return router

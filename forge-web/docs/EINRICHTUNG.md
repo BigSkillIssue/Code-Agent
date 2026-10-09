@@ -322,4 +322,15 @@ Logs ansehen: `docker compose logs -f forge-web`.
   ist. Anleitung: <https://gvisor.dev/docs/user_guide/install/>.
 - Die **Vorschau-Domain** soll eine eigene Domain sein (siehe Abschnitt 1).
 - **Zwei-Faktor-Anmeldung** für Admins einschalten (Standard in der Beispiel-Konfiguration).
+- **Docker-Daten auf eine eigene Partition** legen (`data-root` in `/etc/docker/daemon.json`).
+  Forge Web misst den Platz der Projekte alle paar Minuten und stoppt Projekte über ihrer Quote;
+  dazwischen kann ein Projekt kurz mehr schreiben. Auf einer eigenen Partition legt eine volle
+  Platte dann nie den Server selbst (und seine Datenbank) lahm.
+- **Cloud-Metadaten sperren**: Git-Aufträge (Klonen, Push, Pull) laufen in kurzen Containern im
+  normalen Docker-Netz. Auf Cloud-Servern den Zugriff aus Docker-Netzen auf `169.254.169.254` und
+  auf interne Dienste des Hosts per Firewall sperren, z. B.
+  `iptables -I DOCKER-USER -d 169.254.169.254 -j DROP`.
+- Lokale Modell-Server (Ollama, LM Studio, vLLM) bietet Forge Web nur an, wenn ein Admin ihre
+  Adresse unter `[gateway.upstreams]` einträgt, z. B. `ollama = "http://gpu-rechner:11434/v1"`.
 - Regelmäßig **sichern** (Abschnitt 7) und **aktualisieren**.
+- Mehr dazu: `docs/SECURITY.md`.

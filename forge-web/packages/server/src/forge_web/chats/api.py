@@ -19,7 +19,7 @@ from forge_web.db.models import Chat, ChatEvent, User
 from forge_web.quotas import check_disk
 from forge_web.services import Services, services_of
 
-MAX_PAGE = 5000
+MAX_PAGE = 500
 
 
 class ChatIn(BaseModel):

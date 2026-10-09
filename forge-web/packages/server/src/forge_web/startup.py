@@ -26,6 +26,7 @@ from forge_web.gateway.tokens import TOKEN_ENV
 from forge_web.gateway.upstreams import worker_providers
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
+from forge_web.quotas import enforce_disk
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
@@ -104,7 +105,8 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     runs = RunManager(
         db, writer, chosen, hub, chat_options(settings), targets_for,
         env_for=lambda chat: {TOKEN_ENV: gateway.token_for(chat)},
-        on_link=link_setup(settings, docker),
+        on_link=link_setup(settings, docker), run_seconds=settings.gateway.run_minutes * 60,
+        max_log_bytes=settings.quotas.chat_log_mb * 1024 * 1024,
     )  # fmt: skip
     holder["runs"] = runs
     services = Services(
@@ -138,6 +140,7 @@ async def after_start(services: Services, docker: bool) -> None:
     else:
         services.tasks.append(asyncio.create_task(resume_active(services)))
         services.tasks.append(asyncio.create_task(reap_idle(services)))
+        services.tasks.append(asyncio.create_task(watch_disk(services)))
     if services.settings.dev.enabled:
         user = await ensure_dev_user(services.db)
         services.dev_token, services.dev_user_id = secrets.token_urlsafe(24), user.id
@@ -170,7 +173,7 @@ async def resume_active(services: Services) -> None:
         )
     for chat in chats:
         try:
-            await services.runs.open(chat)
+            services.runs.allow_run(await services.runs.open(chat))  # it ran before the restart
         except Exception as err:
             log.warning("could not resume chat %s: %s", chat.id, err)
 
@@ -184,6 +187,16 @@ async def reap_idle(services: Services) -> None:
             await services.runs.reap(idle)
         except Exception:
             log.exception("stopping idle sandboxes failed")
+
+
+async def watch_disk(services: Services) -> None:
+    """Measure the projects' disk use outside their sandboxes now and then; stop those over."""
+    while True:
+        await asyncio.sleep(services.settings.quotas.disk_check_minutes * 60)
+        try:
+            await enforce_disk(services)
+        except Exception:
+            log.exception("checking the projects' disk use failed")
 
 
 async def stop_services(services: Services) -> None:

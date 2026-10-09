@@ -1,10 +1,13 @@
 """The multiplexer: handshake, channels, flow control, and a hostile peer."""
 
 import asyncio
+import contextlib
 from typing import Any
 
 import pytest
 
+from forge_sandbox import mux as mux_module
+from forge_sandbox import rpc as rpc_module
 from forge_sandbox.frames import HEADER, Frame, FrameType, ProtocolError, read_frame
 from forge_sandbox.mux import Channel, ChannelClosed, Mux, OpenFailed, OpenRefused, ProtocolMismatch
 from forge_sandbox.protocol import Hello, OpenRequest, to_json
@@ -245,3 +248,38 @@ async def test_garbage_message_is_a_protocol_error() -> None:
     sw.write(Frame(0, FrameType.MESSAGE, b"\xff\xfe not json").encode())
     rpc = Rpc(daemon.control)
     await asyncio.wait_for(rpc.run(), 5)  # ends instead of crashing
+
+
+async def test_a_peer_that_never_reads_is_cut_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every refused OPEN costs an answer that needs no credit: a peer that sends them without
+    # reading would otherwise make the queue grow for ever.
+    monkeypatch.setattr(mux_module, "MAX_URGENT", 50)
+    daemon, _sr, sw = await raw_peer()
+    with contextlib.suppress(ConnectionError):
+        for n in range(20_000):
+            sw.write(Frame(1 + 2 * n, FrameType.OPEN, to_json(OpenRequest(kind="nope"))).encode())
+            if n % 500 == 0:
+                await sw.drain()
+    await asyncio.wait_for(daemon.wait_closed(), 10)
+    assert isinstance(daemon.error, ProtocolError) and "stopped reading" in str(daemon.error)
+
+
+async def test_requests_beyond_the_limit_wait_unread(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rpc_module, "MAX_TASKS", 5)
+    later = asyncio.Event()
+
+    async def slow(_params: dict[str, Any]) -> str:
+        await later.wait()
+        return "done"
+
+    async with mux_pair() as (server, daemon):
+        caller = Rpc(server.control)
+        callee = Rpc(daemon.control, {"slow": slow})
+        loops = [asyncio.create_task(caller.run()), asyncio.create_task(callee.run())]
+        calls = [asyncio.create_task(caller.call("slow", timeout=30)) for _ in range(12)]
+        await asyncio.sleep(0.3)
+        assert len(callee._tasks) == 5  # the rest waits in the peer's window, unread
+        later.set()
+        assert await asyncio.gather(*calls) == ["done"] * 12
+        for loop in loops:
+            loop.cancel()

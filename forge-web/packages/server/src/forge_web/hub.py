@@ -6,10 +6,19 @@ replay — so a reconnecting tab sees every item once and in order.
 """
 
 import asyncio
+import json
 from collections import defaultdict
 from typing import Any
 
-MAX_QUEUED = 20_000  # messages a slow browser may fall behind before it is disconnected
+# How far a slow browser may fall behind before it is disconnected (it reconnects and catches up
+# from the last item it has). Bytes count, not only messages: one item can be large.
+MAX_QUEUED = 20_000
+MAX_QUEUED_BYTES = 32 * 1024 * 1024
+
+
+def encode(message: dict[str, Any]) -> str:
+    """A message as the JSON text sent to the browser."""
+    return json.dumps(message, ensure_ascii=False, separators=(",", ":"))
 
 
 class Subscriber:
@@ -17,22 +26,60 @@ class Subscriber:
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self.queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        self.queue: asyncio.Queue[str | None] = asyncio.Queue()
         self.chats: set[str] = set()
-        self._held: dict[str, list[dict[str, Any]]] = {}
+        self.queued_bytes = 0
+        self.held_bytes = 0
+        self._held: dict[str, list[tuple[dict[str, Any], str]]] = {}
+        self._room = asyncio.Event()
+        self._room.set()
         self.overflowed = False
 
     def put(self, message: dict[str, Any]) -> None:
         """Queue a message (or hold it while its chat is being replayed)."""
+        text = encode(message)
         held = self._held.get(str(message.get("chat_id", "")))
-        if held is not None:
-            held.append(message)
+        if held is None:
+            self._enqueue(text)
+        elif self._fits(len(text)):
+            held.append((message, text))
+            self.held_bytes += len(text)
+
+    def put_now(self, message: dict[str, Any]) -> None:
+        """Queue a message past any hold (the replay itself)."""
+        self._enqueue(encode(message))
+
+    def _fits(self, size: int) -> bool:
+        if self.overflowed:
+            return False
+        if self.queue.qsize() < MAX_QUEUED and self.queued_bytes + self.held_bytes + size <= (
+            MAX_QUEUED_BYTES
+        ):
+            return True
+        self.overflowed = True
+        self.queue.put_nowait(None)  # the connection closes; the browser reconnects
+        return False
+
+    def _enqueue(self, text: str) -> None:
+        if not self._fits(len(text)):
             return
-        if self.queue.qsize() >= MAX_QUEUED:
-            self.overflowed = True
-            self.queue.put_nowait(None)  # the connection closes; the browser reconnects
-            return
-        self.queue.put_nowait(message)
+        self.queued_bytes += len(text)
+        self.queue.put_nowait(text)
+        if self.queued_bytes > MAX_QUEUED_BYTES // 2:
+            self._room.clear()
+
+    async def next(self) -> str | None:
+        """The next message to send; None when the connection should close."""
+        text = await self.queue.get()
+        if text is not None:
+            self.queued_bytes -= len(text)
+            if self.queued_bytes <= MAX_QUEUED_BYTES // 2:
+                self._room.set()
+        return text
+
+    async def room(self) -> None:
+        """Wait until the browser has read enough for a replay to go on."""
+        await self._room.wait()
 
     def hold(self, chat_id: str) -> None:
         """Start holding back live messages of a chat."""
@@ -40,10 +87,11 @@ class Subscriber:
 
     def release(self, chat_id: str, replayed_up_to: int) -> None:
         """Let held messages through, except stored items the replay already sent."""
-        for message in self._held.pop(chat_id, []):
+        for message, text in self._held.pop(chat_id, []):
+            self.held_bytes -= len(text)
             if message.get("type") == "item" and int(message.get("seq", 0)) <= replayed_up_to:
                 continue
-            self.put(message)
+            self._enqueue(text)
 
     def close(self) -> None:
         """End the outgoing stream."""

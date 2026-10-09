@@ -45,7 +45,8 @@ async def test_a_chat_edit_needs_approval_and_shows_its_diff(page: Any, server: 
     await allow.wait_for()
     await allow.click()
     await page.get_by_text('print("hello from e2e")').first.wait_for()  # the diff
-    await page.get_by_text("is written").wait_for()  # the model's report
+    # The model's answer (the turn card below holds the same text, folded away).
+    await page.locator("[data-testid=assistant-message]").get_by_text("is written").wait_for()
     await page.get_by_title(re.compile("Dateien, Änderungen")).click()
     await page.get_by_role("tab", name="Dateien").click()
     await page.get_by_text("hello.py").last.wait_for()

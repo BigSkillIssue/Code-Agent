@@ -12,7 +12,7 @@ from forge_web.auth.sessions import AdminUser, CurrentUser
 from forge_web.db.models import ApiKey, KeyGrant, UsageRecord, User
 from forge_web.gateway.keys import delete_key, list_keys, save_key, server_key_limit
 from forge_web.gateway.meter import month_start
-from forge_web.gateway.upstreams import KINDS
+from forge_web.gateway.upstreams import KINDS, upstream
 from forge_web.services import Services, services_of
 
 
@@ -101,7 +101,7 @@ def keys_router() -> APIRouter:
                 "server_key": name in server,
             }
             for name, preset in sorted(PRESETS.items())
-            if preset.kind in KINDS
+            if upstream(name, services_of(request).settings.gateway.upstreams) is not None
         ]
 
     @router.get("/api/models")

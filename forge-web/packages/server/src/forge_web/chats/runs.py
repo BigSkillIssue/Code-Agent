@@ -29,8 +29,16 @@ from forge_web.hub import Hub
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 
 log = logging.getLogger(__name__)
-MAX_STREAMING = 200_000
+# What a chat keeps for tabs that join mid-turn. The sandbox may be hostile and make up endless
+# agent and call ids, so the number of entries, their ids and their text are all limited.
+MAX_STREAMING = 100_000  # characters per streaming reply or tool output
 MAX_OUTPUT_LINES = 500
+MAX_LIVE_ENTRIES = 16  # streaming replies (and tool outputs) followed at once
+MAX_LIVE_ID = 64
+MAX_PENDING = 50  # open requests
+# Stored history: one item at most (Forge's own items are far smaller), and per project at most
+# what the quota allows, so a sandbox cannot fill the server's disk with made-up items.
+MAX_STORED_ITEM = 512 * 1024
 ChatOptionsFor = Callable[[Chat, dict[str, Any]], dict[str, Any]]  # chat, link info -> options
 ChatEnvFor = Callable[[Chat], dict[str, str]]
 TargetsFor = Callable[[str], dict[str, ForwardTarget]]
@@ -58,6 +66,8 @@ class LiveChat:
     pending: dict[str, dict[str, Any]] = field(default_factory=dict)  # open requests
     relay: asyncio.Task[None] | None = None
     opened_with: str = ""  # the options of the last chat.open, as JSON
+    run_until: float = 0.0  # until when (monotonic) the run's model calls may go on
+    log_full: bool = False  # items were dropped: the project's history quota is used up
 
     def snapshot(self) -> dict[str, Any]:
         """The parts a browser needs that are not in the stored log."""
@@ -95,6 +105,8 @@ class RunManager:
         *,
         env_for: ChatEnvFor | None = None,
         on_link: OnLink = _no_setup,
+        run_seconds: float = 7200.0,
+        max_log_bytes: int = 0,
     ) -> None:
         self.db = db
         self.writer = writer
@@ -104,6 +116,9 @@ class RunManager:
         self.targets_for = targets_for or (lambda _project_id: {})
         self.env_for = env_for or (lambda _chat: {})
         self.on_link = on_link
+        self.run_seconds = run_seconds
+        self.max_log_bytes = max_log_bytes  # chat history per project (0 = no limit)
+        self.log_bytes: dict[str, int] = {}  # project id -> history stored, once counted
         self.links: dict[str, SandboxClient] = {}
         self.link_info: dict[str, dict[str, Any]] = {}
         self.boots: dict[str, str] = {}
@@ -215,12 +230,12 @@ class RunManager:
 
     async def send(self, chat: Chat, text: str) -> None:
         """Send a message to the chat (starts the chat in its sandbox if needed)."""
-        await self.open(chat)
+        self.allow_run(await self.open(chat))
         await self.call(chat.project_id, "chat.send", {"chat_id": chat.id, "text": text})
 
     async def answer(self, chat: Chat, request_id: str, answer: dict[str, Any]) -> bool:
         """Answer an open request; False if it was already answered."""
-        await self.open(chat)
+        self.allow_run(await self.open(chat))
         params = {"chat_id": chat.id, "request_id": request_id, "answer": answer}
         result = await self.call(chat.project_id, "chat.answer", params)
         return bool(isinstance(result, dict) and result.get("accepted"))
@@ -228,11 +243,13 @@ class RunManager:
     async def cancel(self, chat: Chat) -> None:
         """Stop the chat's running turn."""
         if chat.id in self.lives:
+            self.lives[chat.id].run_until = 0.0
             await self.call(chat.project_id, "chat.cancel", {"chat_id": chat.id})
 
     async def forget_chat(self, chat: Chat) -> None:
         """Stop the chat's worker and stop following it (before the chat is deleted)."""
         live = self.lives.pop(chat.id, None)
+        self.log_bytes.pop(chat.project_id, None)  # counted again after the deletion
         if live is not None:
             await self._stop_relay(live)
             client = self.links.get(chat.project_id)
@@ -279,13 +296,17 @@ class RunManager:
             log.warning("dropped an invalid item from chat %s", live.chat_id)
             return
         if is_live_only(checked):
-            self._stream(live, checked)
+            if not self._stream(live, checked):
+                return
             self.hub.to_chat(
                 live.chat_id, {"type": "live", "chat_id": live.chat_id, "item": checked}
             )
             return
-        seq, live.next_seq = live.next_seq, live.next_seq + 1
         data = json.dumps(checked, ensure_ascii=False)
+        if not await self._may_store(live, len(data)):
+            return
+        await self.writer.room()
+        seq, live.next_seq = live.next_seq, live.next_seq + 1
         self.writer.add(
             EventRow(
                 live.chat_id, seq, dseq, time.time(), checked["type"], event_kind(checked), data
@@ -296,20 +317,49 @@ class RunManager:
         )
         await self._track(live, checked)
 
-    def _stream(self, live: LiveChat, item: dict[str, Any]) -> None:
+    async def _may_store(self, live: LiveChat, size: int) -> bool:
+        """Count an item against the project's history quota; False to drop it."""
+        if live.project_id not in self.log_bytes:
+            async with self.db.session() as session:
+                stored = await session.scalar(
+                    select(func.coalesce(func.sum(func.length(ChatEvent.data)), 0))
+                    .join(Chat, Chat.id == ChatEvent.chat_id)
+                    .where(Chat.project_id == live.project_id)
+                )
+            self.log_bytes[live.project_id] = int(stored or 0)
+        used = self.log_bytes[live.project_id]
+        if size > MAX_STORED_ITEM or (self.max_log_bytes and used + size > self.max_log_bytes):
+            if not live.log_full:
+                live.log_full = True
+                log.warning("chat %s: dropping items over the history quota", live.chat_id)
+            return False
+        self.log_bytes[live.project_id] = used + size
+        return True
+
+    def _stream(self, live: LiveChat, item: dict[str, Any]) -> bool:
+        """Keep a live-only item for tabs that join later; False to drop it."""
         event = item["event"]
-        if event["kind"] == "model_delta":
-            agent = str(event.get("agent_id", "main"))
-            live.streaming[agent] = (live.streaming.get(agent, "") + event["text"])[-MAX_STREAMING:]
-        else:
-            lines = live.outputs.setdefault(str(event["call_id"]), [])
-            lines.append(event["text"])
-            del lines[:-MAX_OUTPUT_LINES]
+        streams = event["kind"] == "model_delta"
+        key = str(event.get("agent_id", "main")) if streams else str(event["call_id"])
+        table: dict[str, Any] = live.streaming if streams else live.outputs
+        if len(key) > MAX_LIVE_ID or (key not in table and len(table) >= MAX_LIVE_ENTRIES):
+            return False
+        if streams:
+            live.streaming[key] = (live.streaming.get(key, "") + event["text"])[-MAX_STREAMING:]
+            return True
+        lines = live.outputs.setdefault(key, [])
+        lines.append(event["text"][-MAX_STREAMING:])
+        del lines[:-MAX_OUTPUT_LINES]
+        while sum(map(len, lines)) > MAX_STREAMING:
+            del lines[0]
+        return True
 
     async def _track(self, live: LiveChat, item: dict[str, Any]) -> None:
         kind = item["type"]
         if kind == "request":
             live.pending[item["id"]] = item
+            for stale in list(live.pending)[:-MAX_PENDING]:
+                del live.pending[stale]
         elif kind == "request_resolved":
             live.pending.pop(item["id"], None)
         elif kind == "event" and item["event"]["kind"] == "model_done":
@@ -321,6 +371,8 @@ class RunManager:
             live.outputs.clear()
         changes: dict[str, Any] = {}
         state = next_state(live, item)
+        if state == "idle":
+            live.run_until = 0.0  # a "running" from the sandbox later opens nothing again
         if state != live.state:
             live.state = changes["state"] = state
         if kind == "user" and live.title == "New chat" and item["text"].strip():
@@ -347,10 +399,21 @@ class RunManager:
             await asyncio.gather(live.relay, return_exceptions=True)
             live.relay = None
 
+    def allow_run(self, live: LiveChat) -> None:
+        """A person started or continued the chat's run: its model calls may go on for a while."""
+        live.run_until = time.monotonic() + self.run_seconds
+
     def working(self, chat_id: str) -> bool:
-        """The chat is running a turn or waiting for an answer."""
+        """The chat runs a turn that a person started (or answered) here, and not too long ago.
+
+        The run token works only then. The sandbox's own word that a chat runs is not enough: in
+        a shared project the sandbox belongs to someone else, who could keep a token alive."""
         live = self.lives.get(chat_id)
-        return live is not None and live.state in ("running", "waiting")
+        return (
+            live is not None
+            and live.state in ("running", "waiting")
+            and time.monotonic() < live.run_until
+        )
 
     def busy(self, project_id: str) -> bool:
         """A chat of the project is running or waiting for an answer."""

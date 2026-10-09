@@ -47,6 +47,9 @@ class Services:
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
     git_locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one git job per project
     disk_use: dict[str, tuple[float, int]] = field(default_factory=dict)  # project -> (when, bytes)
+    host_disk_use: dict[str, int] = field(
+        default_factory=dict
+    )  # project -> bytes, measured outside
     side_tasks: set[asyncio.Task[None]] = field(default_factory=set)  # short work on the side
 
     def background(self, work: Coroutine[Any, Any, None]) -> None:

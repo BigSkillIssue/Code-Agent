@@ -72,6 +72,8 @@ class GatewaySettings(_Strict):
     server_keys_for: Literal["admins", "granted", "everyone"] = "granted"
     monthly_limit_usd: float = Field(default=20.0, ge=0)  # per user, on the server's keys
     max_output_tokens: int = Field(default=64_000, ge=256)  # per request
+    # How long a chat's model calls may go on after its last message or answer.
+    run_minutes: float = Field(default=120, gt=0)
     upstreams: dict[str, str] = {}  # provider -> base URL (self-hosted proxies, tests)
 
 
@@ -88,6 +90,8 @@ class QuotaSettings(_Strict):
 
     projects_per_user: int = Field(default=20, ge=0)
     project_disk_mb: int = Field(default=10_000, ge=0)
+    chat_log_mb: int = Field(default=1_000, ge=0)  # stored chat history per project
+    disk_check_minutes: float = Field(default=5, gt=0)  # how often disk use is measured outside
 
 
 class GitSettings(_Strict):

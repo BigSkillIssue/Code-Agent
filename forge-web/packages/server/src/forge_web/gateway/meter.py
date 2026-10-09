@@ -2,7 +2,8 @@
 monthly totals per user, and reservations for calls still running.
 
 Usage is only ever taken from the upstream response, never from the sandbox. When a stream ends
-without a usage report (aborted), the call is charged an estimate.
+without its final usage report (aborted), the call is charged an estimate: the larger of what the
+upstream had reported so far and what the text that came through amounts to.
 """
 
 import asyncio
@@ -50,29 +51,32 @@ class UsageSniffer:
         self._pending = lines.pop()
         for line in lines:
             if line.startswith(b"data:"):
-                self._json(line[5:].strip())
+                self._json(line[5:].strip(), whole=False)
 
     def finish(self) -> Counted:
         """The usage found; for a non-streamed reply the whole body is read once more."""
         if self._pending.startswith(b"data:"):
-            self._json(self._pending[5:].strip())
+            self._json(self._pending[5:].strip(), whole=False)
         if not self.counted.reported and self._plain.lstrip().startswith(b"{"):
-            self._json(bytes(self._plain))
+            self._json(bytes(self._plain), whole=True)
         return self.counted
 
-    def _json(self, raw: bytes) -> None:
+    def _json(self, raw: bytes, whole: bool) -> None:
         try:
             data = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
             return
         if isinstance(data, dict):
-            self._usage(data)
-            self.output_chars += len(_text_of(data))
+            self._usage(data, whole)
+            if not whole:
+                self.output_chars += len(_text_of(data))
 
-    def _usage(self, data: dict[str, Any]) -> None:
+    def _usage(self, data: dict[str, Any], whole: bool) -> None:
+        # Only a reply's final numbers count: early events (Anthropic's message_start says one
+        # output token) would make a stream that is broken off on purpose almost free.
         c = self.counted
         if self.kind == "anthropic":
-            usage = (data.get("message") or {}).get("usage") or data.get("usage") or {}
+            usage = _dict(_dict(data.get("message")).get("usage") or data.get("usage"))
             if "input_tokens" in usage:
                 c.input_tokens = (
                     int(usage.get("input_tokens") or 0)
@@ -81,17 +85,18 @@ class UsageSniffer:
                 )
             if "output_tokens" in usage:
                 c.output_tokens = int(usage["output_tokens"] or 0)
-                c.reported = True
+                c.reported = whole or data.get("type") == "message_delta"
         elif self.kind == "google":
-            usage = data.get("usageMetadata") or {}
+            usage = _dict(data.get("usageMetadata"))
             if usage:
                 c.input_tokens = int(usage.get("promptTokenCount") or 0)
                 c.output_tokens = int(usage.get("candidatesTokenCount") or 0) + int(
                     usage.get("thoughtsTokenCount") or 0
                 )
-                c.reported = True
-        else:
-            usage = data.get("usage") or (data.get("response") or {}).get("usage") or {}
+                finished = any(x.get("finishReason") for x in _dicts(data.get("candidates")))
+                c.reported = whole or finished
+        else:  # chat completions and responses report usage only at the end
+            usage = _dict(data.get("usage") or _dict(data.get("response")).get("usage"))
             if usage:
                 c.input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
                 c.output_tokens = int(
@@ -100,18 +105,31 @@ class UsageSniffer:
                 c.reported = True
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _dicts(value: Any) -> list[dict[str, Any]]:
+    return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+
+
 def _text_of(data: dict[str, Any]) -> str:
-    """Generated text in one chunk (for estimating aborted streams)."""
+    """What one chunk generated, tool-call arguments and thinking included (for estimates)."""
     delta = data.get("delta")
-    if isinstance(delta, dict) and isinstance(delta.get("text"), str):
-        return str(delta["text"])
-    if isinstance(delta, str):
+    if isinstance(delta, str):  # responses API deltas
         return delta
-    choices = data.get("choices")
-    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-        content = (choices[0].get("delta") or {}).get("content")
-        return content if isinstance(content, str) else ""
-    return ""
+    parts = [str(_dict(delta).get(k) or "") for k in ("text", "partial_json", "thinking")]
+    for choice in _dicts(data.get("choices")):
+        change = _dict(choice.get("delta"))
+        parts += [str(change.get(k) or "") for k in ("content", "reasoning_content", "reasoning")]
+        for call in _dicts(change.get("tool_calls")):
+            parts.append(str(_dict(call.get("function")).get("arguments") or ""))
+    for candidate in _dicts(data.get("candidates")):
+        for part in _dicts(_dict(candidate.get("content")).get("parts")):
+            parts.append(str(part.get("text") or ""))
+            if "functionCall" in part:
+                parts.append(json.dumps(part["functionCall"]))
+    return "".join(parts)
 
 
 def price(provider: str, model: str) -> tuple[float, float]:

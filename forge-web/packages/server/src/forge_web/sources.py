@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from forge_web.auth.sessions import CurrentUser
+from forge_web.containers.docker import MOUNT_UNSAFE
 from forge_web.files_api import allowed, receive
 from forge_web.quotas import MB, disk_limit, disk_room, disk_use
 from forge_web.sandbox_calls import result_dict, sandbox_call
@@ -32,6 +33,8 @@ def server_folder(settings: WebSettings, raw: str) -> Path:
         raise HTTPException(422, "the folder does not exist") from None
     if not resolved.is_dir():
         raise HTTPException(422, "that is not a folder")
+    if MOUNT_UNSAFE & set(str(resolved)):  # docker's --mount value is comma-separated
+        raise HTTPException(422, "the folder's path may not contain commas or quotes")
     data = settings.data_dir.expanduser().resolve()
     if resolved == data or data in resolved.parents or resolved in data.parents:
         raise HTTPException(403, "Forge Web's own data folder cannot be a project")

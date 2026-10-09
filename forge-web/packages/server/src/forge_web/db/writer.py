@@ -26,6 +26,10 @@ class EventRow:
     data: str
 
 
+# Rows waiting to be written; with more, chat relays wait (and their sandboxes with them).
+MAX_WAITING = 10_000
+
+
 class EventWriter:
     """Collects rows and commits them together, a batch at a time."""
 
@@ -46,6 +50,11 @@ class EventWriter:
         """Queue a row; it is committed within `linger` seconds."""
         self._idle.clear()
         self._queue.put_nowait(row)
+
+    async def room(self) -> None:
+        """Wait while too many rows wait to be written."""
+        while self._queue.qsize() >= MAX_WAITING:
+            await asyncio.sleep(self.linger)
 
     async def flush(self) -> None:
         """Wait until every queued row is committed."""

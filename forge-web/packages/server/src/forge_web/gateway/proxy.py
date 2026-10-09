@@ -197,8 +197,9 @@ class Gateway:
             if counted.reported:
                 input_tokens, output_tokens = counted.input_tokens, counted.output_tokens
             else:  # an aborted stream: charge what it probably used
-                input_tokens = meta["input_chars"] // CHARS_PER_TOKEN
-                output_tokens = max(1, (sniffer.output_chars if sniffer else 0) // CHARS_PER_TOKEN)
+                input_tokens = counted.input_tokens or meta["input_chars"] // CHARS_PER_TOKEN
+                guessed = (sniffer.output_chars if sniffer else 0) // CHARS_PER_TOKEN
+                output_tokens = max(1, counted.output_tokens, guessed)
                 estimated = True
         record = UsageRecord(
             user_id=meta["user"], chat_id=meta["chat"], project_id=meta["project"],

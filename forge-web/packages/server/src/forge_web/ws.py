@@ -21,7 +21,7 @@ from forge_web.hub import Subscriber
 from forge_web.services import Services, services_of
 
 MAX_SUBSCRIPTIONS = 50
-REPLAY_PAGE = 5000
+REPLAY_PAGE = 200  # items are at most 512 KiB each
 
 
 def ws_router() -> APIRouter:
@@ -80,8 +80,8 @@ async def _recheck(websocket: WebSocket, services: Services, subscriber: Subscri
 
 
 async def _send_all(websocket: WebSocket, subscriber: Subscriber) -> None:
-    while (message := await subscriber.queue.get()) is not None:
-        await websocket.send_json(message)
+    while (text := await subscriber.next()) is not None:
+        await websocket.send_text(text)
     with contextlib.suppress(RuntimeError):
         await websocket.close(code=4408 if subscriber.overflowed else 1000)
 
@@ -116,16 +116,17 @@ async def subscribe(
     subscriber.hold(chat_id)  # live items wait until the replay is out
     services.hub.watch(subscriber, chat_id)
     last = max(after_seq, 0)
-    while True:
+    while True:  # a browser that does not read stalls only its own replay
         page = await stored_items(services, chat_id, last, REPLAY_PAGE)
         for entry in page:
-            subscriber.queue.put_nowait({"type": "item", "chat_id": chat_id, **entry})
+            await subscriber.room()
+            subscriber.put_now({"type": "item", "chat_id": chat_id, **entry})
         if page:
             last = page[-1]["seq"]
         if len(page) < REPLAY_PAGE:
             break
     snapshot = services.runs.snapshot(chat_id) or {"pending": [], "streaming": {}, "outputs": {}}
-    subscriber.queue.put_nowait(
+    subscriber.put_now(
         {"type": "subscribed", "chat_id": chat_id, "last_seq": last, "live": snapshot}
     )
     subscriber.release(chat_id, last)

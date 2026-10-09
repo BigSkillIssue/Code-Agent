@@ -24,6 +24,11 @@ class RpcError(Exception):
         self.message = message
 
 
+# Requests and notifications being handled at once. With more, this side stops reading until some
+# are done, so a peer that sends requests but never reads the answers fills only its own window.
+MAX_TASKS = 256
+
+
 class Rpc:
     """Calls the peer and answers the peer's calls with `handlers` (method name -> handler)."""
 
@@ -67,6 +72,8 @@ class Rpc:
         """Handle incoming messages until the channel ends; then fail every waiting call."""
         try:
             while True:
+                while len(self._tasks) >= MAX_TASKS:
+                    await asyncio.wait(set(self._tasks), return_when=asyncio.FIRST_COMPLETED)
                 message = parse_control(await self.channel.recv_message())
                 self._handle(message)
         except (ChannelClosed, ProtocolError):

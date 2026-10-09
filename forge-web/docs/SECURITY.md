@@ -36,6 +36,13 @@ Container ──(forward channel)──▶ Gateway (run token)   Container ─�
 - Paths, names and numbers from a container are never used on the host. The server never opens project
   files on the host: files live in Docker volumes and every file operation runs in the daemon, which
   refuses paths that leave `/workspace` (also through symlinks).
+- What the server keeps for a container is limited in bytes, not only in count: live chat state
+  (16 streaming replies and 16 tool outputs, 100 000 characters each, ids of at most 64 characters),
+  open requests (50), frames that need no credit (a peer that stops reading is cut off), requests
+  handled at once (the rest waits unread in the peer's window), rows waiting for the database, and
+  stored history (one item at most 512 KiB, a project at most `quotas.chat_log_mb`). Browsers that
+  fall behind by 32 MiB are disconnected and catch up from their last item; replays wait for the
+  browser instead of piling up.
 
 ### Containers
 
@@ -47,12 +54,20 @@ One container per project, made by `containers/docker.py`:
   (uid 1000), `no-new-privileges`, read-only root file system, `tmpfs` for `/tmp`, `--pids-limit`,
   `--memory`, `--cpus`, `nofile` limit, `--pull never` (a missing image is an error, never a download).
 - gVisor (`runsc`) is used when it is installed (`forge-web doctor` says whether it is).
-- Disk use is limited per project (`quotas.project_disk_mb`); idle containers stop after
-  `sandbox.idle_minutes`. Volumes stay until the project is deleted.
+- Disk use per project (`quotas.project_disk_mb`) is measured by Docker itself, outside the sandbox,
+  every `quotas.disk_check_minutes`; a project over its quota has its container stopped. Uploads and
+  messages are refused when the larger of that number and the sandbox's own is over the quota.
+  Between two measurements a project can write more, so Docker's data belongs on a partition of its
+  own (or on XFS with project quotas), where a full disk never stops the server.
+- Idle containers stop after `sandbox.idle_minutes`. Volumes stay until the project is deleted.
 - Git jobs that need a token (clone, push, pull) run in a throwaway container on the project's volume as
   uid 1000 with `core.hooksPath=/dev/null`, `core.fsmonitor=` and `protocol.file.allow=never`; the token
   comes in through a credential helper on stdin and is never written to `.git/config`. The agent itself
-  cannot push; people push with the button in the Changes panel.
+  cannot push; people push with the button in the Changes panel. Git jobs use Docker's default network
+  (only the fixed script runs, against the one checked host): on cloud servers, block that network from
+  the metadata address and the host's own services (`EINRICHTUNG.md`, section 9).
+- A server folder opened as a project (admins only, under `sandbox.folder_roots`) may not have a
+  comma or quote in its path, so it cannot add options to Docker's `--mount`.
 - Forge's own configuration inside the container is written by the server. Projects stay "untrusted" for
   Forge, so hooks and MCP servers from a cloned repository never run.
 
@@ -65,16 +80,25 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 
 - The server's LLM keys, people's own keys and GitHub tokens are encrypted at rest with the vault
   (`vault.py`, Fernet; the master key is a file in the data folder, readable by the service user
-  only and never in the database, so a stolen database backup reveals no secret). None of them ever enters a container.
-- A chat run gets a short-lived **run token** bound to the user, chat and run, sent to the worker in its
-  start message (not its environment). It works only while its chat runs. The gateway accepts it only
-  for the model paths it knows (messages, chat completions, responses, generateContent), only for
-  allowed models, swaps in the real key header, reserves the cost before the call and settles it from
-  the upstream's answer (also for streams that break off). Monthly limits apply per user and server-wide.
+  only and never in the database, so a stolen database backup reveals no secret). None of them ever
+  enters a container.
+- A chat gets a **run token** bound to the user and the chat, sent to the worker in its start message
+  (not its environment). It works only while a run that a person started here (a message or an
+  answer) goes on, and at most `gateway.run_minutes` after the last one: the sandbox's own word that a
+  chat runs is not enough. The gateway accepts it only for the model paths it knows (messages, chat
+  completions, responses, generateContent), only for allowed models, swaps in the real key header,
+  reserves the cost before the call and settles it from the upstream's final usage report. A stream
+  that breaks off before that report is charged the larger of what was reported so far and what the
+  text that came through (tool-call arguments and thinking included) amounts to. Monthly limits apply
+  per user and server-wide.
+- Local model servers (Ollama, LM Studio, vLLM) need no key and their presets point at `localhost`,
+  which from the gateway is the server itself: they are offered only when an admin names their
+  address in `gateway.upstreams`.
 - The egress proxy only connects to the hosts in `egress.allow` (package registries and code hosts by
   default; `CONNECT` for HTTPS, absolute URLs for plain HTTP). It resolves the name itself and connects
   to that address only if it is public, so DNS tricks cannot point an allowed name at loopback, private,
-  link-local or metadata addresses.
+  link-local or metadata addresses. Behind an `HTTPS_PROXY` of its own, the server hands that proxy only
+  names it cannot resolve itself, never one that resolves to a private address.
 
 ### Browser
 
@@ -90,8 +114,10 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   (`Secure`, `HttpOnly`, `SameSite=None`, `Partitioned`) for that host only; the session cookie never
   reaches a preview. The proxy strips Forge's cookies from requests, rewrites `Host` and `Origin` to
   `localhost:<port>`, refuses requests from other sites (other previews included) unless they are
-  top-level `GET` navigations, and checks membership again every 30 seconds. Caddy asks `/api/preview/allowed-host` before it gets a
-  certificate, so only names of existing projects and ports get one.
+  top-level `GET` navigations, and checks membership again every 30 seconds.
+- Caddy asks `/api/preview/allowed-host` before it gets a certificate. The answer is yes only for a
+  preview of an existing project that a member opened in the last ten minutes, and for at most 20
+  ports per project a day, so nobody can make the server use up the certificate authority's limits.
 
 ### Accounts
 
@@ -118,7 +144,8 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 ## What was checked
 
 Each step had its own security tests; `tests/test_access.py` calls every API route as a signed-out
-browser, an outsider, a viewer and a non-admin, and fails when a new route has no rule. W17 added two reviews of the whole code:
+browser, an outsider, a viewer and a non-admin, and fails when a new route has no rule. W17 added
+two reviews of the whole code:
 
 1. **Sign-in and accounts** (sessions, CSRF, OAuth, resets, invites, two-factor, admin rights).
    Fixed: accounts made with someone else's address could be taken over by the address's owner signing
@@ -132,18 +159,19 @@ browser, an outsider, a viewer and a non-admin, and fails when a new route has n
    gateway, egress). Found sound: the container arguments, frame and credit limits, the files API
    (downloads are attachments with `CSP: sandbox` and `nosniff`), git URL and branch checks, the
    terminal and chat sockets, the preview proxy's host parsing, cookie and header rules, the gateway's
-   path and header allow lists, and the egress address checks. Open findings (fixed in W17c):
-   - a stream that breaks off after Anthropic's first event is charged almost no output;
-   - the gateway believes the sandbox when it says a chat still runs, so a run token can outlive its
-     run (a chat in someone else's project runs in their sandbox);
-   - live chat state, protocol queues, replays to slow browsers and stored chat events have no limit
-     in bytes, so a hostile sandbox can use up the server's memory or disk;
-   - the disk quota relies on numbers from the sandbox, and volumes have no size limit;
-   - with an upstream `HTTPS_PROXY`, the egress proxy hands over names it would refuse itself;
-   - presets without a key (Ollama, LM Studio, vLLM) reach the server's own `localhost`;
+   path and header allow lists, and the egress address checks. Fixed (W17c):
+   - a stream broken off after Anthropic's first event was charged one output token, and the estimate
+     for broken-off streams ignored tool-call arguments and thinking;
+   - the gateway believed the sandbox when it said a chat still ran, so a run token could outlive
+     its run;
+   - live chat state, frames that need no credit, requests handled at once, replays to slow browsers,
+     rows waiting for the database and stored chat history had no limit in bytes;
+   - the disk quota relied on the sandbox's own numbers;
+   - with an upstream `HTTPS_PROXY`, the egress proxy handed over names that resolve to private
+     addresses;
+   - local model server presets reached the server's own `localhost`;
    - a server folder path with a comma could add options to Docker's `--mount`;
-   - git jobs run on Docker's default network;
-   - `/api/preview/allowed-host` accepts any port, so one project can use up certificate limits.
+   - `/api/preview/allowed-host` said yes for any port of an existing project.
 
 ## Accepted risks
 
@@ -161,6 +189,13 @@ browser, an outsider, a viewer and a non-admin, and fails when a new route has n
   anywhere the egress list allows) is limited by CPU, memory, time and the egress list, not prevented.
 - **A project's configuration is ignored by Forge** (untrusted): repository hooks and MCP servers do not
   run. People who want them configure them in their own Forge settings.
+- **A chat in someone else's project runs in their sandbox.** Its owners can read it and, while it
+  runs (at most `gateway.run_minutes` after the last message or answer), use the model access it
+  pays for. Add people only to projects of people they trust, and stop a chat to end its run.
+- **Disk use between two measurements**: a project can write more than its quota for up to
+  `quotas.disk_check_minutes` before its container stops (see Containers).
+- **Git jobs on Docker's default network**: a hole in git itself would reach what that network
+  reaches; block the metadata address and host services there (see Containers).
 
 ## Reporting
 

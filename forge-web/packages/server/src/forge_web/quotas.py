@@ -1,5 +1,12 @@
-"""Quotas: how many projects a user may own and how much disk a project may use."""
+"""Quotas: how many projects a user may own and how much disk a project may use.
 
+Disk use is measured two ways: by the sandbox (quick, for uploads and messages) and by the
+container engine outside it (trusted, every few minutes). Checks use the larger number, and a
+project whose measured volumes are over the quota has its container stopped: the sandbox could
+lie about its own use, and programs in it write without asking the server.
+"""
+
+import logging
 import time
 
 from fastapi import HTTPException
@@ -9,6 +16,7 @@ from forge_web.db.models import Project, User
 from forge_web.sandbox_calls import result_dict, sandbox_call
 from forge_web.services import Services
 
+log = logging.getLogger(__name__)
 MB = 1024 * 1024
 USAGE_SECONDS = 60.0  # how long a measured disk use is trusted
 
@@ -40,8 +48,22 @@ async def disk_use(services: Services, project_id: str, *, fresh: bool = False) 
     found = result_dict(await sandbox_call(services, project_id, "fs.usage"))
     used = found.get("bytes")
     size = used if isinstance(used, int) and used >= 0 else 0
+    size = max(size, services.host_disk_use.get(project_id, 0))
     services.disk_use[project_id] = (time.monotonic(), size)
     return size
+
+
+async def enforce_disk(services: Services) -> list[str]:
+    """Measure every project outside its sandbox; stop the containers of projects over quota."""
+    services.host_disk_use = await services.driver.disk_use()
+    limit = disk_limit(services)
+    over = [p for p, used in services.host_disk_use.items() if limit is not None and used > limit]
+    for project_id in over:
+        log.warning("project %s uses more disk than its quota: stopping it", project_id)
+        services.disk_use.pop(project_id, None)
+        await services.runs.forget_project(project_id)
+        await services.driver.stop(project_id)
+    return over
 
 
 async def disk_room(services: Services, project_id: str) -> int | None:

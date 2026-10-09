@@ -43,8 +43,13 @@ def upstream(name: str, overrides: dict[str, str]) -> Upstream | None:
     preset = PRESETS.get(name)
     if preset is None or preset.kind not in KINDS:
         return None
+    keyless = preset.api_key_env is None
+    if keyless and not overrides.get(name):
+        # Their presets point at localhost: that would be the server itself. Admins name where
+        # such a server runs (`gateway.upstreams`) to offer it.
+        return None
     base = overrides.get(name) or preset.base_url or DEFAULT_BASE[preset.kind]
-    return Upstream(name, preset.kind, base.rstrip("/"), keyless=preset.api_key_env is None)
+    return Upstream(name, preset.kind, base.rstrip("/"), keyless=keyless)
 
 
 def worker_providers(base: str, token_env: str) -> dict[str, dict[str, Any]]:

@@ -24,6 +24,11 @@ TICKET_SECONDS = 60.0
 COOKIE_SECONDS = 12 * 3600
 RECHECK_SECONDS = 30.0  # how long a positive membership check is trusted
 MAX_TICKETS = 10_000
+# Certificates (Caddy asks before it gets one): only for a preview someone opened just now, and
+# for a few ports per project a day, so nobody uses up the certificate authority's limits.
+CERT_SECONDS = 600.0
+CERT_PORTS_PER_DAY = 20
+DAY = 86_400.0
 LABEL = re.compile(r"^p([1-9][0-9]{0,4})-([a-z0-9][a-z0-9-]{0,47})$")
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -106,6 +111,8 @@ class PreviewAccess:
     key: bytes
     tickets: dict[str, Grant] = field(default_factory=dict)
     checked: dict[str, float] = field(default_factory=dict)  # cookie value -> last good check
+    opened: dict[tuple[str, int], float] = field(default_factory=dict)  # preview -> last ticket
+    certified: dict[str, dict[int, float]] = field(default_factory=dict)  # project -> port -> when
 
     def issue(
         self, user_id: str, session_id: str, project_id: str, port: int, now: float | None = None
@@ -117,7 +124,22 @@ class PreviewAccess:
             self.tickets.pop(next(iter(self.tickets)))
         ticket = secrets.token_urlsafe(24)
         self.tickets[ticket] = Grant(user_id, session_id, project_id, port, now + TICKET_SECONDS)
+        if len(self.opened) >= MAX_TICKETS:
+            self.opened = {k: t for k, t in self.opened.items() if now - t < CERT_SECONDS}
+        self.opened[(project_id, port)] = now
         return ticket
+
+    def may_certify(self, project_id: str, port: int, now: float | None = None) -> bool:
+        """May the reverse proxy get a certificate for this preview's host?"""
+        now = time.time() if now is None else now
+        if now - self.opened.get((project_id, port), -DAY) > CERT_SECONDS:
+            return False  # nobody opened this preview just now
+        ports = {q: t for q, t in self.certified.get(project_id, {}).items() if now - t < DAY}
+        if port not in ports and len(ports) >= CERT_PORTS_PER_DAY:
+            return False
+        ports.setdefault(port, now)
+        self.certified[project_id] = ports
+        return True
 
     def redeem(self, ticket: str, target: Target, now: float | None = None) -> Grant | None:
         """A cookie's grant if the ticket is fresh and for this preview; used up either way."""

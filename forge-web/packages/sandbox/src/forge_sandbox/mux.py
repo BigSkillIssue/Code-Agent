@@ -43,6 +43,9 @@ from forge_sandbox.protocol import (
 WINDOW = 1024 * 1024
 MAX_CREDIT = 1 << 31
 MAX_CHANNELS = 256
+# Management and control frames need no credit. This many waiting means the peer stopped reading
+# (while it keeps sending): the connection closes instead of growing without end.
+MAX_URGENT = 4096
 log = logging.getLogger(__name__)
 Role = Literal["server", "daemon"]
 
@@ -256,6 +259,7 @@ class Mux:
         self._opening: dict[int, asyncio.Future[None]] = {}
         self._urgent: deque[Frame] = deque()
         self._normal: deque[Frame] = deque()
+        self._overflow = False
         self._wake = asyncio.Event()
         self._tasks: set[asyncio.Task[None]] = set()
         self._done = asyncio.Event()
@@ -313,6 +317,11 @@ class Mux:
         if self.closed:
             return
         urgent = frame.type in MANAGEMENT or frame.channel == CONTROL_CHANNEL
+        if urgent and len(self._urgent) >= MAX_URGENT:
+            if not self._overflow:
+                self._overflow = True
+                self._spawn(self.close(ProtocolError("the peer stopped reading")))
+            return
         (self._urgent if urgent else self._normal).append(frame)
         self._wake.set()
 

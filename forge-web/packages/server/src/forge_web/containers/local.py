@@ -114,6 +114,10 @@ class LocalDriver:
         self.folders.pop(project_id, None)
         await asyncio.to_thread(shutil.rmtree, self.project_dir(project_id), True)
 
+    async def disk_use(self) -> dict[str, int]:
+        """Nothing: local projects are the operator's own folders."""
+        return {}
+
     async def run_git_job(self, project_id: str, job: GitJob) -> tuple[int, str]:
         """Run a git job as a child process, in a temporary folder that is removed afterwards."""
         shell = shutil.which("sh")

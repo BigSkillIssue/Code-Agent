@@ -111,8 +111,10 @@ async def test_server_folders_for_admins_under_allowed_roots(
     files = (await client.get(f"/api/projects/{pid}/files/list")).json()["entries"]
     assert [e["name"] for e in files] == ["main.py"]
     sneaky = roots / "app" / ".." / ".." / "elsewhere"
+    comma = roots / "a,type=volume,source=forge-web-other-workspace"  # docker's --mount syntax
+    comma.mkdir()
     for bad, code in ((tmp_path / "elsewhere", 403), (sneaky, 403), (tmp_path / "data", 403),
-                      (roots / "missing", 422)):  # fmt: skip
+                      (roots / "missing", 422), (comma, 422)):  # fmt: skip
         attempt = await client.post("/api/projects", json={**body, "folder": str(bad)})
         assert attempt.status_code == code, (bad, attempt.text)
     member = await person(server, "member")

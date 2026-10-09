@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from forge_web.egress import Denied, Egress, EgressPolicy, resolve
+from forge_web.egress import Denied, Egress, EgressPolicy, open_target, resolve
 
 
 def test_allow_list_covers_subdomains_but_not_lookalikes() -> None:
@@ -116,3 +116,28 @@ async def test_plain_http_by_absolute_url() -> None:
     assert status.startswith(b"HTTP/1.1 200")
     assert await reader.read(100) == b"GET /simple/pkg/?x=1 HTTP/1.1"
     server.close()
+
+
+async def test_the_servers_own_proxy_gets_only_names_it_cannot_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+
+    async def corporate_proxy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        asked.append((await reader.readuntil(b"\r\n\r\n")).decode().split("\r\n")[0])
+        writer.write(b"HTTP/1.1 200 Connection established\r\n\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(corporate_proxy, "127.0.0.1", 0)
+    port = int(server.sockets[0].getsockname()[1])
+    monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
+    policy = EgressPolicy(["*"])
+    try:
+        with pytest.raises(Denied, match="not public"):  # the proxy might reach inside
+            await open_target("localhost", 443, policy)
+        _reader, writer = await open_target("no-such-name.invalid", 443, policy)
+        writer.close()
+    finally:
+        server.close()
+    assert asked == ["CONNECT no-such-name.invalid:443 HTTP/1.1"]

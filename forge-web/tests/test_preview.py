@@ -21,6 +21,8 @@ from websockets.exceptions import InvalidStatus
 
 from forge_web.db.models import ProjectMember
 from forge_web.preview_auth import (
+    CERT_PORTS_PER_DAY,
+    CERT_SECONDS,
     COOKIE_NAME,
     PreviewAccess,
     PreviewBase,
@@ -69,6 +71,23 @@ def test_where_previews_live() -> None:
     plain = settings_with(**{"preview.domain": "previews.lan", "preview.https": False,
                              "preview.port": 8080})  # fmt: skip
     assert preview_base(plain) == PreviewBase("http", "previews.lan", 8080)
+
+
+def test_certificates_only_for_just_opened_previews_and_few_ports() -> None:
+    access = PreviewAccess(b"k" * 32)
+    assert not access.may_certify("p1", 3000, now=1000.0)
+    access.issue("u1", "s1", "p1", 3000, now=1000.0)
+    assert access.may_certify("p1", 3000, now=1100.0)
+    assert not access.may_certify("p1", 3000, now=1000.0 + CERT_SECONDS + 1)
+    for port in range(4000, 4000 + CERT_PORTS_PER_DAY):
+        access.issue("u1", "s1", "p1", port, now=2000.0)
+        access.may_certify("p1", port, now=2000.0)
+    access.issue("u1", "s1", "p1", 5000, now=2000.0)
+    assert not access.may_certify("p1", 5000, now=2000.0)  # one project, many ports: no
+    access.issue("u1", "s1", "p1", 3000, now=2000.0)
+    assert access.may_certify("p1", 3000, now=2000.0)  # a port it has already
+    access.issue("u1", "s1", "p1", 5000, now=2000.0 + 86_401)
+    assert access.may_certify("p1", 5000, now=2000.0 + 86_401)  # the next day
 
 
 def test_tickets_are_single_use_and_cookies_are_bound() -> None:
@@ -426,6 +445,10 @@ async def test_certificates_only_for_preview_hosts_of_real_projects(world: World
             found = await caddy.get("/api/preview/allowed-host", params={"domain": domain})
         return found.status_code
 
-    assert await asks(world.host(world.project_a).split(":")[0]) == 200
+    other_port = world.host(world.project_b, 4321).split(":")[0]
+    assert await asks(other_port) == 404  # a real project, but nobody opened this preview
+    opened = await world.client.post(f"/api/projects/{world.project_b}/preview/4321/open")
+    assert opened.status_code == 200, opened.text
+    assert await asks(other_port) == 200
     assert await asks(f"p3000-{'0' * 16}.localhost") == 404  # no such project
     assert await asks("evil.example.com") == 404 and await asks("") == 404

@@ -16,7 +16,13 @@ from forge_web.gateway.keys import save_key
 from forge_web.gateway.meter import UsageSniffer, cost, price
 from forge_web.gateway.proxy import Gateway
 from forge_web.gateway.tokens import parse_token, run_token
-from forge_web.gateway.upstreams import allowed_path, incoming_token, model_of, prepare_body
+from forge_web.gateway.upstreams import (
+    allowed_path,
+    incoming_token,
+    model_of,
+    prepare_body,
+    upstream,
+)
 from forge_web.settings import GatewaySettings
 from forge_web.vault import Vault
 
@@ -83,8 +89,14 @@ def test_usage_is_read_from_each_provider_format() -> None:
     )
     assert responses.finish().output_tokens == 4
     google = UsageSniffer("google")
-    google.feed(b'data: {"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":5}}\n\n')
-    assert google.finish().input_tokens == 11
+    google.feed(b'data: {"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":2}}\n\n')
+    assert not google.finish().reported  # numbers so far, not the final ones
+    google.feed(
+        b'data: {"candidates":[{"finishReason":"STOP"}],'
+        b'"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":5}}\n\n'
+    )
+    assert (google.finish().input_tokens, google.finish().output_tokens) == (11, 5)
+    assert google.finish().reported
     plain = UsageSniffer("anthropic")
     plain.feed(b'{"usage": {"input_tokens": 3, "output_tokens": 2}}')
     assert plain.finish().output_tokens == 2
@@ -249,6 +261,42 @@ async def test_a_stream_without_usage_is_charged_an_estimate(world: dict[str, An
     await call(world, token(world))
     rows = await usage_rows(world)
     assert rows[0].estimated and rows[0].output_tokens == 100
+
+
+async def test_a_stream_broken_off_after_its_first_event_is_not_free(
+    world: dict[str, Any],
+) -> None:
+    # Anthropic's first event says "1 output token"; only the last one has the real number.
+    await save_key(world["db"], world["vault"], "u1", "anthropic", "sk-ant-real-key-123456")
+    first = ANTHROPIC_SSE[: ANTHROPIC_SSE.index("event: content_block_delta")]
+    text = 'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"%s"}}\n'
+    args = 'data: {"type":"content_block_delta","delta":{"partial_json":"%s"}}\n'
+    world["upstream"].body = first + text % ("x" * 300) + args % ("y" * 600)
+    await call(world, token(world))
+    rows = await usage_rows(world)
+    assert rows[0].estimated and (rows[0].input_tokens, rows[0].output_tokens) == (120, 300)
+
+
+def test_estimates_count_tool_arguments_and_thinking() -> None:
+    sniffer = UsageSniffer("openai_compat")
+    chunk = {"choices": [{"delta": {"reasoning_content": "ab", "content": "cd", "tool_calls": [
+        {"function": {"arguments": "ef"}}, {"function": None}, "junk"]}}]}  # fmt: skip
+    sniffer.feed(b"data: " + json.dumps(chunk).encode() + b"\n")
+    sniffer.feed(b'data: {"type":"response.function_call_arguments.delta","delta":"gh"}\n')
+    google = {"candidates": [{"content": {"parts": [{"text": "ij"}, {"functionCall": {}}]}}]}
+    sniffer.feed(b"data: " + json.dumps(google).encode() + b"\n")
+    sniffer.feed(b'data: {"delta":{"thinking":"kl"}}\ndata: [1, 2]\ndata: {"choices": 5}\n')
+    assert sniffer.output_chars == len("abcdefghij{}kl")
+    assert not sniffer.finish().reported
+
+
+def test_local_model_servers_need_an_admin_to_name_them() -> None:
+    # Ollama's preset says localhost: from the gateway that would be the server itself.
+    assert upstream("ollama", {}) is None
+    named = upstream("ollama", {"ollama": "http://gpu-box:11434/v1/"})
+    assert named is not None and named.keyless and named.base_url == "http://gpu-box:11434/v1"
+    anthropic = upstream("anthropic", {})
+    assert anthropic is not None and not anthropic.keyless
 
 
 async def test_upstream_errors_cost_nothing(world: dict[str, Any]) -> None:

@@ -1,16 +1,20 @@
 """Docker isolation: the container settings (offline) and, with a Docker daemon, the real thing."""
 
 import asyncio
+import json
 import os
 import subprocess
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 import pytest
 
-from forge_web.containers.docker import DockerDriver
+from forge_web.containers.docker import DockerDriver, size_bytes
+from forge_web.containers.driver import SandboxError
+from forge_web.quotas import MB, enforce_disk
 from forge_web.sandbox_cli import build_command, source_root
 from forge_web.sandbox_client import SandboxClient
 from forge_web.settings import SandboxSettings
@@ -36,6 +40,60 @@ def test_run_arguments_harden_the_container() -> None:
     assert set(added) == {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL"}
     assert "--runtime" not in driver.run_args("abc123", None)
     assert "--privileged" not in joined and "docker.sock" not in joined
+
+
+def test_a_folder_path_cannot_add_mount_options() -> None:
+    driver = DockerDriver(SandboxSettings())
+    driver.folders["abc123"] = Path("/srv/a,type=volume,source=forge-web-other-workspace")
+    with pytest.raises(SandboxError, match="comma"):
+        driver.workspace_mount("abc123")
+
+
+async def test_disk_use_is_read_from_docker_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert [size_bytes(t) for t in ("0B", "3MB", "1.5GB", "4.096kB", "7 B", "lots")] == [
+        0, 3_000_000, 1_500_000_000, 4096, 7, None,
+    ]  # fmt: skip
+    volumes = [
+        {"Name": "forge-web-abc123-workspace", "Size": "3MB"},
+        {"Name": "forge-web-abc123-home", "Size": "1MB"},
+        {"Name": "forge-web-other-workspace", "Size": "nonsense"},
+        {"Name": "someone-elses-volume", "Size": "9GB"},
+        "junk",
+    ]
+    answers = iter([(0, json.dumps({"Volumes": volumes}), ""), (1, "", "no daemon")])
+
+    async def fake_docker(*args: str, **kwargs: Any) -> tuple[int, str, str]:
+        assert args[:2] == ("system", "df")
+        return next(answers)
+
+    driver = DockerDriver(SandboxSettings())
+    monkeypatch.setattr(driver, "docker", fake_docker)
+    assert await driver.disk_use() == {"abc123": 4_000_000}
+    assert await driver.disk_use() == {}  # cannot measure: nothing is stopped for it
+
+
+async def test_projects_over_their_quota_are_stopped() -> None:
+    stopped: list[str] = []
+
+    async def disk_use() -> dict[str, int]:
+        return {"small": 1_000_000, "big": 30 * MB}
+
+    async def stop(project_id: str) -> None:
+        stopped.append(project_id)
+
+    async def forget(project_id: str) -> None:
+        pass
+
+    services: Any = SimpleNamespace(
+        driver=SimpleNamespace(disk_use=disk_use, stop=stop),
+        runs=SimpleNamespace(forget_project=forget),
+        settings=SimpleNamespace(quotas=SimpleNamespace(project_disk_mb=10)),
+        host_disk_use={}, disk_use={"big": (0.0, 5)},
+    )  # fmt: skip
+    assert await enforce_disk(services) == ["big"] and stopped == ["big"]
+    assert services.host_disk_use["big"] == 30 * MB and "big" not in services.disk_use
+    services.settings.quotas.project_disk_mb = 0  # no quota: nothing stops
+    assert await enforce_disk(services) == [] and stopped == ["big"]
 
 
 def test_sandbox_build_command_uses_the_checkout() -> None:
@@ -114,6 +172,18 @@ async def test_container_is_hardened_and_serves_the_workspace(driver: DockerDriv
     assert host["CapDrop"] == ["ALL"] and "no-new-privileges" in host["SecurityOpt"]
     assert host["PidsLimit"] == 256 and host["Memory"] == 1024**3
     assert not host.get("Binds")  # volumes only, no host folders
+
+
+@needs_docker[0]
+@needs_docker[1]
+async def test_docker_measures_what_the_agent_wrote(driver: DockerDriver) -> None:
+    client = await client_for(driver, "dtest-d")
+    try:
+        wrote = "open('/workspace/blob', 'wb').write(b'x' * 3_000_000); print('ok')"
+        assert await run_as_agent(client, wrote) == ["ok"]
+    finally:
+        await client.close()
+    assert (await driver.disk_use())["dtest-d"] >= 3_000_000
 
 
 @needs_docker[0]

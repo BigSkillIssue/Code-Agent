@@ -48,6 +48,11 @@ class ContainerDriver(Protocol):
         """Run a push or fetch outside the sandbox: exit code and output."""
         ...
 
+    async def disk_use(self) -> dict[str, int]:
+        """Bytes each project's files use, measured outside the sandboxes (project id -> bytes;
+        empty when this driver cannot measure)."""
+        ...
+
 
 def check_project_id(project_id: str) -> str:
     """A project id safe to use in paths and container names."""

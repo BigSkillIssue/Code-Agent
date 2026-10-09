@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import secrets
 import shutil
 from pathlib import Path
@@ -28,6 +29,17 @@ LABEL = "org.forge-web.project"
 # user's files; everything else is dropped.
 CAPABILITIES = ("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL")
 PROJECT_USER = "1000:1000"  # the image's forge user, who owns the workspace
+VOLUME = re.compile(r"^forge-web-([a-z0-9][a-z0-9-]{0,63})-(?:workspace|home)$")
+SIZE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*([kKMGTP]?)B$")
+UNITS = {"": 1, "k": 1000, "K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4, "P": 1000**5}
+# Characters that would end a value inside `--mount`'s comma-separated options.
+MOUNT_UNSAFE = frozenset(',"\n')
+
+
+def size_bytes(text: str) -> int | None:
+    """Bytes of a size as the docker CLI prints it ("3MB", "1.25GB", "0B")."""
+    match = SIZE.match(text.strip())
+    return int(float(match[1]) * UNITS[match[2]]) if match else None
 
 
 class DockerDriver:
@@ -47,6 +59,8 @@ class DockerDriver:
         """The `--mount` value of the project's files: its volume, or its server folder."""
         folder = self.folders.get(project_id)
         if folder is not None:
+            if MOUNT_UNSAFE & set(str(folder)):
+                raise SandboxError("the project's folder has a comma or quote in its path")
             return f"type=bind,source={folder},target=/workspace"
         return f"type=volume,source={self.volumes(project_id)[0]},target=/workspace"
 
@@ -193,6 +207,24 @@ class DockerDriver:
                 proc.kill()
 
         return SandboxLink(proc.stdout, proc.stdin, close)
+
+    async def disk_use(self) -> dict[str, int]:
+        """Bytes of each project's volumes as Docker itself counts them (never the sandbox)."""
+        code, out, err = await self.docker("system", "df", "-v", "--format", "json", timeout=600)
+        if code != 0:
+            log.warning("could not measure the projects' volumes: %s", err.strip()[:200])
+            return {}
+        try:
+            volumes = json.loads(out).get("Volumes") or []
+        except (ValueError, AttributeError):
+            return {}
+        found: dict[str, int] = {}
+        for volume in volumes if isinstance(volumes, list) else []:
+            match = VOLUME.match(str(volume.get("Name", ""))) if isinstance(volume, dict) else None
+            size = size_bytes(str(volume.get("Size", ""))) if match else None
+            if match and size is not None:
+                found[match[1]] = found.get(match[1], 0) + size
+        return found
 
     async def stop(self, project_id: str) -> None:
         """Stop the container (volumes stay; chats and programs in it end)."""
