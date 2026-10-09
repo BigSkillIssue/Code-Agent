@@ -16,7 +16,13 @@ from sqlalchemy import update
 
 from forge_web.audit import audit
 from forge_web.auth.accounts import refuse_inactive, user_view
-from forge_web.auth.sessions import CurrentUser, client_ip, is_https, start_session
+from forge_web.auth.sessions import (
+    CurrentUser,
+    client_ip,
+    end_sessions,
+    is_https,
+    start_session,
+)
 from forge_web.auth.totp import code_hash, new_recovery_codes, new_secret, otpauth_uri, verify
 from forge_web.db.models import User
 from forge_web.services import Services, services_of
@@ -104,7 +110,9 @@ def second_factor_router() -> APIRouter:
         user_id = pending_user(services, request.cookies.get(PENDING_COOKIE))
         if user_id is None:
             raise HTTPException(400, "sign in with your password or provider first")
-        if not services.limits.code_by_user.allow(user_id):
+        if not services.limits.code_by_user.allow(user_id) or not services.limits.login_by_ip.allow(
+            client_ip(request)
+        ):
             raise HTTPException(429, "too many attempts; try again later")
         user = await load_user(services, user_id)
         how = await use_code(services, user, body.code) if user is not None else None
@@ -152,6 +160,8 @@ def setup_routes(router: APIRouter) -> None:
             assert row is not None
             row.totp_enabled, row.totp_last_step = True, step
             row.recovery_codes = "\n".join(code_hash(c) for c in codes)
+        # Sessions opened before (with the password alone, maybe a stolen one) end now.
+        await end_sessions(services, user.id, keep=request.state.session_id)
         await audit(services.db, "totp_enabled", user_id=user.id, ip=client_ip(request))
         return {"recovery_codes": codes}
 

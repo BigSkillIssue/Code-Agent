@@ -110,6 +110,7 @@ class RunManager:
         self.lives: dict[str, LiveChat] = {}
         self.last_active: dict[str, float] = {}  # project id -> last time it was used
         self.closing = False  # the server is shutting down
+        self._warming: set[asyncio.Task[None]] = set()
         self._project_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._chat_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -133,6 +134,18 @@ class RunManager:
             self.links[project_id] = client
             self.boots[project_id] = str(hello.info.get("boot", ""))
             return client
+
+    def warm(self, project_id: str) -> None:
+        """Have a chat worker ready in the project's sandbox (in the background), so the next
+        chat answers without waiting for Forge to load."""
+
+        async def warm_up() -> None:
+            with contextlib.suppress(Exception):  # only a speed-up: a cold start still works
+                await self.call(project_id, "chat.warm")
+
+        task = asyncio.create_task(warm_up())
+        self._warming.add(task)
+        task.add_done_callback(self._warming.discard)
 
     def touch(self, project_id: str) -> None:
         """Someone used the project's sandbox (it is not idle)."""
@@ -361,6 +374,8 @@ class RunManager:
     async def close(self) -> None:
         """Stop following every chat and close every sandbox connection."""
         self.closing = True
+        for task in list(self._warming):
+            task.cancel()
         for live in list(self.lives.values()):
             await self._stop_relay(live)
         for client in list(self.links.values()):

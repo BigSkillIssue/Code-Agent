@@ -135,6 +135,19 @@ async def test_setting_up_and_signing_in_with_two_factor(server: LiveServer) -> 
         assert again.status_code == 401  # each recovery code works once
 
 
+async def test_turning_it_on_signs_out_other_browsers(server: LiveServer) -> None:
+    async with WebClient(server) as browser, WebClient(server) as other:
+        await admin_with_password(server, browser)
+        login = {"email": "ada@example.com", "password": PASSWORD}
+        assert (await other.post("/api/auth/login", login)).status_code == 200
+        secret = (await browser.post("/api/me/totp/setup")).json()["secret"]
+        assert (
+            await browser.post("/api/me/totp/enable", {"code": code_for(secret)})
+        ).status_code == 200
+        assert (await other.get("/api/me")).status_code == 401  # maybe a stolen password
+        assert (await browser.get("/api/me")).status_code == 200
+
+
 async def test_a_second_factor_cannot_be_skipped(server: LiveServer) -> None:
     async with WebClient(server) as browser, WebClient(server) as other:
         await admin_with_password(server, browser)
@@ -176,7 +189,10 @@ async def test_admins_must_use_two_factor_when_the_server_says_so(tmp_path: Path
         assert listed[member.id]["totp_enabled"] and listed[admin.id]["totp_enabled"]
         reset = await admin.web.post(f"/api/admin/users/{member.id}/totp/reset")
         assert reset.status_code == 200
-        assert not (await member.web.get("/api/me")).json()["totp_enabled"]
+        assert (await member.web.get("/api/me")).status_code == 401  # signed out everywhere
+        async with server.services.db.session() as session:
+            row = await session.get(User, member.id)
+        assert row is not None and not row.totp_enabled and row.totp_secret is None
         async with server.services.db.session() as session:
             actions = list(await session.scalars(select(AuditEntry.action)))
         assert {"totp_enabled", "totp_reset"} <= set(actions)

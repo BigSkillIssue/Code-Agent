@@ -148,6 +148,7 @@ def auth_router() -> APIRouter:
     @router.post("/auth/login")
     async def login(body: LoginIn, request: Request, response: Response) -> dict[str, Any]:
         services = services_of(request)
+        refuse_passwords_off(services)
         email, ip = body.email.strip().lower(), client_ip(request)
         limited(services.limits.login_by_ip, ip)
         limited(services.limits.login_by_email, email)
@@ -190,6 +191,7 @@ def auth_router() -> APIRouter:
     @router.post("/auth/reset")
     async def reset(body: ResetIn, request: Request, response: Response) -> dict[str, Any]:
         services = services_of(request)
+        refuse_passwords_off(services)
         check_password(body.password)
         row = await onetime.consume(services.db, body.token, "reset")
         if row is None or row.user_id is None:
@@ -201,6 +203,7 @@ def auth_router() -> APIRouter:
                 raise HTTPException(400, "this reset link is not valid (any more)")
             user.password_hash = new_hash
         await end_sessions(services, user.id)
+        await onetime.revoke(services.db, "reset", user.id)  # other reset links die too
         refuse_inactive(user)
         await audit(services.db, "password_reset", user_id=user.id, ip=client_ip(request))
         if not await finish_sign_in(request, response, user):
@@ -213,11 +216,10 @@ def auth_router() -> APIRouter:
         email = body.email.strip().lower()
         limited(services.limits.mail_by_email, email)
         user = await find_user(services, email)
-        if user is not None and mail_enabled(services.settings.auth.smtp):
-            token = await onetime.issue(services.db, "reset", user_id=user.id)
-            link = f"{services.settings.base_url()}/reset#token={token}"
-            text = f"Open this link within 2 hours to choose a new password:\n\n{link}\n"
-            await send_mail(services.settings.auth.smtp, email, "Reset your Forge password", text)
+        auth = services.settings.auth
+        if user is not None and auth.passwords and mail_enabled(auth.smtp):
+            # Sent on the side: the answer takes as long whether or not the account exists.
+            services.background(send_reset(services, user.id, email))
         return {"ok": True}  # the same answer whether or not the account exists
 
     @router.post("/auth/verify")
@@ -233,8 +235,8 @@ def auth_router() -> APIRouter:
             user.email_verified = True
             if user.status == "unverified":
                 user.status = "pending" if services.settings.auth.signup == "approval" else "active"
-        if user.status == "active" and not await finish_sign_in(request, response, user):
-            return {"totp_required": True}
+        # No session here: whoever clicks the link proves the mailbox, not the password (the
+        # account may have been made by someone else); they sign in, or reset the password.
         return {**user_view(user, services), "status": user.status}
 
     @router.get("/auth/invite/{token}")
@@ -301,9 +303,24 @@ async def new_account(
     if not domain_allowed(services, email):
         raise HTTPException(403, "this email domain may not sign up here")
     status = "pending" if auth.signup == "approval" else "active"
-    if not verified and mail_enabled(auth.smtp):
-        status = "unverified"
+    if not verified:
+        # The email is unchecked: confirmed by mail, or else an admin decides.
+        status = "unverified" if mail_enabled(auth.smtp) else "pending"
     return await create_user(services, email, name, password, status=status, verified=verified)
+
+
+def refuse_passwords_off(services: Services) -> None:
+    """403 when password accounts are turned off (sign-in goes through providers only)."""
+    if not services.settings.auth.passwords:
+        raise HTTPException(403, "password sign-in is turned off on this server")
+
+
+async def send_reset(services: Services, user_id: str, email: str) -> None:
+    """Mail a link that sets a new password."""
+    token = await onetime.issue(services.db, "reset", user_id=user_id)
+    link = f"{services.settings.base_url()}/reset#token={token}"
+    text = f"Open this link within 2 hours to choose a new password:\n\n{link}\n"
+    await send_mail(services.settings.auth.smtp, email, "Reset your Forge password", text)
 
 
 async def send_verification(services: Services, user: User) -> None:

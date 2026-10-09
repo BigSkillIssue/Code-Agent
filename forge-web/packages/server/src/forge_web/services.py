@@ -1,7 +1,10 @@
 """Everything a request handler needs, built once per app and kept on `app.state`."""
 
 import asyncio
+import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import Request, WebSocket
 
@@ -17,6 +20,8 @@ from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
 from forge_web.vault import Vault
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,6 +47,20 @@ class Services:
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
     git_locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one git job per project
     disk_use: dict[str, tuple[float, int]] = field(default_factory=dict)  # project -> (when, bytes)
+    side_tasks: set[asyncio.Task[None]] = field(default_factory=set)  # short work on the side
+
+    def background(self, work: Coroutine[Any, Any, None]) -> None:
+        """Run short work on the side (mail, say); a failure is logged, not raised."""
+        task = asyncio.create_task(work)
+        self.side_tasks.add(task)
+        task.add_done_callback(self.side_tasks.discard)
+        task.add_done_callback(log_failure)
+
+
+def log_failure(task: "asyncio.Task[None]") -> None:
+    """Log what a side task raised."""
+    if not task.cancelled() and task.exception() is not None:
+        log.error("work on the side failed", exc_info=task.exception())
 
 
 def services_of(connection: Request | WebSocket) -> Services:

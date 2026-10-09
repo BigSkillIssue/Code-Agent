@@ -1,5 +1,6 @@
 """Accounts: first admin, sign-in, CSRF, origins, sign-up modes, invites, resets, audit."""
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -9,9 +10,10 @@ from sqlalchemy import select
 
 from forge_web.auth import onetime
 from forge_web.auth.passwords import password_problem
-from forge_web.db.models import AuditEntry, User
+from forge_web.auth.ratelimit import RateLimiter
+from forge_web.db.models import AuditEntry, Project, ProjectMember, User
 from forge_web.settings import load_settings
-from support import LiveServer, WebClient
+from support import LiveServer, WebClient, person
 
 PASSWORD = "correct horse battery"
 
@@ -147,7 +149,9 @@ async def test_open_mode_with_allowed_domains(tmp_path: Path) -> None:
             outside = {"email": "dan@other.org", "password": PASSWORD}
             assert (await visitor.post("/api/auth/signup", outside)).status_code == 403
             inside = {"email": "dan@example.com", "password": PASSWORD}
-            assert (await visitor.post("/api/auth/signup", inside)).json()["status"] == "active"
+            # Without mail nobody can confirm the address, so an admin decides (anyone could
+            # claim dan@example.com otherwise).
+            assert (await visitor.post("/api/auth/signup", inside)).json()["status"] == "pending"
             assert (await visitor.post("/api/auth/signup", inside)).status_code == 409
 
 
@@ -174,3 +178,75 @@ async def test_weak_passwords_and_bad_emails_are_refused(server: LiveServer) -> 
         assert (await browser.post("/api/auth/setup", bad)).status_code == 422
     async with server.services.db.session() as session:
         assert list(await session.scalars(select(User))) == []
+
+
+async def test_an_email_link_confirms_but_does_not_sign_in(server: LiveServer) -> None:
+    # The mailbox's owner may not be who made the account: they sign in (or reset) themselves.
+    ada = await person(server, "ada", status="unverified")
+    token = await onetime.issue(server.services.db, "verify", user_id=ada.id)
+    async with WebClient(server) as clicker:
+        confirmed = await clicker.post("/api/auth/verify", {"token": token})
+        assert confirmed.status_code == 200 and confirmed.json()["status"] == "active"
+        assert (await clicker.get("/api/me")).status_code == 401
+    async with server.services.db.session() as session:
+        row = await session.get(User, ada.id)
+    assert row is not None and row.email_verified
+    await ada.web.client.aclose()
+
+
+async def test_password_accounts_turned_off_means_no_password_sign_in(tmp_path: Path) -> None:
+    with LiveServer(server_settings(tmp_path / "data")) as server:
+        async with WebClient(server) as admin:
+            await make_admin(server, admin)
+        server.services.settings.auth.passwords = False
+        ada = await server_user(server)
+        token = await onetime.issue(server.services.db, "reset", user_id=ada)
+        async with WebClient(server) as visitor:
+            login = {"email": "admin@example.com", "password": PASSWORD}
+            assert (await visitor.post("/api/auth/login", login)).status_code == 403
+            reset = {"token": token, "password": "a brand new password"}
+            assert (await visitor.post("/api/auth/reset", reset)).status_code == 403
+
+
+async def test_a_new_password_ends_old_reset_links(server: LiveServer) -> None:
+    async with WebClient(server) as admin:
+        me = await make_admin(server, admin)
+        old_link = await onetime.issue(server.services.db, "reset", user_id=me["id"])
+        new_password = {"current": PASSWORD, "new": "another long password"}
+        changed = await admin.post("/api/me/password", new_password)
+        assert changed.status_code == 200
+    async with WebClient(server) as thief:
+        stale = {"token": old_link, "password": "the thief's password"}
+        assert (await thief.post("/api/auth/reset", stale)).status_code == 400
+
+
+async def test_unconfirmed_accounts_are_not_added_to_projects_while_mail_works(
+    server: LiveServer,
+) -> None:
+    owner = await person(server, "owner", email_verified=True)
+    await person(server, "claimed")  # made by someone, address never confirmed
+    pid, now = "p1", time.time()
+    async with server.services.db.session() as session, session.begin():
+        session.add(Project(id=pid, name="P", owner_id=owner.id, created_at=now, updated_at=now))
+        await session.flush()
+        session.add(ProjectMember(project_id=pid, user_id=owner.id, role="owner"))
+    smtp = server.services.settings.auth.smtp
+    smtp.host, smtp.from_address = "smtp.example.com", "forge@example.com"
+    body = {"email": "claimed@example.com", "role": "editor"}
+    refused = await owner.web.post(f"/api/projects/{pid}/members", body)
+    assert refused.status_code == 409 and "confirmed" in refused.json()["detail"]
+    smtp.host = ""  # without mail nobody can confirm: an admin's approval decides instead
+    assert (await owner.web.post(f"/api/projects/{pid}/members", body)).status_code == 201
+    # Each try tells whether an address has an account, so nobody may try addresses for long.
+    server.services.limits.members_by_user = RateLimiter(3, 3600)
+    probes = [{"email": f"guess{n}@example.com", "role": "viewer"} for n in range(4)]
+    codes = [(await owner.web.post(f"/api/projects/{pid}/members", b)).status_code for b in probes]
+    assert codes == [404, 404, 404, 429]
+    await owner.web.client.aclose()
+
+
+async def server_user(server: LiveServer) -> str:
+    async with server.services.db.session() as session:
+        user = await session.scalar(select(User))
+    assert user is not None
+    return user.id

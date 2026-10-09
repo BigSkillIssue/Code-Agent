@@ -80,6 +80,9 @@ function UsersTab() {
                 {u.name || "–"}
                 <div className="text-xs text-muted">{u.email}</div>
                 {u.totp_enabled && <div className="text-xs text-ok">{t("twoFactorOn")}</div>}
+                {u.email && !u.email_verified && u.status !== "unverified" && (
+                  <div className="text-xs text-warn">{t("statusUnverified")}</div>
+                )}
               </td>
               <td className="py-2">
                 <select

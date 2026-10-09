@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from forge_web.audit import audit
 from forge_web.auth.second_factor import turn_off
-from forge_web.auth.sessions import AdminUser, client_ip
+from forge_web.auth.sessions import AdminUser, client_ip, end_sessions
 from forge_web.db.engine import Database
 from forge_web.db.models import KeyGrant, ServerSetting, UsageRecord, User
 from forge_web.gateway.meter import month_start
@@ -133,6 +133,7 @@ def admin_api_router() -> APIRouter:
             if await session.get(User, user_id) is None:
                 raise HTTPException(404, "no such user")
         await turn_off(services, user_id)
+        await end_sessions(services, user_id)  # they sign in again, without the old factor
         await audit(services.db, "totp_reset", user_id=admin.id, target=user_id,
                     ip=client_ip(request))  # fmt: skip
         return {"totp_enabled": False}

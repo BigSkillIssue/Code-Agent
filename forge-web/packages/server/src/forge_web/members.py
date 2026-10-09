@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge_web.access import require_project
 from forge_web.audit import audit
+from forge_web.auth.mail import mail_enabled
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.models import Chat, ProjectMember, User
 from forge_web.services import Services, services_of
@@ -88,11 +89,15 @@ def members_router() -> APIRouter:
     ) -> dict[str, Any]:
         services = services_of(request)
         email = body.email.strip().lower()
+        if not services.limits.members_by_user.allow(user.id):
+            raise HTTPException(429, "too many attempts; try again later")
         async with services.db.session() as session, session.begin():
             await require_project(session, user, project_id, "owner")
             person = await session.scalar(select(User).where(User.email == email))
             if person is None or person.status != "active":
                 raise HTTPException(404, "no active account with this email")
+            if not person.email_verified and mail_enabled(services.settings.auth.smtp):
+                raise HTTPException(409, "this account has not confirmed its email yet")
             if await session.get(ProjectMember, (project_id, person.id)) is not None:
                 raise HTTPException(409, "already a member")
             session.add(ProjectMember(project_id=project_id, user_id=person.id, role=body.role))

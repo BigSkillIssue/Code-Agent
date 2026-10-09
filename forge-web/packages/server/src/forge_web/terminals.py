@@ -22,8 +22,9 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 from pydantic import BaseModel, Field, ValidationError
 
 from forge_sandbox.mux import Channel, ChannelClosed, OpenFailed, OpenRefused
+from forge_web import live_access
 from forge_web.access import require_project
-from forge_web.auth.sessions import CurrentUser, websocket_user
+from forge_web.auth.sessions import CurrentUser, session_token, websocket_user
 from forge_web.containers.driver import SandboxError
 from forge_web.files_api import allowed
 from forge_web.sandbox_calls import sandbox_call
@@ -122,6 +123,7 @@ async def relay(websocket: WebSocket, channel: Channel, project_id: str) -> None
     """Keystrokes and sizes to the terminal, its output to the browser, until either side ends."""
     runs = services_of(websocket).runs
     output = asyncio.create_task(to_browser(channel, websocket, lambda: runs.closing))
+    watcher = asyncio.create_task(watch_access(websocket, project_id))
     try:
         while True:
             message = await websocket.receive()
@@ -138,8 +140,20 @@ async def relay(websocket: WebSocket, channel: Channel, project_id: str) -> None
         pass
     finally:
         output.cancel()
+        watcher.cancel()
         with contextlib.suppress(Exception):
             await channel.close()
+
+
+async def watch_access(websocket: WebSocket, project_id: str) -> None:
+    """Close the terminal once its user may no longer use it (signed out, removed, demoted)."""
+    services, token = services_of(websocket), session_token(websocket.cookies)
+    while True:
+        await asyncio.sleep(live_access.RECHECK_SECONDS)
+        if not await live_access.may_use_project(services, token, project_id, "editor"):
+            with contextlib.suppress(Exception):
+                await websocket.close(code=4403)
+            return
 
 
 async def to_browser(channel: Channel, websocket: WebSocket, closing: Callable[[], bool]) -> None:

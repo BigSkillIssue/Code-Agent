@@ -129,4 +129,6 @@ async def test_forge_reaches_the_model_only_through_the_gateway(
         assert environments, "no worker process was seen"
         for env in environments:
             assert REAL_KEY not in json.dumps(env)
-            assert env.get("FW_GATEWAY_TOKEN", "").startswith("fwg.")
+            # The run token comes with the worker's start message, so it is not even in the
+            # environment the process started with; the upstream calls above show it worked.
+            assert "FW_GATEWAY_TOKEN" not in env

@@ -124,7 +124,7 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: server image and compose file (server + Caddy with automatic HTTPS); service templates for Linux, macOS and Windows; `forge-web doctor`; a release workflow building the wheel with the web UI and the images; a German step-by-step setup guide including Google and GitHub OAuth apps.
     - Tests: `doctor` reports a missing Docker or image; the wheel contains the built UI.
     - Verify: `uv run pytest tests/test_doctor.py -q`
-- [ ] **W17 — End-to-end tests and security review** (split: [x] W17a end-to-end tests; [ ] W17b security review)
+- [ ] **W17 — End-to-end tests and security review** (split: [x] W17a end-to-end tests; [x] W17b security review and sign-in fixes; [ ] W17c fixes for the sandbox review)
     - Files: `tests/e2e/`, `docs/SECURITY.md`
     - Build: Playwright flows — sign in, create a project, chat with the fake model, approve an edit, see the diff, use the terminal, open the preview — in local mode and (CI) Docker mode; threat model; fixes for what the review finds.
     - Tests: all end-to-end flows pass.

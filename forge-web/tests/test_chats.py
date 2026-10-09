@@ -77,6 +77,32 @@ async def test_chat_round_trip_and_replay_from_any_point(
         await client.call("chat.close", {"chat_id": "c1"})
 
 
+async def test_a_warm_spare_worker_takes_the_next_chat(tmp_path: Path, env: dict[str, str]) -> None:
+    root = tmp_path / "ws"
+    root.mkdir()
+    async with sandbox(root, env=env) as (daemon, client):
+        assert (await client.call("chat.warm"))["warm"]
+        spare = daemon.chats.spare
+        assert spare is not None and spare.returncode is None  # Forge imported, no chat yet
+        script = fake_script(
+            call("bash", command="echo token=$CHAT_TEST_TOKEN", description="Show it"),
+            {"text": "Done."},
+        )
+        options = {"fake_script": script, "mode": "auto"}
+        env_vars = {"CHAT_TEST_TOKEN": "t-123"}
+        await client.call("chat.open", {"chat_id": "c1", "env": env_vars, "options": options})
+        assert daemon.chats.chats["c1"].process is spare  # the warm worker took the chat
+        live = Follower(await client.open("chat", {"chat_id": "c1"}))
+        await live.wait_for("ready")
+        await client.call("chat.send", {"chat_id": "c1", "text": "Show the token"})
+        await live.wait_for("turn")
+        assert any("token=t-123" in str(item) for _, item in live.items())  # its own variables
+        async with asyncio.timeout(30):
+            while daemon.chats.spare is None or daemon.chats.spare is spare:
+                await asyncio.sleep(0.05)  # and the next spare is on its way
+        await client.call("chat.close", {"chat_id": "c1"})
+
+
 async def test_first_answer_wins_and_a_crashed_worker_is_replaced(
     tmp_path: Path, env: dict[str, str]
 ) -> None:

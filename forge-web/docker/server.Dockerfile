@@ -3,9 +3,13 @@
 # sandbox container per project on the host's Docker (its socket is mounted in, see compose.yaml).
 # Build from the repository root:
 #   docker build -f forge-web/docker/server.Dockerfile -t forge-web .
-# An optional build secret "ca" adds a proxy's CA certificate for npm and pip.
+# An optional build secret "ca" adds a proxy's CA certificate for npm and pip. Behind a registry
+# mirror, the three base images can be given as build arguments (e.g. mirror.gcr.io/library/...).
+ARG NODE_IMAGE=node:22.12.0-bookworm-slim
+ARG DOCKER_CLI_IMAGE=docker:27.5.1-cli
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 
-FROM node:22.12.0-bookworm-slim AS ui
+FROM ${NODE_IMAGE} AS ui
 WORKDIR /build/forge-web/frontend
 COPY forge-web/frontend/package.json forge-web/frontend/package-lock.json ./
 RUN --mount=type=secret,id=ca,required=false \
@@ -15,9 +19,9 @@ COPY forge-web/frontend ./
 # Vite writes the build next to the server package: /build/forge-web/packages/server/...
 RUN npm run build
 
-FROM docker:27.5.1-cli AS docker-cli
+FROM ${DOCKER_CLI_IMAGE} AS docker-cli
 
-FROM python:3.12-slim-bookworm
+FROM ${PYTHON_IMAGE}
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # The server runs as its own user; it reaches Docker through the mounted socket only.

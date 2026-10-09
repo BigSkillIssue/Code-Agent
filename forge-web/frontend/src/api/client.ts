@@ -1,5 +1,7 @@
 // A small fetch wrapper: JSON in and out, the session cookie, errors with the server's message.
 
+import { localError } from "../lib/errors";
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -29,7 +31,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     let message = response.statusText;
     try {
       const data = await response.json();
-      if (typeof data.detail === "string") message = data.detail;
+      if (typeof data.detail === "string") message = localError(data.detail);
     } catch {
       // not JSON: keep the status text
     }
@@ -51,7 +53,7 @@ async function putBytes<T>(path: string, body: Blob): Promise<T> {
     let message = response.statusText;
     try {
       const data = await response.json();
-      if (typeof data.detail === "string") message = data.detail;
+      if (typeof data.detail === "string") message = localError(data.detail);
     } catch {
       // not JSON: keep the status text
     }

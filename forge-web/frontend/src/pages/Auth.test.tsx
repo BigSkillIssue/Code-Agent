@@ -83,3 +83,18 @@ describe("two-factor sign-in", () => {
     expect(screen.getByLabelText(/recovery code|Wiederherstellungscode/)).toBeTruthy();
   });
 });
+
+describe("email confirmation", () => {
+  it("confirms the address but leaves signing in to the person", async () => {
+    window.history.replaceState(null, "", "/verify#token=abc123");
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ id: "u1", status: "active" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    show("/verify");
+    expect((await screen.findByRole("status")).textContent).toMatch(/confirmed|bestätigt/);
+    expect(screen.getByRole("link", { name: /^(Sign in|Anmelden)$/ }).getAttribute("href")).toBe("/");
+    expect(assign).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});

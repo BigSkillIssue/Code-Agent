@@ -12,8 +12,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
+from forge_web import live_access
 from forge_web.access import require_chat
-from forge_web.auth.sessions import websocket_user
+from forge_web.auth.sessions import session_token, websocket_user
 from forge_web.chats.api import stored_items
 from forge_web.db.models import User
 from forge_web.hub import Subscriber
@@ -44,6 +45,7 @@ async def serve(websocket: WebSocket, services: Services, user: User) -> None:
     subscriber = Subscriber(user.id)
     services.hub.join(subscriber)
     sender = asyncio.create_task(_send_all(websocket, subscriber))
+    checker = asyncio.create_task(_recheck(websocket, services, subscriber))
     subscriber.put({"type": "hello", "user": {"id": user.id, "name": user.name}})
     try:
         while True:
@@ -55,9 +57,26 @@ async def serve(websocket: WebSocket, services: Services, user: User) -> None:
     finally:
         services.hub.leave(subscriber)
         subscriber.close()
+        checker.cancel()
         sender.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await sender
+
+
+async def _recheck(websocket: WebSocket, services: Services, subscriber: Subscriber) -> None:
+    """End the socket when its session ends, and subscriptions to chats it may no longer read."""
+    token = session_token(websocket.cookies)
+    while True:
+        await asyncio.sleep(live_access.RECHECK_SECONDS)
+        user = await live_access.signed_in(services, token)
+        if user is None:
+            with contextlib.suppress(RuntimeError):
+                await websocket.close(code=4401)
+            subscriber.close()
+            return
+        for chat_id in await live_access.unreadable_chats(services, user, set(subscriber.chats)):
+            services.hub.unwatch(subscriber, chat_id)
+            subscriber.put({"type": "error", "chat_id": chat_id, "message": "no such chat"})
 
 
 async def _send_all(websocket: WebSocket, subscriber: Subscriber) -> None:

@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from forge_web.audit import audit
+from forge_web.auth import onetime
 from forge_web.auth.accounts import user_view
 from forge_web.auth.passwords import hash_password, password_problem, verify_password
 from forge_web.auth.sessions import CurrentUser, client_ip, end_sessions
@@ -83,6 +84,7 @@ def settings_router() -> APIRouter:
             assert row is not None
             row.password_hash = new_hash
         await end_sessions(services, user.id, keep=request.state.session_id)
+        await onetime.revoke(services.db, "reset", user.id)
         await audit(services.db, "password_changed", user_id=user.id, ip=client_ip(request))
         return {"ok": True}
 

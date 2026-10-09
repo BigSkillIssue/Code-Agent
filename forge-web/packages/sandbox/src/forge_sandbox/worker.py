@@ -1,6 +1,8 @@
 """One chat's Forge: `forge-sandbox worker`, started by the daemon, one JSON message per line.
 
-From the daemon: start (once, first), prompt, answer, cancel, shutdown.
+From the daemon: start (once, first: the chat, its options and its variables, such as the run
+token), prompt, answer, cancel, shutdown. A worker can start before it has a chat (a warm spare
+that has already imported Forge) and learns which chat it serves from `start`.
 To the daemon: ready, event (every Forge event), request (approval or question), status,
 command_result, turn (a finished turn), error.
 
@@ -267,11 +269,18 @@ async def read_message(reader: asyncio.StreamReader) -> dict[str, Any] | None:
 async def serve(root: Path, chat_id: str, reader: asyncio.StreamReader, out: Outbox) -> int:
     """Run the worker until shutdown or the end of input."""
     first = await read_message(reader)
+    if first is None:
+        return 0  # a spare that was never used
+    chat_id = chat_id or str(first.get("chat_id") or "")
     try:
-        options = ChatOptions.model_validate((first or {}).get("options", {}))
+        options = ChatOptions.model_validate(first.get("options", {}))
     except ValidationError as err:
         await out.send({"type": "error", "message": f"invalid chat options: {err}"})
         return 2
+    if not chat_id:
+        await out.send({"type": "error", "message": "start names no chat"})
+        return 2
+    use_variables(first.get("env"))
     worker = ChatWorker(root, chat_id, options, out)
     try:
         await worker.start()
@@ -285,6 +294,14 @@ async def serve(root: Path, chat_id: str, reader: asyncio.StreamReader, out: Out
     finally:
         await worker.close()
     return 0
+
+
+def use_variables(env: Any) -> None:
+    """The chat's own variables (the run token), before Forge reads its configuration."""
+    if isinstance(env, dict):
+        for name, value in env.items():
+            if isinstance(name, str) and isinstance(value, str) and name and "=" not in name:
+                os.environ[name] = value
 
 
 async def handle(worker: ChatWorker, message: dict[str, Any], out: Outbox) -> bool:
@@ -302,7 +319,7 @@ async def handle(worker: ChatWorker, message: dict[str, Any], out: Outbox) -> bo
     return True
 
 
-async def run_worker(root: Path, chat_id: str) -> int:
+async def run_worker(root: Path, chat_id: str = "") -> int:
     """`forge-sandbox worker`: protect stdio, then serve."""
     make_undumpable()
     fd_in, fd_out = protect_stdio()

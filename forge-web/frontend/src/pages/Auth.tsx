@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import { localError } from "../lib/errors";
 import { t } from "../lib/i18n";
 
 export interface AuthConfig {
@@ -134,7 +135,7 @@ function ProviderButtons({ config, invite = "" }: { config: AuthConfig; invite?:
 
 /** The error a provider sign-in came back with (`?auth_error=`), shown once. */
 function useReturnedError(): string {
-  const [error] = useState(() => new URLSearchParams(window.location.search).get("auth_error") ?? "");
+  const [error] = useState(() => localError(new URLSearchParams(window.location.search).get("auth_error") ?? ""));
   useEffect(() => {
     if (error) window.history.replaceState(null, "", window.location.pathname + window.location.hash);
   }, [error]);
@@ -266,20 +267,29 @@ function ResetPage() {
   );
 }
 
+/** Confirms the address; the link alone never signs in (someone else may have made the account). */
 function VerifyPage() {
   const [message, setMessage] = useState(t("verifyTitle"));
-  const navigate = useNavigate();
+  const [confirmed, setConfirmed] = useState(false);
   useEffect(() => {
     api
-      .post<{ status?: string; totp_required?: boolean }>("/api/auth/verify", { token: hashToken() })
+      .post<{ status?: string }>("/api/auth/verify", { token: hashToken() })
       .then((result) => {
-        if (result.totp_required) navigate(SECOND_FACTOR);
-        else if (result.status === "active") enter();
-        else setMessage(t("pending"));
+        setConfirmed(result.status === "active");
+        setMessage(result.status === "active" ? t("verifyDone") : t("pending"));
       })
       .catch((err) => setMessage(String(err instanceof ApiError ? err.message : err)));
-  }, [navigate]);
-  return <Card title={t("verifyTitle")}>{message}</Card>;
+  }, []);
+  return (
+    <Card title={t("verifyTitle")}>
+      <p role="status">{message}</p>
+      {confirmed && (
+        <Link className="block text-sm text-accent" to="/">
+          {t("signIn")}
+        </Link>
+      )}
+    </Card>
+  );
 }
 
 export function AuthPages({ config }: { config: AuthConfig }) {

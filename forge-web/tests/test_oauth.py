@@ -215,6 +215,17 @@ async def test_a_verified_email_links_the_existing_account(
     assert [(i.provider, i.username) for i in await identities(server)] == [("github", "ada-gh")]
 
 
+async def test_an_account_with_a_password_is_not_joined_by_email(
+    server: LiveServer, idp: FakeIdP
+) -> None:
+    # Whoever set the password (maybe not the mailbox's owner) would keep a way in.
+    await person(server, "ada", email_verified=True, password_hash="$argon2id$stand-in")
+    async with WebClient(server) as web:
+        assert "sign in with its password" in error_of(await sign_in(web, idp, "github"))
+        assert (await web.get("/api/me")).status_code == 401
+    assert await identities(server) == []
+
+
 async def test_unverified_emails_are_never_linked(server: LiveServer, idp: FakeIdP) -> None:
     await person(server, "ada", email_verified=True)
     idp.google["email_verified"] = False

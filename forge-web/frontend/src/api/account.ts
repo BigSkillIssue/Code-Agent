@@ -73,6 +73,7 @@ export interface Account {
   created_at: number;
   has_password: boolean;
   totp_enabled: boolean;
+  email_verified: boolean;
 }
 
 export interface Invite {

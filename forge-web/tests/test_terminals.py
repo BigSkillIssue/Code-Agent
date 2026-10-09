@@ -118,3 +118,25 @@ async def test_only_editors_use_terminals(server: LiveServer, client: httpx.Asyn
     evil = {"Cookie": server.cookie, "Origin": "https://evil.example"}
     with pytest.raises(InvalidStatus):
         await connect(terminal_url(server, pid, tid), additional_headers=evil)
+
+
+async def test_a_removed_editor_loses_an_open_terminal(
+    server: LiveServer, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from forge_web import live_access
+
+    monkeypatch.setattr(live_access, "RECHECK_SECONDS", 0.2)
+    pid, tid = await new_terminal(client)
+    editor = await person(server, "editor")
+    async with server.services.db.session() as session, session.begin():
+        session.add(ProjectMember(project_id=pid, user_id=editor.id, role="editor"))
+    cookie = "; ".join(f"{k}={v}" for k, v in editor.web.client.cookies.items())
+    async with connect(terminal_url(server, pid, tid), additional_headers={"Cookie": cookie}) as ws:
+        await ws.send(b"echo still-mine\n")
+        await read_until(ws, "still-mine")
+        async with server.services.db.session() as session, session.begin():
+            member = await session.get(ProjectMember, (pid, editor.id))
+            await session.delete(member)
+        with pytest.raises(ConnectionClosed):
+            await read_until(ws, "never printed", timeout=10)
+        assert ws.close_code == 4403

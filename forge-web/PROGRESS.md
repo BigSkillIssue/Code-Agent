@@ -1,6 +1,6 @@
 # Progress
 
-Next step: W17b
+Next step: W17c
 
 ## Done
 | Step | Date | Commit | Files | Notes |
@@ -30,7 +30,8 @@ Next step: W17b
 | W15b | 2026-10-08 | 3aa6a8c | frontend/src/pages/{Settings,SettingsAccess,Admin,AdminServer,parts,Auth,account.test,Auth.test}.tsx, frontend/src/api/account.ts, frontend/src/{App,components/Sidebar}.tsx, frontend/src/{state/store,lib/i18n}.ts | the Settings and Admin pages and the code step at sign-in |
 | W16a | 2026-10-08 | 5bbfad9 | forge_web/{doctor,cli,preview,app}.py, packages/server/pyproject.toml, tests/{test_doctor,test_preview,test_access}.py | `forge-web doctor`, the on-demand TLS check for preview hosts, the web UI in the wheel |
 | W16b | 2026-10-08 | 8ec52af | docker/server.Dockerfile(.dockerignore), compose.yaml, deploy/{Caddyfile,env.example,forge-web.example.toml,forge-web.service,com.forge.web.plist,forge-web-winsw.xml}, ../.github/workflows/forge-web-release.yml, docs/EINRICHTUNG.md, README.md, tests/{test_deploy,test_docker_driver}.py | server image, compose with Caddy, service templates, release workflow, German setup guide |
-| W17a | 2026-10-08 | (next) | tests/e2e/{conftest,test_flows}.py, tests/{support,test_docker_driver}.py, pyproject.toml, ../.github/workflows/forge-web.yml | end-to-end flows in Chromium, local and Docker |
+| W17a | 2026-10-08 | 508fab1 | tests/e2e/{conftest,test_flows}.py, tests/{support,test_docker_driver}.py, pyproject.toml, ../.github/workflows/forge-web.yml | end-to-end flows in Chromium, local and Docker |
+| W17b | 2026-10-09 | (next) | forge_web/{live_access,members,services,settings_api,admin_api,terminals,ws}.py, forge_web/auth/{oauth,routes,onetime,second_factor,ratelimit,admin}.py, forge_web/chats/{runs,api}.py, forge_sandbox/{chats,worker,cli}.py, frontend/src/{lib/errors.ts,lib/errors.test.ts,api/client.ts,api/account.ts,lib/i18n.ts,pages/Auth.tsx,pages/Auth.test.tsx,pages/Admin.tsx}, frontend/package{,-lock}.json, docker/{sandbox,server}.Dockerfile, docs/SECURITY.md, tests/test_{auth,oauth,totp,access,terminals,chats,gateway_e2e,deploy}.py | security review of sign-in (fixed) and of the sandbox (findings for W17c); warm spare chat worker; German server errors; vitest 4 |
 
 ## Decisions
 - Session: the user asked for Forge Web as a separate part on a separate branch without touching Forge. It lives in `forge-web/` on branch `claude/elegant-tesla-h2iugo`; Forge's `src/` and `tests/` stay unchanged. Forge's AGENTS.md rule 3 ("no server code") is overridden by the user's instruction for `forge-web/` only; the root AGENTS.md/CLAUDE.md got a paragraph saying so.
@@ -174,14 +175,19 @@ Next step: W17b
 - W17a: `tests/e2e` drives the built web UI in Chromium against a real server with the fake model: sign in, a project, a chat in "ask before changes" mode whose file write needs the Allow button, its diff and report, the files and changes panels, a terminal, and a dev server shown in the preview frame. Local isolation by default, Docker with `FORGE_WEB_E2E_ISOLATION=docker`; both pass here (about 15 s) and run as a CI matrix. The test server listens on a chosen port (`LiveServer(port=)`), so preview URLs and Forge's `frame-src` match it.
 - W17a: tests with Docker remove their projects' containers and volumes afterwards (`support.remove_docker_projects`); before, every run left volumes behind.
 - W17: (closes the W12a issue) Forge itself ignores `providers`, `mcp_servers` and `hooks` in a project's `.forge/config.toml` unless the project is in `~/.forge/trusted.toml`; Forge Web never marks a project trusted, so a cloned repository cannot start hooks or MCP servers on its own.
+- W17b: split W17 once more: W17b (review of sign-in and accounts with its fixes, a second review of the sandbox side, `docs/SECURITY.md`, open issues), W17c (fixes for the second review).
+- W17b: (closes the W08b issue) each sandbox keeps one spare chat worker that has loaded Forge already (`chat.warm`, started when a chat is created); the next chat takes it and a new spare starts. The worker gets its chat id and environment (the run token) in its `start` message, so the token is no longer in the worker's process environment from the start. Variables that Forge reads as settings (`FORGE_*`) are not used for this.
+- W17b: an email link confirms the address but never starts a session; Google/GitHub join an account by email only when its address is confirmed and it has no password (otherwise: sign in and link in the settings); open sign-up without working mail leaves accounts waiting for an admin; `auth.passwords = false` also refuses password sign-in, resets and "forgot password"; a new password (change or reset) ends all open reset links; "forgot password" sends its mail in the background, so the answer takes as long for unknown addresses; two-factor codes are also limited per IP; turning two-factor on ends the other sessions, an admin turning it off ends all of them; owners add people by email only with a confirmed address (while mail works) and at most 30 tries an hour.
+- W17b: open terminal and `/api/ws` sockets check the session and the role again every 30 s (`live_access.py`): a terminal closes with 4403, `/api/ws` closes with 4401 when the session ended and stops chats that may no longer be read.
+- W17b: (closes the W09 issue) the UI shows the server's common error messages in German (`lib/errors.ts`, exact texts and patterns with values); unknown messages stay as they are.
+- W17b: (closes the W11c issue) vitest 4.1.11 (npm audit: 0 vulnerabilities). npm 10.9 fails to resolve its peer set (`Cannot read properties of null (reading 'edgesOut')`), so the lock file was updated once with npm 11.6.2 (`--before=2026-09-25`); `npm ci` with npm 10 installs it fine.
+- W17b: (closes the W13 Docker Hub issue) both Dockerfiles take their base images as build arguments (`PYTHON_IMAGE`, `NODE_IMAGE`, `DOCKER_CLI_IMAGE`), e.g. from `mirror.gcr.io/library/...`.
+- W17b: `tests/test_access.py` uses a container CLI that does not exist, so its "no sandbox here" answers (503) hold on machines that have Docker and the image.
 
 ## Open issues
-- W08b: a new chat worker spends 2-3 s importing Forge before it answers; a pre-started spare worker per sandbox would make new chats start at once (planned for a later step, W17 at the latest).
-- W09: error messages from the server (sign-in, API) are English while the UI follows the browser language; the UI should map known errors to its own texts (W10/W15).
 - W10a: after this container restarted it runs the same suite about 1.5x slower (smoke test 1.1 s → 1.9 s; suite 115 s instead of 80 s). The cost is the real chat workers (2-3 s of Forge imports each). `pytest-xdist` would run the suite in parallel; it is not in the dependency table, so the user is asked.
-- W11c: `npm audit` still lists tinypool and @vitest/mocker inside vitest 3 (test runner only, not shipped); the fix is vitest 4.1.11+ (npm now suggests 5.0.3), a major upgrade for a later step.
-- W13: Docker Hub answered the sandbox image build with 429 (rate limit for this network); the base image was pulled from `mirror.gcr.io/library/python:3.12-slim-bookworm` and tagged locally. Worth a `--build-arg` for the base image in W16 so installs behind a mirror work.
-- W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a.
+- W13: the full offline suite took 169 s here (232 tests), still above the 90 s budget; see W10a. At W17b: 277 tests in 175 s.
 - W14a: the ::1 test is skipped on this machine (no IPv6 at all); it runs where loopback has IPv6 (CI).
 - W14b: Safari blocks third-party cookies even when partitioned in some versions; there the preview frame may show "This preview is private" and "open in a new tab" is the way (to check in W17 with WebKit).
 - W15b: no QR code for the two-factor key (no QR library in the dependency table); people type the key or open the `otpauth://` link on the phone. A small QR encoder could come later if wanted.
+- W17b: the second review (sandbox, protocol, proxies) found: aborted Anthropic streams charged almost no output; run tokens valid as long as the sandbox says its chat runs; no byte limits for live chat state, mux/RPC queues, replays to slow browsers and stored chat events; the disk quota trusts the sandbox's numbers; egress passes refused names to an upstream proxy; keyless presets reach the server's localhost; server folder paths with commas reach `--mount`; git jobs use Docker's default network; `/api/preview/allowed-host` accepts any port. All for W17c.

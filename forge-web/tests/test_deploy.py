@@ -90,6 +90,10 @@ def test_the_server_image_builds_the_ui_and_runs_as_its_own_user() -> None:
     dockerfile = (ROOT / "docker" / "server.Dockerfile").read_text()
     assert "npm run build" in dockerfile and "forge_web/static" in dockerfile
     assert "USER forge-web" in dockerfile and 'CMD ["forge-web", "serve"]' in dockerfile
+    sandbox = (ROOT / "docker" / "sandbox.Dockerfile").read_text()
+    for text in (dockerfile, sandbox):  # base images can come from a registry mirror
+        assert "ARG PYTHON_IMAGE=python:3.12-slim-bookworm" in text
+        assert "FROM ${PYTHON_IMAGE}" in text
     ignored = (ROOT / "docker" / "server.Dockerfile.dockerignore").read_text().splitlines()
     assert "forge-web/frontend/node_modules" in ignored
     example = (DEPLOY / "forge-web.example.toml").read_text()

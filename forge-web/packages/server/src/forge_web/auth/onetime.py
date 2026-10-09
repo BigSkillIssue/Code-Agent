@@ -32,6 +32,17 @@ async def issue(
     return token
 
 
+async def revoke(db: Database, purpose: str, user_id: str) -> None:
+    """Use up a user's open tokens for `purpose` (old reset links after a new password)."""
+    async with db.session() as session, session.begin():
+        await session.execute(
+            update(OneTimeToken)
+            .where(OneTimeToken.purpose == purpose, OneTimeToken.user_id == user_id,
+                   OneTimeToken.used_at.is_(None))
+            .values(used_at=time.time())
+        )  # fmt: skip
+
+
 async def peek(db: Database, token: str, purpose: str) -> OneTimeToken | None:
     """The token if it is valid for `purpose` and unused (without using it)."""
     async with db.session() as session:

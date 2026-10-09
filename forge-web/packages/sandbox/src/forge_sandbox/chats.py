@@ -127,6 +127,8 @@ class Chats:
         self.env = dict(env)
         self.python = python
         self.chats: dict[str, Chat] = {}
+        self.spare: asyncio.subprocess.Process | None = None  # a worker waiting for a chat
+        self._warming = asyncio.Lock()  # one spare at a time
         self._readers: set[asyncio.Task[None]] = set()
 
     def handlers(self) -> dict[str, Handler]:
@@ -138,6 +140,7 @@ class Chats:
             "chat.cancel": method(ChatParams, self.cancel),
             "chat.close": method(ChatParams, self.close_one),
             "chat.list": method(EmptyParams, self.list),
+            "chat.warm": method(EmptyParams, self.warm),
         }
 
     async def open(self, params: ChatOpenParams) -> dict[str, Any]:
@@ -151,18 +154,23 @@ class Chats:
             await self._spawn(chat)
         return chat.info()
 
-    async def _spawn(self, chat: Chat) -> None:
-        if sum(c.alive for c in self.chats.values()) >= MAX_RUNNING:
-            raise RpcError("too_many", f"at most {MAX_RUNNING} chats may run at once")
+    async def warm(self, _params: EmptyParams) -> dict[str, bool]:
+        """Start a spare worker (Forge imported, no chat yet) unless one is waiting."""
+        async with self._warming:
+            if self.spare is None or self.spare.returncode is not None:
+                self.spare = await self._start_worker()
+        return {"warm": True}
+
+    async def _start_worker(self) -> asyncio.subprocess.Process:
         # -I: never import modules from the workspace (the agent writes there).
         argv = [self.python, "-I", "-m", "forge_sandbox", "worker",
-                "--workspace", str(self.workspace.root), "--chat", chat.id]  # fmt: skip
+                "--workspace", str(self.workspace.root)]  # fmt: skip
         try:
-            process = await asyncio.create_subprocess_exec(
+            return await asyncio.create_subprocess_exec(
                 argv[0],
                 *argv[1:],
                 cwd=self.workspace.root,
-                env={**self.env, **chat.env},
+                env=self.env,  # the chat's own variables come with `start`
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 limit=MAX_LINE,
@@ -170,11 +178,27 @@ class Chats:
             )
         except OSError as err:
             raise RpcError("start_failed", f"could not start the chat worker: {err}") from None
+
+    async def _spawn(self, chat: Chat) -> None:
+        if sum(c.alive for c in self.chats.values()) >= MAX_RUNNING:
+            raise RpcError("too_many", f"at most {MAX_RUNNING} chats may run at once")
+        process, self.spare = self.spare, None
+        if process is None or process.returncode is not None:
+            process = await self._start_worker()
         chat.process, chat.state = process, "starting"
-        await chat.write({"type": "start", "options": chat.options.model_dump(mode="json")})
+        await chat.write({"type": "start", "chat_id": chat.id, "env": chat.env,
+                          "options": chat.options.model_dump(mode="json")})  # fmt: skip
         task = asyncio.create_task(self._read(chat, process))
         self._readers.add(task)
         task.add_done_callback(self._readers.discard)
+        self._background(self.warm(EmptyParams()))  # the next chat starts at once
+
+    def _background(self, work: Any) -> None:
+        """Run work on the side; its failure only means no spare (the next chat starts cold)."""
+        task = asyncio.ensure_future(work)
+        self._readers.add(task)
+        task.add_done_callback(self._readers.discard)
+        task.add_done_callback(lambda done: done.cancelled() or done.exception())  # retrieved
 
     async def _read(self, chat: Chat, process: asyncio.subprocess.Process) -> None:
         assert process.stdout is not None
@@ -292,9 +316,17 @@ class Chats:
             watcher.cancel()
 
     async def close(self) -> None:
-        """Stop every worker."""
+        """Stop every worker (and the spare)."""
         for chat in self.chats.values():
             await self._stop(chat)
+        spare, self.spare = self.spare, None
+        if spare is not None and spare.returncode is None:
+            if spare.stdin is not None:
+                spare.stdin.close()  # a spare ends when its input does
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(spare.wait(), 10)
+            if spare.returncode is None:
+                await stop_tree(spare)
         for task in self._readers:
             task.cancel()
 

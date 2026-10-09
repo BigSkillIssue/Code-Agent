@@ -1,6 +1,7 @@
 """Who may call what: every API route against strangers, outsiders, viewers and non-admins;
 project members, administration and a user's own sessions."""
 
+import asyncio
 import json
 import re
 import secrets
@@ -13,7 +14,8 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from websockets.exceptions import ConnectionClosed
 
 from forge_web.app import create_app
 from forge_web.db.models import AuditEntry, AuthSession, Chat, Project, ProjectMember, User
@@ -99,7 +101,8 @@ def settings(data_dir: Path) -> Any:
     return load_settings(
         data_dir / "forge-web.toml",
         environ={"FORGE_WEB_DATA_DIR": str(data_dir)},
-        overrides={"sandbox.isolation": "docker"},
+        # No container CLI at all, so the sandbox is never reachable, whatever this machine has.
+        overrides={"sandbox.isolation": "docker", "sandbox.docker": "forge-web-test-no-docker"},
     )
 
 
@@ -272,6 +275,31 @@ async def test_outsiders_cannot_follow_a_chat(shared: World) -> None:
         await ws.send(json.dumps({"type": "subscribe", "chat_id": world.chat_id, "after_seq": 0}))
         reply = json.loads(await ws.recv())
     assert reply["type"] == "error" and reply["chat_id"] == world.chat_id
+
+
+async def test_open_sockets_lose_what_access_was_taken(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from websockets.asyncio.client import connect
+
+    from forge_web import live_access
+
+    monkeypatch.setattr(live_access, "RECHECK_SECONDS", 0.2)
+    cookie = "; ".join(f"{k}={v}" for k, v in world.viewer.web.client.cookies.items())
+    async with connect(world.server.ws_url, additional_headers={"Cookie": cookie}) as ws:
+        assert json.loads(await ws.recv())["type"] == "hello"
+        await ws.send(json.dumps({"type": "subscribe", "chat_id": world.chat_id, "after_seq": 0}))
+        assert json.loads(await ws.recv())["type"] == "subscribed"
+        async with world.server.services.db.session() as session, session.begin():
+            member = await session.get(ProjectMember, (world.project_id, world.viewer.id))
+            await session.delete(member)
+        lost = json.loads(await asyncio.wait_for(ws.recv(), 10))
+        assert lost == {"type": "error", "chat_id": world.chat_id, "message": "no such chat"}
+        async with world.server.services.db.session() as session, session.begin():
+            await session.execute(delete(AuthSession).where(AuthSession.user_id == world.viewer.id))
+        with pytest.raises(ConnectionClosed):
+            await asyncio.wait_for(ws.recv(), 10)
+        assert ws.close_code == 4401  # signed out: the socket ends too
 
 
 async def test_members_are_managed_by_owners(world: World) -> None:

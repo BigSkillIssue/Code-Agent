@@ -2,7 +2,9 @@
 # The sandbox image: one container per project runs the Forge Web sandbox daemon as PID 1
 # (under docker's --init). Build from the repository root:
 #   docker build -f forge-web/docker/sandbox.Dockerfile -t forge-web-sandbox .
-FROM python:3.12-slim-bookworm
+# Behind a registry mirror: --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+FROM ${PYTHON_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \

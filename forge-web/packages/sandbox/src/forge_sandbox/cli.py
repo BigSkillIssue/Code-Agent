@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     attach.add_argument("--socket", type=Path, default=DEFAULT_SOCKET)
     worker = commands.add_parser("worker", help="run one chat's Forge (started by the daemon)")
     worker.add_argument("--workspace", type=Path, required=True)
-    worker.add_argument("--chat", required=True)
+    worker.add_argument("--chat", default="", help="the chat (else it comes with `start`)")
     return parser
 
 

@@ -228,8 +228,9 @@ async def sign_in_user(
         if not identity.email or not identity.email_verified:
             raise HTTPException(403, f"your {provider.label} account has no verified email")
         user = await find_user(services, identity.email)
-        if user is not None and not user.email_verified:
-            # Someone may have signed up with this address before its owner: never join them.
+        if user is not None and (not user.email_verified or user.password_hash is not None):
+            # Someone may have signed up with this address before its owner (and knows the
+            # password): never join them on the email alone; the owner links it while signed in.
             raise HTTPException(
                 403, "an account with this email exists; sign in with its password and link "
                 f"{provider.label} in your settings",

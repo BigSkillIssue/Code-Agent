@@ -127,6 +127,7 @@ def chats_router() -> APIRouter:
                 created_at=now, updated_at=now,
             )  # fmt: skip
             session.add(chat)
+        services_of(request).runs.warm(project_id)  # a worker loads while the user types
         return chat_out(chat, user)
 
     @router.get("/api/chats/{chat_id}")
