@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from forge_web.db.engine import Database
@@ -69,6 +69,7 @@ class Gateway:
         self.ledger = Ledger(db)
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30))
         self._settling: set[asyncio.Task[None]] = set()
+        self.routers: list[APIRouter] = []  # more endpoints for sandboxes (Apple builds)
 
     def token_for(self, chat: Chat) -> str:
         """The run token a chat's worker uses."""
@@ -77,6 +78,8 @@ class Gateway:
     def app(self) -> FastAPI:
         """The gateway as an ASGI app."""
         app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+        for router in self.routers:  # before the catch-all route of the providers
+            app.include_router(router)
 
         @app.api_route("/{provider}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
         async def forward(provider: str, path: str, request: Request) -> Response:
@@ -91,7 +94,9 @@ class Gateway:
 
         return app
 
-    async def _caller(self, request: Request) -> tuple[Chat, User]:
+    async def caller(self, request: Request) -> tuple[Chat, User]:
+        """The chat and user of a request's run token; Refusal (401) unless it is current and
+        its chat is working."""
         token = incoming_token(
             {k.lower(): v for k, v in request.headers.items()}, dict(request.query_params)
         )
@@ -109,7 +114,7 @@ class Gateway:
 
     async def forward(self, up: Upstream, path: str, request: Request) -> Response:
         """Check, forward and meter one call."""
-        chat, user = await self._caller(request)
+        chat, user = await self.caller(request)
         if not allowed_path(up.kind, request.method, path):
             raise Refusal(403, f"Forge Web does not forward {request.method} /{path}")
         raw = await request.body()

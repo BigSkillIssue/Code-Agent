@@ -134,3 +134,26 @@ build, the tests to write first and a verify command. The gate from `AGENTS.md` 
     - Build: after each push to `main` that touches Forge, merge `main` into the Forge Web branch, run Forge Web's checks, push only when green (else an issue); a stopped project container is recreated when its image tag points at a newer image; a Forge fingerprint in the sandbox hello, `forge-sandbox fingerprint` and a doctor check; `update.sh` pulls, rebuilds and restarts a compose server; `SPAETER.md` keeps the open decisions.
     - Tests: the sync script merges/pushes, leaves conflicts, failing checks and local changes alone; fingerprints follow the Python files; doctor warns about another Forge; a rebuilt image reaches a project at its next start (Docker); `update.sh` builds the images named in `.env`; the server imports only shared sandbox modules.
     - Verify: `uv run pytest -q tests/test_sync.py tests/test_fingerprint.py tests/test_deploy.py tests/test_doctor.py`
+
+## Phase C · Apple apps (asked for after W18)
+
+Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple Watch. What belongs to the agent engine — the `AppleBuilder` port, the `apple_build`/`apple_screenshot` tools, the app template, the independent guideline reviewer and the checkpoints with the user's approval — was built in Forge on `main` (S58–S60) and arrives through the sync. Forge Web adds the Macs, the UI and the way to Apple.
+
+- [x] **W19 — Mac build service** (split: W19a server, W19b sandbox, W19c Mac worker)
+    - Files: `packages/macworker/` (`forge_macworker/{wire,job,runners,client,images,cli}.py`), `forge_web/apple/{jobs,workers,sandbox_api,worker_api,admin}.py`, `forge_web/db/{models.py,migrations/versions/0006_apple.py}`, `forge_web/{settings,startup,services,app,admin_api}.py`, `forge_web/gateway/proxy.py`, `forge_sandbox/{apple_remote,methods,worker}.py`, `tests/{test_apple_server,test_apple_remote,test_macworker,test_access,test_smoke}.py`
+    - Build: a third package `forge-macworker` for Macs: it connects out to the server (worker token), runs each project's jobs in a macOS VM of its own (Tart, softnet network, at most two VMs), or on the Mac in direct mode; the server queues jobs from the sandboxes (gateway `/apple/build` and `/apple/screenshot` with the run token, the packed project as body), checks who may build and the monthly Mac minutes, keeps archives under their job, and has admin endpoints for Macs, jobs and grants; the sandbox's `RemoteAppleBuilder` packs the project without git data and build output; chats of Apple projects get it with the guideline checks on.
+    - Tests: a job goes from sandbox to Mac and back; archives stay on the server under their job; screenshots must be PNGs; a Mac sees only its own running jobs; who may build (off, granted, admins, minutes, no Mac online); bodies are checked; jobs time out; admins add, disable and remove Macs and allow users; Mac routes refuse sessions; unpacking refuses paths and links that leave the project; direct mode end to end; one VM per project, deleted when idle.
+    - Verify: `uv run pytest -q tests/test_apple_server.py tests/test_apple_remote.py tests/test_macworker.py`
+- [ ] **W20 — "Apple app" projects**
+    - Files: `frontend/src/components/NewProjectDialog.tsx`, `frontend/src/pages/AdminApple.tsx`, `frontend/src/panels/Preview.tsx`, `forge_web/{projects,egress}.py`, tests
+    - Build: the new-project dialog offers "Apple app" (writes `forge apple new`'s template into the project, kind `apple`); Apple projects' chats check the guidelines; developer.apple.com in the egress list for the reviewer; the Preview tab shows the latest screenshot of each device; the admin page for Macs, jobs, grants and minutes; a separate reviewer model can be chosen.
+- [ ] **W21 — Guideline reviews and approval**
+    - Files: `frontend/src/components/cards/GuidelineCard.tsx`, `frontend/src/pages/AppleReview.tsx`, `forge_web/apple/approvals.py`, tests
+    - Build: a card per guideline review (request, plan, product) with every finding; a page "Ready for approval" with the screenshots of every device, the reviews and the build results; "Approve" / "Back to the agent"; only an approval by the user (audit log) opens the App Store step.
+- [ ] **W22 — TestFlight and the App Store**
+    - Files: `forge_web/apple/{appstore,signing}.py`, `forge_macworker/export.py`, `frontend/src/pages/AppleRelease.tsx`, tests
+    - Build: an App Store Connect API key per user (encrypted, never in a VM or sandbox); signing and export in a second, clean job without the user's code running; upload to TestFlight; App Store texts, keywords, privacy answers, age rating and screenshots drafted by the agent, checked by the reviewer, edited by the user; submission only on the user's click; Apple's review status shown.
+- [ ] **W23 — End to end and the guide**
+    - Files: `../.github/workflows/forge-web.yml` (macOS job), `tests/e2e/`, `docs/EINRICHTUNG.md`, `docs/SECURITY.md`
+    - Build: a CI job on a macOS runner builds the template through server, sandbox and a Mac worker in direct mode (GitHub's Macs cannot run VMs); a German guide: renting a Mac, Tart and softnet, the image, the worker as a service, the Apple developer account and the API key.
+

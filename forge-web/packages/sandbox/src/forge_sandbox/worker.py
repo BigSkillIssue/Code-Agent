@@ -34,15 +34,17 @@ from forge.providers.fake import FakeProvider
 from forge.wiring import close_session, install_fake, open_session
 from pydantic import ValidationError
 
+from forge_sandbox.apple_remote import RemoteAppleBuilder
 from forge_sandbox.history import ChatState, Turn, with_history
 from forge_sandbox.methods import ChatOptions
 from forge_sandbox.mux import Writer
 from forge_sandbox.pipe_renderer import PipeRenderer
 
 ROLES = ("refiner", "planner", "coder", "reviewer", "compressor", "explore", "tester",
-         "researcher", "browser", "lead")  # fmt: skip
+         "researcher", "browser", "lead", "apple_reviewer")  # fmt: skip
 # Tools that ask for approval by default; "auto" mode allows them instead of denying them.
 AUTO_ALLOW = ["web_fetch", "web_search", "remember", "browser_open"]
+APPLE_ALLOW = ["apple_build", "apple_screenshot"]
 POLICY = {"ask": "always", "edits": "on-request", "auto": "never"}
 MAX_LINE = 4 * 1024 * 1024
 
@@ -50,9 +52,12 @@ MAX_LINE = 4 * 1024 * 1024
 def config_overrides(options: ChatOptions) -> dict[str, Any]:
     """Forge config overrides for a chat. They win over the project's own config file, so a
     repository cannot loosen approvals or the sandbox for itself."""
+    allow = list(AUTO_ALLOW) if options.mode == "auto" else []
+    if options.apple_url and options.mode != "ask":
+        allow += APPLE_ALLOW  # they run on a Mac of the server, away from the project's files
     overrides: dict[str, Any] = {
         "approval.policy": POLICY[options.mode],
-        "permissions.allow": list(AUTO_ALLOW) if options.mode == "auto" else [],
+        "permissions.allow": allow,
         "sandbox.mode": options.sandbox_mode,
     }
     roles = {role: [options.model] for role in ROLES} if options.model else {}
@@ -63,6 +68,8 @@ def config_overrides(options: ChatOptions) -> dict[str, Any]:
         overrides["limits.max_cost_usd"] = options.max_cost_usd
     for name, provider in options.providers.items():
         overrides[f"providers.{name}"] = provider
+    if options.apple_review:
+        overrides["apple.review"] = True
     return overrides
 
 
@@ -114,6 +121,11 @@ class ChatWorker:
         self.ctx = await open_session(
             self.root, cfg, self.renderer, store=store, bus=self.bus, session=session
         )
+        if self.options.apple_url:
+            self.ctx.state.apple = RemoteAppleBuilder(
+                self.root, self.options.apple_url, self.options.apple_token_env,
+                max_mb=self.options.apple_max_mb, timeout_s=cfg.apple.timeout_s + 900,
+            )  # fmt: skip
         self.state.session_id = self.ctx.session.id
         self.state.save(self.home)
         await self.out.send({

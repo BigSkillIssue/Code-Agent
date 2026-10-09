@@ -2,6 +2,7 @@
 !pyproject.toml
 !src/forge/**
 !forge-web/packages/sandbox/**
+!forge-web/packages/macworker/**
 !forge-web/packages/server/**
 !forge-web/frontend/**
 forge-web/frontend/node_modules

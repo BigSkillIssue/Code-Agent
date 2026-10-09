@@ -81,6 +81,10 @@ BODIES: dict[str, dict[str, Any]] = {
     "ProfileIn": {"name": "Renamed"},
     "PasswordIn": {"current": "", "new": "a long new password"},
     "CodeIn": {"code": "123456"},
+    "NewMac": {"name": "Sneaky Mac"},
+    "MacChange": {"enabled": True},
+    "Grant": {"allowed": True},
+    "PollRequest": {"free_slots": 1},
 }
 
 
@@ -170,6 +174,8 @@ def rule(method: str, path: str) -> str:
         return "own"
     if path.startswith("/api/admin/"):
         return "admin"
+    if path.startswith("/api/mac/"):
+        return "mac"  # Mac workers, with their own tokens
     if "{project_id}" in path or "{chat_id}" in path:
         return "project"
     raise AssertionError(f"{key} has no access rule: add it to PUBLIC or OWN, or to this test")
@@ -182,7 +188,7 @@ def filled(path: str, world: World) -> str:
         "user_id": world.owner.id, "token": "x" * 20, "invite_id": "0" * 16,
         "session_id": "0" * 16, "key_id": "0" * 16, "name": "google", "provider": "google",
         "credential_id": "0" * 16, "terminal_id": "t0123abcd", "port": "3000",
-        "program_id": "p0123abcd",
+        "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -216,6 +222,15 @@ async def test_strangers_must_sign_in_everywhere(shared: World) -> None:
             if rule(method, path) != "public":
                 status = await call(stranger, method, filled(path, world), model)
                 assert status == 401, f"{method} {path} answered {status}"
+
+
+@on_shared_loop
+async def test_people_are_no_macs(shared: World) -> None:
+    world = shared
+    for method, path, model in api_routes(world.server.app):
+        if rule(method, path) == "mac":
+            status = await call(world.admin, method, filled(path, world), model)
+            assert status == 401, f"{method} {path} answered {status} to an admin's session"
 
 
 @on_shared_loop

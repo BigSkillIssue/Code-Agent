@@ -10,6 +10,8 @@ from typing import Any
 from sqlalchemy import select, update
 
 from forge_web.admin_api import load_saved_settings
+from forge_web.apple.jobs import AppleJobs
+from forge_web.apple.sandbox_api import apple_routes
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
 from forge_web.chats.runs import RunManager
@@ -57,6 +59,10 @@ def chat_options(settings: WebSettings) -> Any:
         if link.get("gateway_port"):
             base = f"http://127.0.0.1:{link['gateway_port']}"
             options["providers"] = worker_providers(base, TOKEN_ENV)
+            if link.get("apple") and settings.apple.enabled:
+                # Builds go through the gateway to the Macs; the guidelines are checked.
+                options.update(apple_url=base, apple_token_env=TOKEN_ENV, apple_review=True,
+                               apple_max_mb=settings.apple.max_source_mb)  # fmt: skip
         if script is not None:
             options["fake_script"] = script
         return options
@@ -64,15 +70,17 @@ def chat_options(settings: WebSettings) -> Any:
     return options_for
 
 
-def link_setup(settings: WebSettings, docker: bool) -> Any:
+def link_setup(settings: WebSettings, docker: bool, db: Database) -> Any:
     """What the server sets up in a sandbox each time it connects: forwards to its targets."""
 
-    async def on_link(_project_id: str, client: SandboxClient) -> dict[str, Any]:
+    async def on_link(project_id: str, client: SandboxClient) -> dict[str, Any]:
         port = GATEWAY_PORT if docker else 0
         gateway = await client.call("forward.listen", {"target": "gateway", "port": port})
         if docker and settings.egress.enabled:
             await client.call("forward.listen", {"target": "egress", "port": EGRESS_PORT})
-        return {"gateway_port": int(gateway["port"])}
+        async with db.session() as session:
+            kind = await session.scalar(select(Project.kind).where(Project.id == project_id))
+        return {"gateway_port": int(gateway["port"]), "apple": kind == "apple"}
 
     return on_link
 
@@ -90,6 +98,9 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     docker = chosen.name != "local"
     holder: dict[str, RunManager] = {}
     gateway = Gateway(db, vault, settings.gateway, lambda chat_id: holder["runs"].working(chat_id))
+    apple = AppleJobs(db, settings.apple, settings.data_dir)
+    await apple.start()
+    gateway.routers.append(apple_routes(gateway, apple, settings.apple))
     gateway_server = PrivateServer(gateway.app(), settings.data_dir / "run")
     await gateway_server.start()
     policy = EgressPolicy(settings.egress.allow, settings.egress.allow_private)
@@ -105,7 +116,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     runs = RunManager(
         db, writer, chosen, hub, chat_options(settings), targets_for,
         env_for=lambda chat: {TOKEN_ENV: gateway.token_for(chat)},
-        on_link=link_setup(settings, docker), run_seconds=settings.gateway.run_minutes * 60,
+        on_link=link_setup(settings, docker, db), run_seconds=settings.gateway.run_minutes * 60,
         max_log_bytes=settings.quotas.chat_log_mb * 1024 * 1024,
     )  # fmt: skip
     holder["runs"] = runs
@@ -113,7 +124,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
-        previews=PreviewAccess(vault.derive("preview")),
+        previews=PreviewAccess(vault.derive("preview")), apple=apple,
     )  # fmt: skip
     await after_start(services, docker)
     return services

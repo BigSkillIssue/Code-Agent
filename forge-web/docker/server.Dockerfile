@@ -32,12 +32,15 @@ RUN useradd --system --uid 10001 --create-home --home-dir /home/forge-web forge-
 COPY pyproject.toml /src/forge/pyproject.toml
 COPY src/forge /src/forge/src/forge
 COPY forge-web/packages/sandbox /src/forge-sandbox
+COPY forge-web/packages/macworker /src/forge-macworker
 COPY forge-web/packages/server /src/forge-web
 COPY --from=ui /build/forge-web/packages/server/src/forge_web/static /src/forge-web/src/forge_web/static
+# The server uses only the Mac worker's wire format; the worker itself runs on Macs.
 RUN --mount=type=secret,id=ca,required=false \
     if [ -f /run/secrets/ca ]; then export PIP_CERT=/run/secrets/ca; fi \
  && python -m venv /opt/forge-web \
- && /opt/forge-web/bin/pip install --no-cache-dir /src/forge /src/forge-sandbox /src/forge-web \
+ && /opt/forge-web/bin/pip install --no-cache-dir /src/forge /src/forge-sandbox \
+    /src/forge-macworker /src/forge-web \
  && rm -rf /src
 
 ENV PATH=/opt/forge-web/bin:/usr/local/bin:/usr/bin:/bin \

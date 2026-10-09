@@ -1,19 +1,22 @@
-# Forge Web: the multi-user server and web UI for Forge. A uv workspace of two packages:
-#   packages/sandbox  -> forge-sandbox (runs inside each project's container)
-#   packages/server   -> forge-web     (the server and the built web UI)
+# Forge Web: the multi-user server and web UI for Forge. A uv workspace of three packages:
+#   packages/sandbox    -> forge-sandbox   (runs inside each project's container)
+#   packages/server     -> forge-web       (the server and the built web UI)
+#   packages/macworker  -> forge-macworker (runs on a Mac and builds Apple apps for the server)
 
 [tool.uv.workspace]
-members = ["packages/sandbox", "packages/server"]
+members = ["packages/sandbox", "packages/server", "packages/macworker"]
 
 [tool.uv.sources]
 forge = { path = "..", editable = true }
 forge-sandbox = { workspace = true }
 forge-web = { workspace = true }
+forge-macworker = { workspace = true }
 
 [dependency-groups]
 dev = [
     "forge-sandbox",
     "forge-web",
+    "forge-macworker",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -24,7 +27,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["packages/sandbox/src", "packages/server/src", "tests"]
+src = ["packages/sandbox/src", "packages/server/src", "packages/macworker/src", "tests"]
 extend-exclude = ["*.md", "frontend"]
 
 [tool.ruff.lint]
@@ -44,8 +47,8 @@ ignore = [
 python_version = "3.12"
 strict = true
 # Forge itself is found from its source tree (it ships no py.typed marker).
-mypy_path = "packages/sandbox/src:packages/server/src:../src"
-packages = ["forge_sandbox", "forge_web"]
+mypy_path = "packages/sandbox/src:packages/server/src:packages/macworker/src:../src"
+packages = ["forge_sandbox", "forge_web", "forge_macworker"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

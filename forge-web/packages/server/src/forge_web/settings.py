@@ -159,6 +159,19 @@ class AuthSettings(_Strict):
     providers: dict[str, ProviderSettings] = {}  # name -> provider, e.g. google, github
 
 
+class AppleSettings(_Strict):
+    """Apple apps: builds, tests and screenshots on Macs that connect to this server
+    (`forge-mac-worker`); each project builds in a macOS VM of its own."""
+
+    enabled: bool = False
+    allowed: Literal["admins", "granted", "everyone"] = "granted"  # who may build
+    minutes_per_month: float = Field(default=600, ge=0)  # Mac time per user; 0 = no limit
+    max_source_mb: int = Field(default=300, ge=1)  # the packed project of one job
+    max_archive_mb: int = Field(default=4_096, ge=1)  # an .xcarchive coming back
+    job_timeout_s: float = Field(default=2_400, gt=0)  # waiting for a Mac included
+    keep_archives_days: float = Field(default=14, gt=0)
+
+
 class DevSettings(_Strict):
     """Development mode: one local user, a login link in the log, optionally the fake model."""
 
@@ -180,6 +193,7 @@ class WebSettings(_Strict):
     git: GitSettings = GitSettings()
     quotas: QuotaSettings = QuotaSettings()
     preview: PreviewSettings = PreviewSettings()
+    apple: AppleSettings = AppleSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

@@ -44,6 +44,24 @@ Container ──(forward channel)──▶ Gateway (run token)   Container ─�
   fall behind by 32 MiB are disconnected and catch up from their last item; replays wait for the
   browser instead of piling up.
 
+### Macs (Apple builds)
+
+A Mac worker runs projects' code (build scripts, tests, the app itself) and is a boundary of its own:
+
+- Each project builds in a macOS VM of its own (Tart), cloned from a prepared image and deleted after
+  10 minutes without a job; projects never share a VM, and nothing secret is in the image. With
+  `softnet` (the default) a VM reaches the internet but not the Mac's own network. Direct mode builds
+  on the Mac itself and is meant only for CI and for projects the Mac's owner trusts.
+- The worker connects out; it signs in with a token admins create (shown once, stored as a SHA-256
+  hash) and sees only the jobs it took, while they run. Mac routes refuse browser sessions.
+- The server never unpacks a project or an archive: the sandbox sends a tar.gz (size-limited), the
+  Mac's VM unpacks it with tar's `data` filter (no paths or links that leave the project), and what
+  comes back is checked: results are validated and size-limited, screenshots must be PNGs of at most
+  12 MB, archives are size-limited and kept under their job id; a path the Mac reports is never used.
+- Who may build is the server's decision (`apple.enabled`, `apple.allowed`, a grant per user, Mac
+  minutes per month), checked for every job with the chat's run token, which works only while its
+  chat runs.
+
 ### Containers
 
 One container per project, made by `containers/docker.py`:

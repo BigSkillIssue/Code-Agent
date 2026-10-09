@@ -27,6 +27,7 @@ class User(Base):
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_last_step: Mapped[int] = mapped_column(Integer, default=0)  # no code is used twice
     recovery_codes: Mapped[str] = mapped_column(Text, default="")  # SHA-256 hashes, one per line
+    apple_allowed: Mapped[bool] = mapped_column(Boolean, default=False)  # Mac builds granted
 
 
 class Project(Base):
@@ -40,6 +41,7 @@ class Project(Base):
     source: Mapped[str] = mapped_column(String(16), default="empty")  # empty | git | zip | folder
     source_url: Mapped[str] = mapped_column(Text, default="")
     folder: Mapped[str] = mapped_column(Text, default="")  # server folder (admins only)
+    kind: Mapped[str] = mapped_column(String(16), default="code")  # code | apple
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
 
@@ -228,3 +230,42 @@ class ServerSetting(Base):
     value: Mapped[str] = mapped_column(Text)  # JSON
     updated_at: Mapped[float] = mapped_column(Float)
     updated_by: Mapped[str] = mapped_column(String(32), default="")
+
+
+class MacWorker(Base):
+    """A Mac that builds Apple apps for this server; it signs in with a token shown once."""
+
+    __tablename__ = "mac_workers"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    token_hash: Mapped[str] = mapped_column(String(64))  # SHA-256 of the token's secret part
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    last_seen: Mapped[float] = mapped_column(Float, default=0.0)
+    version: Mapped[str] = mapped_column(String(40), default="")
+
+
+class AppleJob(Base):
+    """One build, test, archive or screenshot on a Mac, for a chat's sandbox."""
+
+    __tablename__ = "apple_jobs"
+    __table_args__ = (
+        Index("apple_jobs_by_status", "status", "created_at"),
+        Index("apple_jobs_by_user", "user_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    chat_id: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(16))  # build | screenshot
+    params: Mapped[str] = mapped_column(Text)  # JSON
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|done|failed
+    worker_id: Mapped[str] = mapped_column(String(16), default="")
+    created_at: Mapped[float] = mapped_column(Float)
+    started_at: Mapped[float] = mapped_column(Float, default=0.0)
+    finished_at: Mapped[float] = mapped_column(Float, default=0.0)
+    seconds: Mapped[float] = mapped_column(Float, default=0.0)  # Mac time, for the monthly limit
+    outcome: Mapped[str] = mapped_column(Text, default="")  # a short summary for the admin page
+    archive: Mapped[bool] = mapped_column(Boolean, default=False)  # an .xcarchive is kept

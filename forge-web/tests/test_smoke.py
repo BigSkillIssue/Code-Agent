@@ -50,3 +50,23 @@ def test_the_server_imports_only_the_sandboxs_shared_modules() -> None:
     pattern = re.compile(r"^(?:from|import) forge_sandbox\.(\w+)", re.MULTILINE)
     used = {name for f in server.rglob("*.py") for name in pattern.findall(f.read_text())}
     assert used and used <= shared, used - shared
+
+
+def test_the_mac_worker_stands_apart() -> None:
+    # AGENTS.md rule 2: the server takes only the wire format from the Mac worker, and the Mac
+    # worker (it runs on someone's Mac) takes nothing from the server or the sandbox.
+    packages = Path(__file__).parents[1] / "packages"
+    server = re.compile(r"^(?:from|import) forge_macworker\.(\w+)", re.MULTILINE)
+    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(f.read_text())}
+    assert used == {"wire"}, used
+    other = re.compile(r"^(?:from|import) (forge_web|forge_sandbox)\b", re.MULTILINE)
+    mac = [f.name for f in (packages / "macworker").rglob("*.py") if other.search(f.read_text())]
+    assert not mac, mac
+
+
+def test_forge_mac_worker_version_command() -> None:
+    out = subprocess.run(
+        [sys.executable, "-m", "forge_macworker", "--version"], capture_output=True, text=True,
+        check=True,
+    )  # fmt: skip
+    assert out.stdout.strip() == "forge-mac-worker 0.1.0"

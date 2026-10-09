@@ -7,6 +7,7 @@ license = { text = "MIT" }
 dependencies = [
     "forge",
     "forge-sandbox",
+    "forge-macworker",  # only its wire module: what server and Macs send each other
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.9",

@@ -9,12 +9,14 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "forge-macworker",
     "forge-sandbox",
     "forge-web",
 ]
 
 [manifest.dependency-groups]
 dev = [
+    { name = "forge-macworker", editable = "packages/macworker" },
     { name = "forge-sandbox", editable = "packages/sandbox" },
     { name = "forge-web", editable = "packages/server" },
     { name = "mypy", specifier = ">=1.11" },
@@ -931,6 +933,23 @@ dev = [
 ]
 
 [[package]]
+name = "forge-macworker"
+version = "0.1.0"
+source = { editable = "packages/macworker" }
+dependencies = [
+    { name = "forge" },
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "forge", editable = "../" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
 name = "forge-sandbox"
 version = "0.1.0"
 source = { editable = "packages/sandbox" }
@@ -963,6 +982,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "forge" },
+    { name = "forge-macworker" },
     { name = "forge-sandbox" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -984,6 +1004,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "forge", editable = "../" },
+    { name = "forge-macworker", editable = "packages/macworker" },
     { name = "forge-sandbox", editable = "packages/sandbox" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.9" },

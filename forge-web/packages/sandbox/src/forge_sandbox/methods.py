@@ -227,6 +227,12 @@ class ChatOptions(Params):
     sandbox_mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
     max_cost_usd: float | None = Field(default=None, ge=0)
     fake_script: dict[str, Any] | None = None  # FakeProvider turns (development and tests)
+    # Apple projects: where the server's Mac build service is (the gateway, inside the
+    # sandbox), the variable holding the run token, and whether Apple's guidelines are checked.
+    apple_url: str | None = Field(default=None, pattern=r"^http://127\.0\.0\.1:\d+$")
+    apple_token_env: str = Field(default="FW_GATEWAY_TOKEN", pattern=r"^[A-Z][A-Z0-9_]{0,63}$")
+    apple_max_mb: int = Field(default=300, ge=1, le=100_000)
+    apple_review: bool = False
 
 
 class ChatParams(Params):

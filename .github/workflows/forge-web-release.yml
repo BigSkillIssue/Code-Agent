@@ -1,7 +1,8 @@
 name: Forge Web release
 
-# A tag `forge-web-v*` builds the wheels (Forge, the sandbox and the server with the built web
-# UI) and the two images (server, sandbox), pushes the images to GHCR and publishes a release.
+# A tag `forge-web-v*` builds the wheels (Forge, the sandbox, the Mac worker and the server with
+# the built web UI) and the two images (server, sandbox), pushes the images to GHCR and publishes
+# a release.
 # Run it by hand to build and check everything without publishing.
 on:
   push:
@@ -32,6 +33,7 @@ jobs:
         run: |
           uv build --wheel --out-dir dist .
           uv build --wheel --out-dir dist forge-web/packages/sandbox
+          uv build --wheel --out-dir dist forge-web/packages/macworker
           uv build --wheel --out-dir dist forge-web/packages/server
       - name: The server wheel carries the web UI
         run: |
