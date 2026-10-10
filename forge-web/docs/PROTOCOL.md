@@ -94,6 +94,7 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `git.log` | `limit` | `{commits: [{commit, author, email, time, subject}]}` |
 | `git.remote` / `git.set_remote` | — / `url` | `{url}` |
 | `git.bundle_out` | `branch` | `{bundle, head}` — packs the branch into `.git/forge-transfer/push.bundle` for a git job |
+| `git.archive` | `commit` | `{path, size, commit}` — packs the commit's files as committed into `.git/forge-transfer/release.tar.gz` for a release (W22b) |
 | `git.bundle_clone` | `url` | `{branch}` — checks out what a clone job left (`clone.bundle`, `clone.head`) and points `origin` at `url` |
 | `git.bundle_in` | `branch` | `{merged, head \| reason}` — takes `.git/forge-transfer/fetch.bundle` as `origin/<branch>` and fast-forwards a checked-out branch |
 | `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |

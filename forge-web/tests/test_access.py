@@ -92,6 +92,7 @@ BODIES: dict[str, dict[str, Any]] = {
         "team_id": "TEAM123456",
         "private_key": "x" * 120,
     },
+    "ReleaseIn": {"platforms": ["ios"]},
 }
 
 
@@ -196,6 +197,7 @@ def filled(path: str, world: World) -> str:
         "session_id": "0" * 16, "key_id": "0" * 16, "name": "google", "provider": "google",
         "credential_id": "0" * 16, "terminal_id": "t0123abcd", "port": "3000",
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
+        "release_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

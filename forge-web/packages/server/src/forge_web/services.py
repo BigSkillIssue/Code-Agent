@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import Request, WebSocket
 
 from forge_web.apple.jobs import AppleJobs
+from forge_web.apple.release import Releases
 from forge_web.auth.oauth_providers import SignIn
 from forge_web.auth.ratelimit import AuthLimits
 from forge_web.chats.runs import RunManager
@@ -42,6 +43,7 @@ class Services:
     sign_in: SignIn
     previews: PreviewAccess
     apple: AppleJobs
+    releases: Releases
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

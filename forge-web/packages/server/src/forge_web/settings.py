@@ -178,6 +178,8 @@ class AppleSettings(_Strict):
         default="https://api.appstoreconnect.apple.com",
         pattern=r"^https://[\w.-]+(:\d+)?$|^http://127\.0\.0\.1:\d+$",
     )
+    release_poll_s: float = Field(default=30, gt=0)  # asking Apple about a build's processing
+    processing_timeout_s: float = Field(default=3 * 3600, gt=0)  # Apple's processing, at most
 
     def allows(self, role: str, granted: bool) -> bool:
         """Whether a user with this role (and grant) may build Apple apps on this server."""

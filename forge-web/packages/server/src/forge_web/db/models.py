@@ -304,3 +304,45 @@ class AppStoreKey(Base):
     checked_at: Mapped[float] = mapped_column(Float, default=0.0)
     check_ok: Mapped[bool] = mapped_column(Boolean, default=False)
     check_message: Mapped[str] = mapped_column(Text, default="")
+
+
+class AppleCertificate(Base):
+    """A signing certificate Forge made for a user's team (W22b): its key and the certificate,
+    encrypted with the vault."""
+
+    __tablename__ = "apple_certificates"
+    __table_args__ = (Index("apple_certificates_by_owner", "user_id", "team_id", "kind"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # Apple's id
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    team_id: Mapped[str] = mapped_column(String(32))
+    kind: Mapped[str] = mapped_column(String(40))  # DISTRIBUTION | MAC_INSTALLER_DISTRIBUTION
+    secret: Mapped[str] = mapped_column(Text)  # {"key": PEM, "der": base64}, encrypted
+    expires_at: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppleRelease(Base):
+    """One approved commit on its way to TestFlight, for one platform (W22b): where it is, and
+    what each step left (stored, so a restart goes on from there)."""
+
+    __tablename__ = "apple_releases"
+    __table_args__ = (
+        Index("apple_releases_by_project", "project_id", "created_at"),
+        Index("apple_releases_by_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    approval_id: Mapped[str] = mapped_column(String(32))
+    commit: Mapped[str] = mapped_column(String(64))
+    platform: Mapped[str] = mapped_column(String(16))  # ios (with iPad and Watch) | macos
+    build_number: Mapped[int] = mapped_column(Integer)
+    step: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16))  # running | failed | done
+    error: Mapped[str] = mapped_column(Text, default="")
+    hint: Mapped[str] = mapped_column(Text, default="")
+    data: Mapped[str] = mapped_column(Text, default="{}")  # JSON: what the steps left
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)

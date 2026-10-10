@@ -131,3 +131,31 @@ export const appStoreKey = {
   check: () => api.post<AppStoreKeyView>("/api/me/appstore-key/check", {}),
   remove: () => api.delete("/api/me/appstore-key"),
 };
+
+export type ReleaseStep = "archive" | "identify" | "export" | "upload" | "process" | "testflight" | "done";
+
+/** One approved commit on its way to TestFlight, for one platform. */
+export interface AppleRelease {
+  id: string;
+  platform: "ios" | "macos";
+  commit: string;
+  step: ReleaseStep;
+  status: "running" | "failed" | "done";
+  error: string;
+  hint: string;
+  build_number: number;
+  version: string;
+  bundle_id: string;
+  steps: ReleaseStep[];
+  created_at: number;
+  updated_at: number;
+}
+
+export const appleReleases = (projectId: string) => {
+  const base = `/api/projects/${id(projectId)}/apple/releases`;
+  return {
+    list: () => api.get<AppleRelease[]>(base),
+    start: (platforms: AppleRelease["platform"][]) => api.post<AppleRelease[]>(base, { platforms }),
+    retry: (releaseId: string) => api.post<AppleRelease>(`${base}/${id(releaseId)}/retry`, {}),
+  };
+};

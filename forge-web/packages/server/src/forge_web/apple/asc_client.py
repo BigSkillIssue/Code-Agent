@@ -16,6 +16,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
+from forge_web.db.engine import Database
+from forge_web.db.models import AppStoreKey
+from forge_web.vault import Vault
+
 AUDIENCE = "appstoreconnect-v1"
 TOKEN_S = 15 * 60  # Apple accepts at most 20 minutes
 RETRIES = 3  # after "too many requests"
@@ -109,6 +113,9 @@ class AscClient:
     async def patch(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         return await self.request("PATCH", path, json=body)
 
+    async def delete(self, path: str) -> None:
+        await self.request("DELETE", path)
+
     async def all(self, path: str, **params: Any) -> list[dict[str, Any]]:
         """Every item of a list, page after page."""
         page = await self.get(path, **params)
@@ -138,3 +145,13 @@ def apple_message(reply: httpx.Response) -> str:
     texts = [str(e.get("detail") or e.get("title") or "") for e in errors if isinstance(e, dict)]
     found = "; ".join(t for t in texts if t)[:1000]
     return found or f"App Store Connect answered {reply.status_code}"
+
+
+async def asc_client_of(db: Database, vault: Vault, url: str, user_id: str) -> AscClient | None:
+    """A client that signs with this user's stored key, or None when the user has none."""
+    async with db.session() as session:
+        row = await session.get(AppStoreKey, user_id)
+    if row is None:
+        return None
+    key = AscKey(row.key_id, row.issuer_id, row.team_id, vault.decrypt(row.secret))
+    return AscClient(url, key)

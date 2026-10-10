@@ -18,6 +18,15 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from asc_standin_release import (
+    ReleaseState,
+    new_id,
+    provisioning_routes,
+    resource,
+    testflight_routes,
+    upload_routes,
+)
+
 KEY_ID, ISSUER_ID, TEAM_ID = "ABC123DEFG", "69a6de7e-1111-47e3-e053-5b8c7c11a4d1", "TEAM123456"
 
 
@@ -38,6 +47,7 @@ class AscState:
     bundle_ids: list[dict[str, Any]] = field(default_factory=list)
     calls: list[tuple[str, str]] = field(default_factory=list)
     refuse_identifiers: bool = False  # an individual key: no access to identifiers
+    release: ReleaseState = field(default_factory=ReleaseState)
 
 
 def unpad(text: str) -> bytes:
@@ -78,6 +88,8 @@ def standin_app(state: AscState) -> FastAPI:
     @app.middleware("http")
     async def authenticate(request: Request, call_next: Any) -> Any:
         state.calls.append((request.method, request.url.path))
+        if request.url.path.startswith("/upload/"):  # pre-signed, like Apple's upload URLs
+            return await call_next(request)
         problem = token_problem(state, request.headers.get("authorization", ""))
         if problem:
             return error(401, problem)
@@ -90,11 +102,28 @@ def standin_app(state: AscState) -> FastAPI:
         return {"data": found, "links": {}}
 
     @app.get("/v1/bundleIds")
-    async def bundle_ids() -> Any:
+    async def bundle_ids(request: Request) -> Any:
         if state.refuse_identifiers:
             return error(403, "This API key cannot use the Provisioning endpoints.")
-        return {"data": state.bundle_ids, "links": {}}
+        wanted = request.query_params.get("filter[identifier]")
+        found = [b for b in state.bundle_ids if wanted in (None, b["attributes"]["identifier"])]
+        return {"data": found, "links": {}}
 
+    @app.post("/v1/bundleIds")
+    async def new_bundle_id(request: Request) -> Any:
+        attributes = (await request.json())["data"]["attributes"]
+        identifier = attributes["identifier"]
+        if any(b["attributes"]["identifier"] == identifier for b in state.bundle_ids):
+            return error(409, f"An App ID with Identifier '{identifier}' is not available.")
+        if attributes.get("platform") not in ("IOS", "MAC_OS", "UNIVERSAL"):
+            return error(409, "platform must be IOS, MAC_OS or UNIVERSAL")
+        made = resource("bundleIds", new_id(), attributes)["data"]
+        state.bundle_ids.append(made)
+        return {"data": made}
+
+    provisioning_routes(app, state.release, state, error)
+    upload_routes(app, state.release, state, error)
+    testflight_routes(app, state.release, error)
     return app
 
 
@@ -119,6 +148,7 @@ class AscStandIn:
                 raise RuntimeError("the App Store Connect stand-in did not start")
             time.sleep(0.02)
         self.url = f"http://127.0.0.1:{self.server.servers[0].sockets[0].getsockname()[1]}"
+        self.state.release.base_url = self.url
         return self
 
     def __exit__(self, *_exc: object) -> None:

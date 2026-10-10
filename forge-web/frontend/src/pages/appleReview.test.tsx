@@ -76,5 +76,11 @@ describe("the approval page", () => {
     expect(decided[0].textContent).toMatch(/0123456789/);
     expect(decided[0].textContent).toMatch(/uncommitted|nicht committeten/);
     expect(screen.queryByRole("button", { name: /^(Approve for Apple|Für Apple freigeben)$/ })).toBeNull();
+    expect(screen.queryByTestId("open-release")).toBeNull(); // uncommitted changes: nothing to release
+    cleanup();
+    mocks.review.mockResolvedValue({ ...waiting, pending: null, approvals: [{ ...approval, clean: true }] });
+    open();
+    const link = await screen.findByTestId("open-release");
+    expect(link.getAttribute("href")).toBe("/p/p1/apple/release");
   });
 });

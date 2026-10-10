@@ -1,5 +1,6 @@
 """Changes people make to the workspace's repository in the web UI: stage, unstage, discard,
-commit, branches, the remote, and the bundles that carry commits to and from the git job.
+commit, branches, the remote, the bundles that carry commits to and from the git job, and the
+packed files of a commit for a release.
 
 Git runs as the workspace owner. Repository hooks never run for these actions
 (`core.hooksPath=/dev/null`), and nothing here talks to the network.
@@ -13,6 +14,7 @@ from forge_sandbox.fsops import Workspace, split_path
 from forge_sandbox.gitinfo import GIT_ENV, SAFE_GIT
 from forge_sandbox.methods import (
     EmptyParams,
+    GitArchiveParams,
     GitBranchParams,
     GitCloneParams,
     GitCommitParams,
@@ -58,6 +60,7 @@ class GitOps:
             "git.bundle_out": method(GitBranchParams, self.bundle_out),
             "git.bundle_in": method(GitBranchParams, self.bundle_in),
             "git.bundle_clone": method(GitCloneParams, self.bundle_clone),
+            "git.archive": method(GitArchiveParams, self.archive),
         }
 
     async def _git(self, *args: str, check: str = "") -> str:
@@ -237,3 +240,14 @@ class GitOps:
         await self.set_remote(GitRemoteParams(url=params.url))
         await self._git("branch", "-q", f"--set-upstream-to=origin/{branch}", branch)
         return {"branch": branch}
+
+    async def archive(self, params: GitArchiveParams) -> dict[str, Any]:
+        """Pack a commit's files as committed (nothing untracked, no git data) into
+        `.git/forge-transfer/release.tar.gz`, for a release to build exactly that commit."""
+        await asyncio.to_thread(self.workspace.mkdir, TRANSFER)
+        packed = f"{TRANSFER}/release.tar.gz"
+        await asyncio.to_thread(self._delete_new, packed)
+        await self._git("archive", "--format=tar.gz", "-o", packed, f"{params.commit}^{{commit}}",
+                        check="could not pack the commit")  # fmt: skip
+        size = (await asyncio.to_thread(self.workspace.stat, packed)).get("size", 0)
+        return {"path": packed, "size": size, "commit": params.commit}

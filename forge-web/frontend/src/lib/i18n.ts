@@ -2,6 +2,7 @@
 
 import { adminDe, adminEn } from "./texts/admin";
 import { appleDe, appleEn } from "./texts/apple";
+import { releaseDe, releaseEn } from "./texts/release";
 
 const coreEn = {
   appName: "Forge",
@@ -218,7 +219,7 @@ const coreEn = {
   total: "Total",
 };
 
-const en = { ...coreEn, ...adminEn, ...appleEn };
+const en = { ...coreEn, ...adminEn, ...appleEn, ...releaseEn };
 
 type Texts = typeof en;
 
@@ -438,7 +439,7 @@ const coreDe: typeof coreEn = {
   total: "Gesamt",
 };
 
-const de: Texts = { ...coreDe, ...adminDe, ...appleDe };
+const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...releaseDe };
 
 export type TextKey = keyof Texts;
 

@@ -158,6 +158,12 @@ class GitBranchParams(Params):
     branch: str = Field(min_length=1, max_length=200)
 
 
+class GitArchiveParams(Params):
+    """git.archive: which commit."""
+
+    commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+
+
 class GitCloneParams(Params):
     """git.bundle_clone: the URL `origin` gets."""
 

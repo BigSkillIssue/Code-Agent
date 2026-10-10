@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from forge_web.apple.asc_client import AscClient, AscError, AscKey, check_private_key
+from forge_web.apple.asc_client import AscClient, AscError, asc_client_of, check_private_key
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.models import AppStoreKey
@@ -85,12 +85,8 @@ def asc_key_routes() -> APIRouter:
 
 async def asc_client_for(services: Services, user_id: str) -> AscClient | None:
     """A client that signs with this user's key, or None when the user has none."""
-    async with services.db.session() as session:
-        row = await session.get(AppStoreKey, user_id)
-    if row is None:
-        return None
-    key = AscKey(row.key_id, row.issuer_id, row.team_id, services.vault.decrypt(row.secret))
-    return AscClient(services.settings.apple.asc_api_url, key)
+    return await asc_client_of(services.db, services.vault, services.settings.apple.asc_api_url,
+                               user_id)  # fmt: skip
 
 
 async def checked(services: Services, user_id: str) -> dict[str, Any]:

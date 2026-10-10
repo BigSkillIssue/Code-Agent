@@ -68,6 +68,20 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
   again; only the server signs with it (short-lived ES256 JWTs). It never goes to a sandbox, a Mac
   or a VM: signing certificates and profiles are made on the server, and only what one export needs
   goes to a fresh VM (W22b).
+- Releases (W22b): a signing certificate's private key is made on the server (RSA 2048) and kept
+  encrypted with the vault per user and team. An export job's offer carries no key material: the Mac
+  that holds the job fetches the .p12 files (with a password made for this export only) and the
+  profiles once, the server keeps them only in memory while the job runs, and the Mac signs in a VM
+  made for this one job from the clean image (never the project's VM, where its code ran), with a
+  keychain of its own that is deleted afterwards. The server uploads the build itself; Apple's
+  upload URLs get no token, and only `https://*.apple.com` addresses are used (the local stand-in in
+  tests). A release starts only on the user's click, from the project's newest approval, while the
+  project is still at that commit with nothing uncommitted; it builds exactly that commit
+  (`git archive`, tracked files only) and is in the audit log (`apple.release_started`,
+  `apple.release_retried`).
+- Accepted risk: the project's sandbox packs the commit (`git.archive`) and could hand over other
+  files than the commit's; whatever it hands over is built in the project's VM like every other
+  build, so the user's own sandbox can only change its own app.
 - Guideline reviews, screenshots and Forge's approval question come from the project's sandbox and are
   shown as they came (review links only to apple.com pages). An approval is only the user's own
   answer "Ready for Apple" to that question, recorded by the server once Forge took it (a second answer

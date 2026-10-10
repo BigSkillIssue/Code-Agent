@@ -5,6 +5,7 @@ the job, and export jobs only to workers that know them."""
 import asyncio
 import base64
 import io
+import os
 import plistlib
 import tarfile
 from pathlib import Path
@@ -154,7 +155,8 @@ async def test_an_export_job_from_the_server_to_a_mac_and_back(
 
     async def exporter(params: ExportParams, folder: Path, archive: Path, target: Path) -> Any:
         seen.append(SigningMaterial.model_validate_json((folder / SIGNING).read_text()))
-        assert (folder / SIGNING).stat().st_mode & 0o077 == 0  # only the worker may read it
+        if os.name == "posix":  # only the worker may read it (Windows has no such modes)
+            assert (folder / SIGNING).stat().st_mode & 0o077 == 0
         target.write_bytes(b"the signed ipa, packed")
         return ExportResult(ok=True, platform="ios", file_name="Tally.ipa", size=10)
 

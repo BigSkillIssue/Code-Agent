@@ -57,7 +57,16 @@ function Decision({ data, onDecided }: { data: AppleReviewData; onDecided: () =>
   const pending = data.pending;
   if (!pending) {
     const last = data.approvals[0];
-    return <p className="rounded-lg border border-line bg-card p-4 text-sm">{last ? approvedText(last) : t("approvalNotAsked")}</p>;
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-card p-4 text-sm">
+        <span>{last ? approvedText(last) : t("approvalNotAsked")}</span>
+        {last?.commit && last.clean && (
+          <Link to="release" relative="path" className="ml-auto text-accent underline" data-testid="open-release">
+            {t("openRelease")}
+          </Link>
+        )}
+      </div>
+    );
   }
   const decide = async (choice: string, toChat: boolean) => {
     const done = await act(async () => {
