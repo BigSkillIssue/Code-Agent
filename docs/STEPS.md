@@ -345,4 +345,80 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
     - Build: `XcodeBuilder.release_archive(platform, build_number)`: an archive for the App Store, signed ad hoc (so its entitlements, such as the Mac sandbox, survive until the export signs it for real) and with one build number for every target; the `AppleBuilder` port stays as it is.
     - Verify: `uv run pytest tests/test_xcode_builder.py -q`; on a Mac `uv run pytest -m apple -q` (CI job `apple` checks the entitlements with `codesign`)
 
+## Phase 8 · Produkt-Fabrik (asked for after Phase 7)
+
+The paying customer only says *what* they want ("an Instagram", "a Windows program"); Forge builds a complete product from it, with a conventional structure that people can keep developing: server, database (schema, migrations), the apps it needs, docs, tests and CI. What belongs to the agent engine — the app manifest, the templates, running and checking an app, the independent release reviewer, the checkpoints and the blueprint — is built here on `main`. Hosting, billing and the stores are built in Forge Web (`forge-web/docs/STEPS.md`, phases D–G) and never change `src/`. The whole plan, its six base decisions (assumptions until the user confirms them) and its security principles are in `docs/PRODUKTFABRIK.md` (German); read it before every Phase 8 card.
+
+Rules for this phase, in addition to `AGENTS.md`:
+
+- Templates are package data: `src/forge/templates/<kind>/**.tmpl`, so ruff and mypy never check the generated product's code. The generated product's own tests run under the pytest marker `fullstack` (off by default) in a CI job of their own.
+- Packages *inside* a generated product (FastAPI, React, …) belong to the template, not to Forge: pin their versions in the template. They are not Forge dependencies and need no question.
+- Stack of generated products: server Python 3.12 + FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL 16; web React + Vite + TypeScript with a client typed from the OpenAPI snapshot; Apple Swift/SwiftUI (Phase 7); Android Kotlin + Jetpack Compose; Windows .NET 10 LTS + WinUI 3 (MSIX). Android comes before Windows.
+- Tests never call real services (Stripe, Apple, Google, Microsoft, LLMs).
+- Order: S63–S68 first (Forge builds complete, checkable products), then Forge Web's phase D. S69 and S70 wait for Forge Web's W35, S71 goes with W37 and S72 with W38; `PROGRESS.md` says which comes next.
+
+- [ ] **S63 — App manifest**
+    - Contracts: App manifest (new section, written first in this step)
+    - Files: `src/forge/app_manifest.py`, `docs/CONTRACTS.md`, `tests/test_app_manifest.py`
+    - Build: pydantic models of `forge.app.toml` (read with `tomllib`): `services` (name, runtime `python3.12 | node22 | static`, command, port, health path), `database`, `storage`, `mail`, `env` and `secrets` (names only, never values), resource class, `clients` (web, apple, android, windows), `payments`; `load_manifest(path)` returns the manifest or its problems as values (field and message), never an exception.
+    - Tests: a full and a minimal manifest load; missing fields and wrong types are named by field; a secret with a value is refused; an unknown runtime is refused; two services on one port are refused; a health path must start with `/`; a TOML syntax error is a problem with its line.
+    - Verify: `uv run pytest tests/test_app_manifest.py -q`
+- [ ] **S64a — Full-stack template: server, docs, CI**
+    - Files: `src/forge/app_template.py`, `src/forge/templates/fullstack/{server,docs,.github}/**.tmpl`, `src/forge/templates/fullstack/forge.app.toml.tmpl`, `src/forge/app_cli.py` (`forge app new`, registered in `cli.py`, which is near 400 lines), `pyproject.toml` (package data, marker `fullstack`), `packaging/pyinstaller.spec` (data files), `.github/workflows/ci.yml` (job `fullstack`), `tests/test_app_template.py`, `tests/fullstack/test_server_live.py`
+    - Build: `forge app new <name>` writes a product from the template and fills its placeholders, like `forge apple new`. Server: FastAPI + SQLAlchemy 2 + Alembic + Postgres 16; accounts with password reset, account deletion (Apple 5.1.1(v)) and GDPR export; storage and mail interfaces; rate limiting; "report content" with a moderation queue (DSA); `__Host-` cookies; `/healthz`; an OpenAPI snapshot with a test that fails on drift; its own pytest suite; a Dockerfile for humans (hosting never runs it); CI with a Postgres service; README, runbook and an expand/contract migration guide; a `forge.app.toml` that passes S63. Every package of the product pinned.
+    - Tests: no placeholder is left; every generated `.py` compiles; every TOML, YAML and JSON file parses; the generated manifest is valid; the templates ship in the wheel; under `fullstack` the generated server's own tests run on Postgres.
+    - Verify: `uv run pytest tests/test_app_template.py -q`; with Postgres: `uv run pytest -m fullstack -q`
+- [ ] **S64b — Full-stack template: web**
+    - Files: `src/forge/templates/fullstack/web/**.tmpl`, `src/forge/templates/fullstack/docker-compose.yml.tmpl`, `src/forge/app_template.py`, `.github/workflows/ci.yml` (job `fullstack`), `tests/test_app_template.py`, `tests/fullstack/test_web_live.py`
+    - Build: React + Vite + TypeScript with a typed client generated from the server's OpenAPI snapshot; `/api` proxied to the backend so the preview needs one port; account pages (sign-up, sign-in, reset, delete, export); links to `/impressum` and `/datenschutz` on every page; vitest tests; a lockfile; a `docker-compose.yml` for humans (server, web, Postgres) that hosting never runs.
+    - Tests: the web files are written and every JSON parses; the typed client matches the OpenAPI snapshot; the legal links are on every page; under `fullstack`: `npm ci && npm test && npm run build` passes in a freshly generated product.
+    - Verify: `uv run pytest tests/test_app_template.py -q`; with Node and Postgres: `uv run pytest -m fullstack -q`
+- [ ] **S65 — Run and check an app**
+    - Files: `src/forge/app_dev.py`, `src/forge/app_checks.py`, `src/forge/runtime/postgres.py`, `src/forge/app_cli.py` (`forge app dev`, `forge app check`), `src/forge/tools.py` (`app_check`), `docs/TOOLS.md`, `tests/test_app_dev.py`, `tests/test_app_checks.py`
+    - Build: `forge app dev` starts a throwaway Postgres (`initdb`/`pg_ctl`, socket in `/tmp`, no TCP port) and every service of `forge.app.toml` as monitors (S53). `forge app check` runs fixed gates and writes `.forge/out/app/checks.json`: the server's tests on Postgres, `alembic upgrade head` with no pending autogenerate, OpenAPI drift, web build and tests, lockfiles, secret scan. The tool `app_check` gives the agent the same result. Every failed gate names its fix.
+    - Tests: with fake `pg_ctl`, `initdb`, `npm`, `pytest` and `alembic`: all gates pass; each gate fails on its own and names its fix; a pending migration fails; a committed secret fails; `checks.json` equals the result; Postgres is stopped and its folder removed when `dev` ends.
+    - Verify: `uv run pytest tests/test_app_dev.py tests/test_app_checks.py -q`
+- [ ] **S66 — Release reviewer with rulebooks**
+    - Contracts: Messages and events (`ReleaseReview`, `ReleaseFinding`; `area` is a string)
+    - Files: `src/forge/release_review.py`, `src/forge/prompts.py` (RELEASE_REVIEWER and the rulebooks), `src/forge/config.py` (role `release_reviewer`, `[release] rulebook_files`), `src/forge/config_docs.py`, `docs/config.md`, `src/forge/events.py`, `docs/CONTRACTS.md`, renderers, `tests/test_release_review.py`
+    - Build: like `apple_review.py`: a role of its own, a fresh context, read-only tools, a JSON answer, the worst finding wins, a failed review never passes; reviews of the request, the plan and the product. Built-in rulebooks: hosting and acceptable use, privacy (GDPR), German law (Impressum, consumer law), content (DSA: user content needs report and block), security, resources. Extra rules come from the admin's files in `[release] rulebook_files`. The Apple reviewer stays unchanged.
+    - Tests: a clean product passes; user content without a report button is a violation; a missing Impressum link is a violation; a rule from an admin's file produces its finding; malformed JSON or a model error never passes; every built-in area appears at least once; the reviewer gets none of the builder's messages.
+    - Verify: `uv run pytest tests/test_release_review.py -q`
+- [ ] **S67a — Checkpoints as plug-ins**
+    - Files: `src/forge/release_flow.py`, `src/forge/pipeline.py`, `src/forge/apple_flow.py`, `tests/test_release_flow.py`
+    - Build: a `Checkpoint` protocol with three points (request, plan, product) and the user's final approval; the pipeline runs the checkpoints it is given; Apple becomes the first checkpoint with its behaviour unchanged. `pipeline.py` is about 400 lines: extract first, so it stays under 500.
+    - Tests: a dummy checkpoint is called at the three points in order and can stop a run; two checkpoints run one after the other; the Apple pipeline tests stay green without a change.
+    - Verify: `uv run pytest tests/test_release_flow.py tests/test_apple_pipeline.py tests/test_apple_listing.py -q`
+- [ ] **S67b — App checkpoints and "Ready to go live"**
+    - Contracts: Plan models (`Report.ready_to_host`)
+    - Files: `src/forge/app_flow.py`, `src/forge/pipeline.py` (`Report.ready_to_host`), `src/forge/cli.py` (`--app`), `src/forge/config.py` (`[app] review`), `docs/CONTRACTS.md`, `tests/test_app_pipeline.py`
+    - Build: with `--app` the release reviewer checks the request and the plan; the product is reviewed only after a green `app check`, with desktop and mobile screenshots of the web client; a violation stops the run until the agent fixes it or the user overrides it; at the end the user is asked GO_LIVE / SEND_BACK / NOT_YET. Only the user's GO_LIVE sets `Report.ready_to_host`; headless runs and `--yes` never do.
+    - Tests: a run to GO_LIVE; a red `app check` skips the product review and goes back to the agent; SEND_BACK continues with the user's note; NOT_YET ends without `ready_to_host`; headless and `--yes` never approve; Apple runs are unchanged.
+    - Verify: `uv run pytest tests/test_app_pipeline.py tests/test_apple_pipeline.py -q`
+- [ ] **S68 — Product blueprint**
+    - Files: `src/forge/blueprint.py`, `src/forge/prompts.py` (ARCHITECT), `src/forge/config.py` (role `architect`), `src/forge/app_flow.py`, `tests/test_blueprint.py`
+    - Build: in `--app` runs, the `architect` role turns the refined request into a blueprint before planning: entities, API, auth, storage, clients, payments and hosting needs → `.forge/out/product/blueprint.json` and `docs/architecture.md` in the product. The planner makes one group of plan steps per component; the plan review reads the blueprint; the blueprint must agree with `forge.app.toml`.
+    - Tests: a recorded request yields a valid blueprint; every component gets its group of steps; a blueprint with payments but none in the manifest is a problem; invalid JSON is retried once; the plan review receives the blueprint.
+    - Verify: `uv run pytest tests/test_blueprint.py -q`
+- [ ] **S69 — Template payments module** (after Forge Web's W35)
+    - Files: `src/forge/templates/fullstack/server/payments/**.tmpl`, `src/forge/templates/fullstack/web/**.tmpl` (payment pages), `src/forge/app_template.py`, `tests/test_app_template.py`
+    - Build: subscriptions and one-time purchases through Forge Web's payments relay (W35): the app holds only its relay token, never a Stripe key; an end-user cancellation page; a fake relay in the product's own tests; switched on by `payments` in `forge.app.toml`.
+    - Tests: the module is written only when the manifest asks for payments; no Stripe key or Stripe package in the generated product; under `fullstack` the product's payment tests pass against its fake relay.
+    - Verify: `uv run pytest tests/test_app_template.py -q`; `uv run pytest -m fullstack -q`
+- [ ] **S70 — Apple client for the API**
+    - Files: `src/forge/apple_template.py`, `src/forge/app_template.py`, `tests/test_apple_template.py`, `tests/test_app_template.py`
+    - Build: a product with an Apple client gets a Swift client from swift-openapi-generator against the server's OpenAPI snapshot, pointed at staging; StoreKit 2 when the app sells digital goods (guideline 3.1.1).
+    - Tests: the generator config names the snapshot and the staging URL; digital goods switch the Apple client to StoreKit 2 and leave no web checkout in it; on a Mac (`apple` marker) the template builds.
+    - Verify: `uv run pytest tests/test_apple_template.py tests/test_app_template.py -q`
+- [ ] **S71 — Android template** (with Forge Web's W37)
+    - Files: `src/forge/android_template.py`, `src/forge/templates/android/**.tmpl`, `src/forge/app_cli.py`, `.github/workflows/ci.yml` (job `fullstack`), `tests/test_android_template.py`
+    - Build: Kotlin + Jetpack Compose with a client from the OpenAPI snapshot, Play Billing for digital goods, account deletion in the app, a Gradle wrapper and pinned versions; builds on Linux.
+    - Tests: placeholders filled, every file parses; under `fullstack` (JDK and Android SDK) the generated app builds and its tests pass.
+    - Verify: `uv run pytest tests/test_android_template.py -q`
+- [ ] **S72 — Windows template** (with Forge Web's W38)
+    - Files: `src/forge/windows_template.py`, `src/forge/templates/windows/**.tmpl`, `src/forge/app_cli.py`, `.github/workflows/ci.yml` (Windows job under `fullstack`), `tests/test_windows_template.py`
+    - Build: .NET 10 LTS + WinUI 3 packaged as MSIX (the Store signs it), a client from the OpenAPI snapshot, Store purchases for digital goods.
+    - Tests: placeholders filled, project files parse as XML; on Windows under `fullstack` the generated app builds and its tests pass.
+    - Verify: `uv run pytest tests/test_windows_template.py -q`
+
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.
