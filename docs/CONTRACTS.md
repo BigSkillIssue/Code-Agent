@@ -89,6 +89,25 @@ class GuidelineReview(Event):
     error: str = ""                  # no review could be made; never counts as a pass
 ```
 
+```python
+# events.py — the release reviewer (S66): a full-stack product before it is hosted
+RELEASE_AREAS = ("hosting", "privacy", "german_law", "content", "security", "resources")  # release_review.py
+class ReleaseFinding(BaseModel):
+    area: str                        # a RELEASE_AREAS rulebook, or the name of an operator's rulebook
+    status: GuidelineStatus
+    rule: str = ""                   # e.g. "DSA Art. 16", "DDG § 5"
+    reason: str
+    fix: str = ""
+class ReleaseReview(Event):
+    kind: Literal["release_review"] = "release_review"
+    stage: Literal["prompt", "plan", "product"]
+    verdict: GuidelineStatus         # the worst finding; "concern" when the review failed
+    summary: str
+    findings: list[ReleaseFinding] = []     # every area at least once (missing ones: concern)
+    areas: list[str] = []            # the built-in rulebooks and the operator's ([release] rulebook_files)
+    error: str = ""                  # no review could be made; never counts as a pass
+```
+
 Rule: every event serializes to one JSON line (`model_dump_json()`); headless mode (S40) prints exactly these lines.
 
 ## Provider interface — `src/forge/providers/base.py`
@@ -244,9 +263,11 @@ class Browser(Protocol):               # targets: visible text, "css=<selector>"
     async def close(self) -> None: ...
 
 class BrowserFactory(Protocol):        # a fresh context (no profile, no downloads) per agent
-    async def new_browser(self) -> Browser: ...
+    async def new_browser(self, viewport: tuple[int, int] | None = None) -> Browser: ...  # S67b: (width, height)
     async def close(self) -> None: ...
 ```
+
+`SessionState.preview_browsers` (S67b) is a second factory that may open local addresses: Forge uses it itself to photograph a product it runs on localhost (desktop and phone sizes) for the release review. It is never given to an agent.
 
 **Apple builds (added in S58a).** Apple projects (Swift, SwiftUI) are built, tested and shown on simulated devices through this port. `local/xcode_builder.py` implements it on a Mac with Xcode (running XcodeGen first when the project has a `project.yml`); a server may implement it with a remote Mac. `SessionState.apple` holds it; without one the `apple` tools are not offered. Expected failures (no Xcode, no such scheme or device, a timeout) raise `AppleBuildError`; a build that fails is a result with `ok=False` and the compiler's messages. Settings live in `[apple]` (`timeout_s`, `max_screenshots`, `devices`: the preferred simulator per platform).
 
@@ -355,6 +376,8 @@ class Report(BaseModel):
     usage: Usage
     ready_for_apple: bool = False    # S60: only when the user approved the app (--apple)
     apple_summary: str = ""          # S60: why the app is (not) ready for Apple
+    ready_to_host: bool = False      # S67b: only when the user said the product may go live (--app)
+    host_summary: str = ""           # S67b: why the product may (not) go live, with the checked commit
 ```
 
 ## Agent loop — `src/forge/agent.py`

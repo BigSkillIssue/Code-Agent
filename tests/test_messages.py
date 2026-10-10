@@ -79,6 +79,20 @@ EVENTS: list[events.Event] = [
             )
         ],
     ),
+    events.ReleaseReview(
+        session_id="s",
+        ts=1.0,
+        agent_id="release-reviewer-product",
+        stage="product",
+        verdict="violation",
+        summary="Posts cannot be reported.",
+        areas=["content", "shop_rules"],
+        findings=[
+            events.ReleaseFinding(
+                area="content", status="violation", rule="DSA Art. 16", reason="no report button"
+            )
+        ],
+    ),
 ]
 
 

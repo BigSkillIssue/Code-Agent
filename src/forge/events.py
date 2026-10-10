@@ -152,6 +152,29 @@ class GuidelineReview(Event):
     error: str = ""  # set when no review could be made: that is never a pass
 
 
+class ReleaseFinding(BaseModel):
+    """The release reviewer's judgement of one rulebook area (S66)."""
+
+    area: str  # a built-in rulebook (RELEASE_AREAS) or the name of one of the admin's rulebooks
+    status: GuidelineStatus
+    rule: str = ""  # the rule, e.g. "DSA Art. 16" or "DDG § 5"
+    reason: str
+    fix: str = ""  # what would make it ok
+
+
+class ReleaseReview(Event):
+    """The release reviewer's verdict on the request, the plan or the finished product before it
+    is hosted (S66)."""
+
+    kind: Literal["release_review"] = "release_review"
+    stage: Literal["prompt", "plan", "product"]
+    verdict: GuidelineStatus  # the worst finding; "concern" when the review failed
+    summary: str
+    findings: list[ReleaseFinding] = []
+    areas: list[str] = []  # every rulebook the review had to cover
+    error: str = ""  # set when no review could be made: that is never a pass
+
+
 EVENT_TYPES: tuple[type[Event], ...] = (
     ModelDelta,
     ModelDone,
@@ -168,6 +191,7 @@ EVENT_TYPES: tuple[type[Event], ...] = (
     AgentMessage,
     AgentFinished,
     GuidelineReview,
+    ReleaseReview,
 )
 
 AnyEvent = Annotated[
@@ -185,7 +209,8 @@ AnyEvent = Annotated[
     | ErrorEvent
     | AgentMessage
     | AgentFinished
-    | GuidelineReview,
+    | GuidelineReview
+    | ReleaseReview,
     Field(discriminator="kind"),
 ]
 _EVENT_ADAPTER: TypeAdapter[AnyEvent] = TypeAdapter(AnyEvent)

@@ -277,3 +277,16 @@ def test_forge_app_check_prints_and_exits(
     assert code == 1
     assert "app check: failed" in capsys.readouterr().out
     assert (product / REPORT).is_file()
+
+
+async def test_programs_found_with_windows_names_still_count(
+    product: Path, fake_postgres: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows shutil.which answers `C:\\...\\npm.CMD`; the gates must work the same."""
+    monkeypatch.setattr(
+        "forge.app_checks.shutil.which",
+        lambda name: f"C:/Tools/{name}.{'CMD' if name == 'npm' else 'EXE'}",
+    )
+    report, executor = await run_check(product, fail_when("npm", "test"))
+    assert statuses(report)["web (web)"] == "failed"
+    assert executor.ran("npm", "ci")[0].argv[0] == "C:/Tools/npm.CMD"  # type: ignore[index]

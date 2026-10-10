@@ -32,11 +32,13 @@ class PlaywrightBrowsers:
         self._browser: PwBrowser | None = None
         self._local_hosts: dict[str, bool] = {}
 
-    async def new_browser(self) -> Browser:
-        """A fresh page in its own context: no cookies, no downloads, local hosts blocked."""
+    async def new_browser(self, viewport: tuple[int, int] | None = None) -> Browser:
+        """A fresh page in its own context: no cookies, no downloads, local hosts blocked
+        (unless allowed); `viewport` (width, height) replaces the configured size."""
         browser = await self._launch()
+        width, height = viewport or (self.cfg.viewport_width, self.cfg.viewport_height)
         context = await browser.new_context(
-            viewport={"width": self.cfg.viewport_width, "height": self.cfg.viewport_height},
+            viewport={"width": width, "height": height},
             accept_downloads=False,
             service_workers="block",
         )

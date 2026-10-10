@@ -10,8 +10,9 @@ import asyncio
 import base64
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from forge import prompts
 from forge.agent import run_agent
@@ -22,6 +23,7 @@ from forge.events import GuidelineReview
 from forge.plan import Plan, Question, TaskSpec
 from forge.ports import AppleBuilder, AppleBuildError, ApplePlatform, AppleScreen
 from forge.questions import ask
+from forge.release_flow import CheckpointStopped, Outcome, Replan
 from forge.runtime.apple import build_report
 from forge.tools import keep_screen
 
@@ -37,16 +39,37 @@ SCREENS = Path(".forge") / "out" / "apple"  # in the project, so the user can op
 PLATFORMS: dict[str, ApplePlatform] = {"iOS": "ios", "macOS": "macos", "watchOS": "watchos"}
 
 
-class AppleStopped(Exception):
+class AppleStopped(CheckpointStopped):
     """The run stops at an Apple checkpoint: the user's choice, or the default without one."""
 
 
-@dataclass
-class AppleOutcome:
-    """Whether the app is ready for Apple, and why (not)."""
+AppleOutcome = Outcome  # whether the app is ready for Apple, and why (not)
 
-    ready: bool
-    summary: str
+
+class AppleCheckpoint:
+    """The Apple checks as a pipeline checkpoint (S67a): guidelines and the user's approval."""
+
+    name = "apple"
+
+    async def check_request(self, ctx: Ctx, prompt: str) -> None:
+        """Review the request against Apple's guidelines."""
+        await check_request(ctx, prompt)
+
+    async def prepare_plan(self, ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+        """Nothing to do before planning."""
+        return spec
+
+    async def check_plan(self, ctx: Ctx, plan: Plan, replan: Replan) -> Plan:
+        """Review the plan against Apple's guidelines."""
+        return await check_plan(ctx, plan, replan)
+
+    async def finish(self, ctx: Ctx) -> Outcome:
+        """Build, check and review the app, then ask the user to approve it."""
+        return await finish_product(ctx)
+
+    def report_fields(self, outcome: Outcome) -> dict[str, Any]:
+        """`ready_for_apple` and `apple_summary`."""
+        return {"ready_for_apple": outcome.ready, "apple_summary": outcome.summary}
 
 
 async def check_request(ctx: Ctx, prompt: str) -> None:

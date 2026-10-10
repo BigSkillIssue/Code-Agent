@@ -82,7 +82,8 @@ forge app dev | check      run a product locally / run its fixed checks
 ```
 
 Options: `-p PROFILE`, `-C DIR`, `-y/--yes` (approve everything, except an app for Apple),
-`--solo`/`--team`, `--apple` (Apple guideline checks and your approval), `--fake [SCRIPT.json]`.
+`--solo`/`--team`, `--apple` (Apple guideline checks and your approval), `--app` (release
+review of a full-stack product and your go-live decision), `--fake [SCRIPT.json]`.
 
 ## Development
 

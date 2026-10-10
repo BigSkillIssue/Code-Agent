@@ -378,24 +378,24 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: `forge app dev` starts a throwaway Postgres (`initdb`/`pg_ctl`, socket in `/tmp`, no TCP port) and every service of `forge.app.toml` as monitors (S53). `forge app check` runs fixed gates and writes `.forge/out/app/checks.json`: the server's tests on Postgres, `alembic upgrade head` with no pending autogenerate, OpenAPI drift, web build and tests, lockfiles, secret scan. The tool `app_check` gives the agent the same result. Every failed gate names its fix.
     - Tests: with fake `pg_ctl`, `initdb`, `npm`, `pytest` and `alembic`: all gates pass; each gate fails on its own and names its fix; a pending migration fails; a committed secret fails; `checks.json` equals the result; Postgres is stopped and its folder removed when `dev` ends.
     - Verify: `uv run pytest tests/test_app_dev.py tests/test_app_checks.py -q`
-- [ ] **S66 — Release reviewer with rulebooks**
+- [x] **S66 — Release reviewer with rulebooks**
     - Contracts: Messages and events (`ReleaseReview`, `ReleaseFinding`; `area` is a string)
     - Files: `src/forge/release_review.py`, `src/forge/prompts.py` (RELEASE_REVIEWER and the rulebooks), `src/forge/config.py` (role `release_reviewer`, `[release] rulebook_files`), `src/forge/config_docs.py`, `docs/config.md`, `src/forge/events.py`, `docs/CONTRACTS.md`, renderers, `tests/test_release_review.py`
     - Build: like `apple_review.py`: a role of its own, a fresh context, read-only tools, a JSON answer, the worst finding wins, a failed review never passes; reviews of the request, the plan and the product. Built-in rulebooks: hosting and acceptable use, privacy (GDPR), German law (Impressum, consumer law), content (DSA: user content needs report and block), security, resources. Extra rules come from the admin's files in `[release] rulebook_files`. The Apple reviewer stays unchanged.
     - Tests: a clean product passes; user content without a report button is a violation; a missing Impressum link is a violation; a rule from an admin's file produces its finding; malformed JSON or a model error never passes; every built-in area appears at least once; the reviewer gets none of the builder's messages.
     - Verify: `uv run pytest tests/test_release_review.py -q`
-- [ ] **S67a — Checkpoints as plug-ins**
+- [x] **S67a — Checkpoints as plug-ins**
     - Files: `src/forge/release_flow.py`, `src/forge/pipeline.py`, `src/forge/apple_flow.py`, `tests/test_release_flow.py`
     - Build: a `Checkpoint` protocol with three points (request, plan, product) and the user's final approval; the pipeline runs the checkpoints it is given; Apple becomes the first checkpoint with its behaviour unchanged. `pipeline.py` is about 400 lines: extract first, so it stays under 500.
     - Tests: a dummy checkpoint is called at the three points in order and can stop a run; two checkpoints run one after the other; the Apple pipeline tests stay green without a change.
     - Verify: `uv run pytest tests/test_release_flow.py tests/test_apple_pipeline.py tests/test_apple_listing.py -q`
-- [ ] **S67b — App checkpoints and "Ready to go live"**
+- [x] **S67b — App checkpoints and "Ready to go live"**
     - Contracts: Plan models (`Report.ready_to_host`)
     - Files: `src/forge/app_flow.py`, `src/forge/pipeline.py` (`Report.ready_to_host`), `src/forge/cli.py` (`--app`), `src/forge/config.py` (`[app] review`), `docs/CONTRACTS.md`, `tests/test_app_pipeline.py`
     - Build: with `--app` the release reviewer checks the request and the plan; the product is reviewed only after a green `app check`, with desktop and mobile screenshots of the web client; a violation stops the run until the agent fixes it or the user overrides it; at the end the user is asked GO_LIVE / SEND_BACK / NOT_YET. Only the user's GO_LIVE sets `Report.ready_to_host`; headless runs and `--yes` never do.
     - Tests: a run to GO_LIVE; a red `app check` skips the product review and goes back to the agent; SEND_BACK continues with the user's note; NOT_YET ends without `ready_to_host`; headless and `--yes` never approve; Apple runs are unchanged.
     - Verify: `uv run pytest tests/test_app_pipeline.py tests/test_apple_pipeline.py -q`
-- [ ] **S68 — Product blueprint**
+- [x] **S68 — Product blueprint**
     - Files: `src/forge/blueprint.py`, `src/forge/prompts.py` (ARCHITECT), `src/forge/config.py` (role `architect`), `src/forge/app_flow.py`, `tests/test_blueprint.py`
     - Build: in `--app` runs, the `architect` role turns the refined request into a blueprint before planning: entities, API, auth, storage, clients, payments and hosting needs → `.forge/out/product/blueprint.json` and `docs/architecture.md` in the product. The planner makes one group of plan steps per component; the plan review reads the blueprint; the blueprint must agree with `forge.app.toml`.
     - Tests: a recorded request yields a valid blueprint; every component gets its group of steps; a blueprint with payments but none in the manifest is a problem; invalid JSON is retried once; the plan review receives the blueprint.

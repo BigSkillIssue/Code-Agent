@@ -95,10 +95,10 @@ class ScriptedExecutor:
         argv = cmd.argv or []
         if not argv:
             return []
-        name = Path(argv[0]).name
-        for suffix in (".exe", ".cmd", ".bat"):
-            name = name.removesuffix(suffix)
-        return [name, *argv[1:]]
+        program = Path(argv[0])
+        # Windows: shutil.which gives `uv.EXE` or `npm.CMD` (the case PATHEXT uses).
+        windows = program.suffix.lower() in (".exe", ".cmd", ".bat")
+        return [program.stem if windows else program.name, *argv[1:]]
 
     async def run(
         self,

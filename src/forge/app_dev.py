@@ -9,15 +9,19 @@ Everything runs as background jobs through the Executor port and stops together.
 import asyncio
 import contextlib
 import shutil
-from collections.abc import Callable
+import time
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 from forge.app_manifest import AppManifest, Service, load_manifest
 from forge.ports import Command, Executor, JobNotFoundError, SandboxPolicy
 from forge.runtime.postgres import Postgres, PostgresError, start_postgres, stop_postgres
 
 POLL_S = 0.3
+READY_TIMEOUT_S = 120  # installs are done; the services only have to start
 INSTALL_TIMEOUT_S = 900
 STORAGE = Path(".forge") / "dev" / "storage"
 
@@ -55,13 +59,39 @@ async def run_dev(
     database_url: str | None = None,
 ) -> int:
     """Run the product until `stop` is set (0) or a service ends (1)."""
+    async with running_product(root, executor, policy, show, database_url) as product:
+        if product is None:
+            return 1
+        show(f"open {app_url(product.manifest)} (ctrl+c stops everything)")
+        return await follow(executor, product.services, show, stop)
+
+
+@dataclass
+class Product:
+    """A product running in the background."""
+
+    manifest: AppManifest
+    services: list[Running]
+
+
+@contextlib.asynccontextmanager
+async def running_product(
+    root: Path,
+    executor: Executor,
+    policy: SandboxPolicy,
+    show: Show,
+    database_url: str | None = None,
+) -> AsyncIterator[Product | None]:
+    """The product started in the background (None when it could not start); everything
+    stops when the block ends."""
     manifest = load_manifest(root)
     if isinstance(manifest, list):
         for problem in manifest:
             show(f"forge.app.toml: {problem.field or 'file'}: {problem.message}")
-        return 1
+        yield None
+        return
     pg: Postgres | None = None
-    running: list[Running] = []
+    services: list[Running] = []
     try:
         if manifest.database is not None and database_url is None:
             pg = await start_postgres(executor, policy)
@@ -70,15 +100,31 @@ async def run_dev(
         for service in manifest.services:
             job = await start_service(executor, policy, root, manifest, service, database_url, show)
             if job is None:
-                return 1
-            running.append(Running(service.name, job))
-        show(f"open {app_url(manifest)} (ctrl+c stops everything)")
-        return await follow(executor, running, show, stop)
+                break
+            services.append(Running(service.name, job))
+        complete = len(services) == len(manifest.services)
+        yield Product(manifest, services) if complete else None
     except PostgresError as error:
         show(f"error: {error}\nhint: {error.hint}")
-        return 1
+        yield None
     finally:
-        await stop_all(executor, policy, running, pg)
+        await stop_all(executor, policy, services, pg)
+
+
+async def wait_healthy(manifest: AppManifest, timeout_s: float = READY_TIMEOUT_S) -> bool:
+    """Wait until every service answers its health path on localhost."""
+    deadline = time.monotonic() + timeout_s
+    async with httpx.AsyncClient(timeout=2) as client:
+        for service in manifest.services:
+            url = f"http://127.0.0.1:{service.port}{service.health}"
+            while True:
+                with contextlib.suppress(httpx.HTTPError):
+                    if (await client.get(url)).status_code < 500:
+                        break
+                if time.monotonic() > deadline:
+                    return False
+                await asyncio.sleep(POLL_S)
+    return True
 
 
 async def start_service(

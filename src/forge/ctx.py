@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from forge.config import ForgeConfig
-from forge.events import GuidelineReview
+from forge.events import GuidelineReview, ReleaseReview
 from forge.hooks import Hooks
 from forge.monitors import Monitors
 from forge.plan import Plan
@@ -103,6 +103,9 @@ class SessionState:
     mode_override: str | None = None  # --solo / --team
     mcp: McpTools | None = None  # set by wiring when [mcp_servers] are configured
     browser_factory: BrowserFactory | None = None  # set by wiring; None: no browser agent
+    # Forge's own screenshots of a product it runs locally (S67b): may open local addresses,
+    # so it is never handed to an agent. Set by wiring; None: products are reviewed unseen.
+    preview_browsers: BrowserFactory | None = None
     browsers: dict[str, Browser] = field(default_factory=dict)  # agent id -> its open browser
     screenshots: dict[str, int] = field(default_factory=dict)  # agent id -> screenshots taken
     monitors: Monitors = field(default_factory=Monitors)  # background commands being watched
@@ -115,6 +118,7 @@ class SessionState:
     apple_screens: list[AppleScreen] = field(default_factory=list)  # latest per device, for review
     apple_shots: int = 0  # apple_screenshot calls so far
     apple_reviews: list[GuidelineReview] = field(default_factory=list)  # every Apple review
+    release_reviews: list[ReleaseReview] = field(default_factory=list)  # every release review
 
 
 @dataclass
