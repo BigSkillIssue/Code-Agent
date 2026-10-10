@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
-from forge_macworker.wire import JobResult, PollAnswer, PollRequest
+from forge_macworker.wire import JobResult, PollAnswer, PollRequest, SigningMaterial
 from forge_web.apple.jobs import JobRefused
 from forge_web.apple.workers import worker_of
 from forge_web.db.models import MacWorker
@@ -43,13 +43,17 @@ def worker_router() -> APIRouter:
     @router.post("/poll")
     async def poll(body: PollRequest, worker: Worker, request: Request) -> PollAnswer:
         jobs = services_of(request).apple
-        return PollAnswer(job=await jobs.claim(worker.id, POLL_WAIT_S))
+        return PollAnswer(job=await jobs.claim(worker.id, POLL_WAIT_S, body.version))
 
     @router.get("/jobs/{job_id}/source")
     async def source(job_id: str, worker: Worker, request: Request) -> FileResponse:
         jobs = services_of(request).apple
         await refused_unless(jobs.running(worker.id, job_id))
         return FileResponse(jobs.source(job_id), media_type="application/gzip")
+
+    @router.get("/jobs/{job_id}/signing")
+    async def signing(job_id: str, worker: Worker, request: Request) -> SigningMaterial:
+        return await refused_unless(services_of(request).apple.signing_of(worker.id, job_id))
 
     @router.post("/jobs/{job_id}/archive")
     async def archive(job_id: str, worker: Worker, request: Request) -> dict[str, bool]:

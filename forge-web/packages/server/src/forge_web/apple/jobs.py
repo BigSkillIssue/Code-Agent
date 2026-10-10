@@ -1,8 +1,9 @@
 """Apple jobs: a sandbox's request waits here until a Mac takes it and reports back.
 
 Each job keeps its files in `<data>/apple/<job id>/`: the packed project (deleted once the job
-ends) and, for archives, the `.xcarchive` the Mac sent (kept for the App Store step). The
-server never unpacks either.
+ends) and, for archives and exports, what the Mac sent (the `.xcarchive`, or the signed `.ipa` or
+`.pkg`, kept for the App Store step). The server never unpacks either. The signing material of
+an export job lives only in memory and is handed out once.
 """
 
 import asyncio
@@ -17,13 +18,26 @@ from pathlib import Path
 
 from sqlalchemy import func, select, update
 
-from forge_macworker.wire import BuildParams, JobOffer, JobResult, ScreenshotParams
+from forge_macworker.wire import (
+    BuildParams,
+    ExportParams,
+    JobOffer,
+    JobResult,
+    ScreenshotParams,
+    SigningMaterial,
+    knows_exports,
+)
 from forge_web.db.engine import Database
 from forge_web.db.models import AppleJob
 from forge_web.gateway.meter import month_start
 from forge_web.settings import AppleSettings
 
 SOURCE, ARCHIVE = "source.tar.gz", "archive.tar.gz"
+KINDS: dict[type, str] = {
+    BuildParams: "build",
+    ScreenshotParams: "screenshot",
+    ExportParams: "export",
+}
 
 
 class JobRefused(Exception):
@@ -37,7 +51,8 @@ class NewJob:
     project_id: str
     chat_id: str
     user_id: str
-    params: BuildParams | ScreenshotParams
+    params: BuildParams | ScreenshotParams | ExportParams
+    signing: SigningMaterial | None = None  # export jobs only
 
 
 class AppleJobs:
@@ -48,6 +63,7 @@ class AppleJobs:
         self.settings = settings
         self.root = data_dir / "apple"
         self.waiting: dict[str, asyncio.Future[JobResult]] = {}
+        self.signing: dict[str, SigningMaterial] = {}  # export jobs' material, until fetched
         self.queued = asyncio.Condition()
 
     async def start(self) -> None:
@@ -73,6 +89,7 @@ class AppleJobs:
                              hint="the Macs may be busy or offline; try again later")  # fmt: skip
         finally:
             self.waiting.pop(job_id, None)
+            self.signing.pop(job_id, None)
             with contextlib.suppress(FileNotFoundError):
                 (self.root / job_id / SOURCE).unlink()
 
@@ -81,7 +98,9 @@ class AppleJobs:
         folder = self.root / job_id
         folder.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), folder / SOURCE)
-        kind = "build" if isinstance(job.params, BuildParams) else "screenshot"
+        kind = KINDS[type(job.params)]
+        if job.signing is not None:
+            self.signing[job_id] = job.signing
         row = AppleJob(id=job_id, project_id=job.project_id, chat_id=job.chat_id,
                        user_id=job.user_id, kind=kind, params=job.params.model_dump_json(),
                        status="queued", created_at=time.time())  # fmt: skip
@@ -89,11 +108,12 @@ class AppleJobs:
             session.add(row)
         return job_id
 
-    async def claim(self, worker_id: str, wait_s: float) -> JobOffer | None:
-        """The oldest waiting job for this worker; waits up to `wait_s` for one to come."""
+    async def claim(self, worker_id: str, wait_s: float, version: str = "") -> JobOffer | None:
+        """The oldest waiting job for this worker; waits up to `wait_s` for one to come. Export
+        jobs go only to workers that know them."""
         deadline = time.monotonic() + wait_s
         async with self.queued:
-            while (offer := await self._take(worker_id)) is None:
+            while (offer := await self._take(worker_id, knows_exports(version))) is None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None
@@ -101,12 +121,13 @@ class AppleJobs:
                     await asyncio.wait_for(self.queued.wait(), remaining)
             return offer
 
-    async def _take(self, worker_id: str) -> JobOffer | None:
+    async def _take(self, worker_id: str, exports: bool) -> JobOffer | None:
         async with self.db.session() as session, session.begin():
             rows = await session.scalars(
                 select(AppleJob).where(AppleJob.status == "queued").order_by(AppleJob.created_at)
             )
-            row = next((r for r in rows if r.id in self.waiting), None)
+            fits = (r for r in rows if r.id in self.waiting and (exports or r.kind != "export"))
+            row = next(fits, None)
             if row is None:
                 return None
             row.status, row.worker_id, row.started_at = "running", worker_id, time.time()
@@ -121,8 +142,16 @@ class AppleJobs:
         return row
 
     def source(self, job_id: str) -> Path:
-        """The packed project of a job."""
+        """The packed project of a job (for an export: the archive to sign)."""
         return self.root / job_id / SOURCE
+
+    async def signing_of(self, worker_id: str, job_id: str) -> SigningMaterial:
+        """An export job's signing material, once, to the worker that runs the job."""
+        row = await self.running(worker_id, job_id)
+        material = self.signing.pop(job_id, None) if row.kind == "export" else None
+        if material is None:
+            raise JobRefused("no signing material for this job (it is handed out only once)")
+        return material
 
     async def store_archive(
         self, worker_id: str, job_id: str, chunks: AsyncIterator[bytes]
@@ -130,7 +159,7 @@ class AppleJobs:
         """Keep the archive a worker sends for its running archive job (size-limited)."""
         row = await self.running(worker_id, job_id)
         params = BuildParams.model_validate_json(row.params) if row.kind == "build" else None
-        if params is None or params.action != "archive":
+        if row.kind != "export" and (params is None or params.action != "archive"):
             raise JobRefused("this job makes no archive")
         limit, size = self.settings.max_archive_mb * 1024 * 1024, 0
         target = self.root / job_id / ARCHIVE
@@ -150,6 +179,8 @@ class AppleJobs:
         if result.build is not None:
             # The Mac's paths mean nothing here; an archive is known by its job.
             result.build.artifact = f"job:{job_id}" if archive and result.build.ok else ""
+        if result.export is not None:
+            result.export.artifact = f"job:{job_id}" if archive and result.export.ok else ""
         seconds = max(0.0, time.time() - row.started_at)
         status = "done" if result.ok else "failed"
         await self._end(job_id, status, outcome(result), seconds, archive=archive)
@@ -181,6 +212,9 @@ def offer_of(row: AppleJob, timeout_s: float) -> JobOffer:
     """The job as a worker sees it: its project only as a key."""
     project = hashlib.sha256(f"forge-web-project:{row.project_id}".encode()).hexdigest()[:32]
     params = json.loads(row.params)
+    if row.kind == "export":
+        return JobOffer(id=row.id, kind="export", project=project, timeout_s=timeout_s,
+                        export=ExportParams.model_validate(params))  # fmt: skip
     if row.kind == "build":
         return JobOffer(id=row.id, kind="build", project=project, timeout_s=timeout_s,
                         build=BuildParams.model_validate(params))  # fmt: skip
@@ -197,4 +231,7 @@ def outcome(result: JobResult) -> str:
         return f"{result.build.action} for {result.build.platform}: {verdict}"
     if result.screen is not None:
         return f"screenshot of {result.screen.device}"
+    if result.export is not None:
+        verdict = "succeeded" if result.export.ok else "failed"
+        return f"export for {result.export.platform}: {verdict}"
     return "done"

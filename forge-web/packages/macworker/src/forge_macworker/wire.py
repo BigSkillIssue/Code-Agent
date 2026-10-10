@@ -4,6 +4,10 @@ The worker asks for work with `POST /api/mac/poll` and gets a `JobOffer` (or non
 downloads the project with `GET /api/mac/jobs/<id>/source`, may upload an archive with
 `POST /api/mac/jobs/<id>/archive`, and reports with `POST /api/mac/jobs/<id>/result`. Every call
 carries `Authorization: Bearer <worker token>`.
+
+An export job (W22) gets an archive instead of a project, and its signing certificate and
+profiles once from `GET /api/mac/jobs/<id>/signing`; it sends back the signed .ipa or .pkg.
+Signing material is never part of a job offer.
 """
 
 import base64
@@ -13,7 +17,8 @@ from forge.ports import AppleAction, AppleBuildResult, ApplePlatform, AppleScree
 from pydantic import BaseModel, Field, model_validator
 
 TOKEN_PREFIX = "fmw"
-JobKind = Literal["build", "screenshot"]
+JobKind = Literal["build", "screenshot", "export"]
+EXPORTS_FROM = (0, 2, 0)  # the first worker version that knows export jobs
 MAX_SCREEN_BYTES = 12 * 1024 * 1024
 MAX_LOG_CHARS = 100_000
 MAX_ISSUES = 500
@@ -26,6 +31,8 @@ class BuildParams(BaseModel):
     platform: ApplePlatform
     action: AppleAction = "build"
     scheme: str | None = Field(default=None, max_length=200)
+    # An archive for the App Store (W22): signed ad hoc, with this build number.
+    build_number: int | None = Field(default=None, ge=1, le=10**12)
 
 
 class ScreenshotParams(BaseModel):
@@ -36,6 +43,44 @@ class ScreenshotParams(BaseModel):
     dark: bool = False
 
 
+class ExportParams(BaseModel):
+    """Sign an archive for the App Store and export it (.ipa for iOS, .pkg for the Mac)."""
+
+    platform: Literal["ios", "macos"]
+    team_id: str = Field(pattern=r"^[A-Z0-9]{10}$")
+    # Which profile signs which bundle (the app, its Watch app), by the profile's name.
+    profiles: dict[str, str] = Field(max_length=10)
+
+
+class Profile(BaseModel):
+    """A provisioning profile, as App Store Connect makes it."""
+
+    name: str = Field(max_length=200)
+    uuid: str = Field(pattern=r"^[0-9A-Fa-f-]{36}$")
+    data_b64: str = Field(max_length=200_000)
+
+
+class SigningMaterial(BaseModel):
+    """What one export needs to sign, and nothing more: the distribution certificate with its
+    key (and for the Mac the installer's) as password-protected .p12, and the profiles."""
+
+    p12_b64: str = Field(max_length=100_000)
+    installer_p12_b64: str = Field(default="", max_length=100_000)
+    password: str = Field(min_length=16, max_length=200)
+    profiles: list[Profile] = Field(max_length=10)
+
+
+class ExportResult(BaseModel):
+    """How an export went; the file itself is sent like an archive."""
+
+    ok: bool
+    platform: Literal["ios", "macos"]
+    file_name: str = Field(default="", max_length=200)
+    size: int = Field(default=0, ge=0)
+    log_tail: str = Field(default="", max_length=MAX_LOG_CHARS)
+    artifact: str = ""  # on the server: "job:<id>" once the file arrived
+
+
 class JobOffer(BaseModel):
     """One job for the worker."""
 
@@ -44,12 +89,14 @@ class JobOffer(BaseModel):
     project: str = Field(pattern=r"^[0-9a-f]{16,64}$")  # a key per project, not its id
     build: BuildParams | None = None
     screenshot: ScreenshotParams | None = None
+    export: ExportParams | None = None
     timeout_s: float = Field(gt=0)
 
     @model_validator(mode="after")
     def params_fit(self) -> "JobOffer":
-        """A build job has build parameters, a screenshot job screenshot parameters."""
-        given = {"build": self.build is not None, "screenshot": self.screenshot is not None}
+        """Each kind of job has its own parameters, and only those."""
+        given = {"build": self.build is not None, "screenshot": self.screenshot is not None,
+                 "export": self.export is not None}  # fmt: skip
         if not given[self.kind] or sum(given.values()) != 1:
             raise ValueError(f"a {self.kind} job needs {self.kind} parameters (and only those)")
         return self
@@ -77,6 +124,7 @@ class JobResult(BaseModel):
     hint: str = Field(default="", max_length=2_000)
     build: AppleBuildResult | None = None
     screen: AppleScreen | None = None
+    export: ExportResult | None = None
     seconds: float = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -102,3 +150,11 @@ def check_png(data_b64: str) -> None:
         raise ValueError("the screenshot is not base64") from None
     if not head.startswith(PNG):
         raise ValueError("the screenshot is not a PNG")
+
+
+def knows_exports(version: str) -> bool:
+    """Whether a worker of this version can run export jobs."""
+    try:
+        return tuple(int(part) for part in version.split(".")[:3]) >= EXPORTS_FROM
+    except ValueError:
+        return False

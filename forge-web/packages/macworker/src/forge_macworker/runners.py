@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from forge_macworker.job import RESULT, BuilderFactory, run_job, xcode_builder
+from forge_macworker.export import export_archive
+from forge_macworker.job import RESULT, BuilderFactory, Exporter, run_job, xcode_builder
 from forge_macworker.wire import JobResult
 
 log = logging.getLogger(__name__)
@@ -28,15 +29,20 @@ class Runner(Protocol):
     async def prepare(self, project: str, job_id: str) -> Path: ...
     async def run(self, project: str, folder: Path) -> JobResult: ...
     async def reap(self) -> None: ...
+    async def drop(self, project: str) -> None: ...  # its VM goes at once (one-off jobs)
     async def close(self) -> None: ...
 
 
 class DirectRunner:
     """Runs jobs on this Mac itself: for CI and for a Mac that builds only trusted projects."""
 
-    def __init__(self, work: Path, make_builder: BuilderFactory = xcode_builder) -> None:
+    def __init__(
+        self, work: Path, make_builder: BuilderFactory = xcode_builder,
+        exporter: Exporter = export_archive,
+    ) -> None:  # fmt: skip
         self.work = work
         self.make_builder = make_builder
+        self.exporter = exporter
         self.locks: dict[str, asyncio.Lock] = {}
 
     async def prepare(self, project: str, job_id: str) -> Path:
@@ -48,10 +54,14 @@ class DirectRunner:
     async def run(self, project: str, folder: Path) -> JobResult:
         """Run the job here, one at a time per project."""
         async with self.locks.setdefault(project, asyncio.Lock()):
-            return await run_job(folder, self.work / "projects", self.make_builder)
+            return await run_job(folder, self.work / "projects", self.make_builder, self.exporter)
 
     async def reap(self) -> None:
         """Nothing to stop."""
+
+    async def drop(self, project: str) -> None:
+        """Forget a one-off job's lock (nothing to stop)."""
+        self.locks.pop(project, None)
 
     async def close(self) -> None:
         """Nothing keeps running."""
@@ -164,6 +174,13 @@ class TartRunner:
                 del self.leases[project]
                 await self.end(lease)
                 self.vms.release()
+
+    async def drop(self, project: str) -> None:
+        """Delete a project's VM now (a one-off VM, e.g. for signing an export)."""
+        lease = self.leases.pop(project, None)
+        if lease is not None:
+            await self.end(lease)
+            self.vms.release()
 
     async def end(self, lease: Lease) -> None:
         """Stop and delete a VM and its shared folder."""

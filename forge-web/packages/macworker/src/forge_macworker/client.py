@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 
 from forge_macworker import __version__
+from forge_macworker.export import SIGNING
 from forge_macworker.job import ARCHIVE, JOB, SOURCE
 from forge_macworker.runners import Runner
 from forge_macworker.wire import JobOffer, JobResult, PollAnswer, PollRequest
@@ -119,13 +120,17 @@ class WorkerClient:
     async def handle(self, offer: JobOffer) -> None:
         """Fetch the project, run the job, send what came out."""
         folder: Path | None = None
+        # An export signs in a VM of its own, never in the project's VM where its code ran.
+        place = f"export-{offer.id}" if offer.export is not None else offer.project
         try:
-            folder = await self.runner.prepare(offer.project, offer.id)
+            folder = await self.runner.prepare(place, offer.id)
             (folder / JOB).write_text(offer.model_dump_json(), "utf-8")
             await self.download(offer.id, folder / SOURCE)
-            result = await asyncio.wait_for(self.runner.run(offer.project, folder),
+            if offer.export is not None:
+                await self.fetch_signing(offer.id, folder / SIGNING)
+            result = await asyncio.wait_for(self.runner.run(place, folder),
                                             offer.timeout_s)  # fmt: skip
-            if (folder / ARCHIVE).is_file() and result.build is not None and result.build.ok:
+            if (folder / ARCHIVE).is_file() and made_something(result):
                 await self.upload(offer.id, folder / ARCHIVE)
         except TimeoutError:
             result = JobResult(ok=False, error="the job took longer than its time limit")
@@ -139,6 +144,8 @@ class WorkerClient:
         finally:
             if folder is not None:
                 await asyncio.to_thread(remove, folder)
+            if offer.export is not None:
+                await self.runner.drop(place)
 
     async def download(self, job_id: str, target: Path) -> None:
         """The job's packed project."""
@@ -147,6 +154,13 @@ class WorkerClient:
             with target.open("wb") as out:
                 async for chunk in reply.aiter_bytes():
                     out.write(chunk)
+
+    async def fetch_signing(self, job_id: str, target: Path) -> None:
+        """The certificate and profiles of an export job (the server hands them out once)."""
+        reply = await self.http.get(f"/api/mac/jobs/{job_id}/signing")
+        reply.raise_for_status()
+        target.touch(mode=0o600)
+        target.write_bytes(reply.content)
 
     async def upload(self, job_id: str, archive: Path) -> None:
         """The archive a job made."""
@@ -185,6 +199,13 @@ async def wait_or_stop(stop: asyncio.Event, seconds: float) -> None:
     """Sleep, unless stop is set first."""
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(stop.wait(), seconds)
+
+
+def made_something(result: JobResult) -> bool:
+    """Whether a job made an archive or an export to send."""
+    built = result.build is not None and result.build.ok
+    exported = result.export is not None and result.export.ok
+    return built or exported
 
 
 def remove(folder: Path) -> None:

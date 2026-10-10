@@ -153,9 +153,14 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
 - [x] **W22a — App Store Connect key and client**
     - Files: `forge_web/apple/{asc_client,asc_keys}.py`, migration `0008`, `settings.py` (`apple.asc_api_url`), `frontend/src/pages/SettingsAppStore.tsx`, `tests/{asc_standin,test_asc_keys}.py`
     - Build: each user's App Store Connect team key (Key ID, Issuer ID, Team ID, `.p8`) encrypted with the vault, never shown again, never sent to a sandbox or a Mac; a client that signs ES256 JWTs itself and passes Apple's error messages on; a key check; a settings section; a stand-in for Apple's API that checks every token.
-- [ ] **W22b — Release to TestFlight**
-    - Files: `forge_web/apple/{release,signing,upload}.py`, `forge_sandbox/gitops.py` (`git.archive`), `forge_macworker/{wire,export,job,runners,client}.py`, tests
-    - Build: a stored release state machine from an approval that matches the project's commit: bundle ids, certificates and profiles through the API (server side), the approved commit archived (S62) in the project's VM, exported in a fresh VM that gets only the certificate and profiles, uploaded by the server (Build Upload API), processed, and given to internal TestFlight testers.
+- [x] **W22b1 — Signing and exporting on the Mac**
+    - Files: `forge_macworker/{wire,export,job,runners,client}.py`, `forge_web/apple/{jobs,worker_api}.py`, `tests/test_mac_export.py`
+    - Build: a job kind `export` (only for workers from 0.2.0 on) that signs an archive in a fresh VM of its own (Tart: a one-off VM from the clean image, removed after the job; direct mode on the Mac): the Mac that holds the job fetches the certificates and profiles once (`/api/mac/jobs/{id}/signing`, never part of the offer), imports them into a keychain of its own, installs the profiles, runs `xcodebuild -exportArchive` (App Store Connect, manual signing; Mac: signed installer) and sends the .ipa or .pkg back; keychain, profiles and key files are removed whatever happens. Archive jobs with a build number make the ad-hoc signed release archive (S62).
+    - Tests: the export signs with its own keychain and puts the user's search list back; a failed export says why and still cleans up; a Mac export is an installer; a release archive asks for the build number; server → Mac → server with the signing material fetched once; old workers get no exports; signing material is never part of an offer.
+    - Verify: `uv run pytest -q tests/test_mac_export.py tests/test_macworker.py tests/test_apple_server.py`
+- [ ] **W22b2 — Release to TestFlight**
+    - Files: `forge_web/apple/{release,signing,upload}.py`, `forge_sandbox/gitops.py` (`git.archive`), migration `0009`, tests
+    - Build: a stored release state machine from an approval that matches the project's commit: bundle ids, certificates and profiles through the API (server side), the approved commit archived (S62) in the project's VM, exported (W22b1), uploaded by the server (Build Upload API), processed, and given to internal TestFlight testers.
 - [ ] **W22c — Store texts in Forge Web**
     - Files: `forge_web/apple/listing.py`, `frontend/src/pages/AppleListing.tsx`, tests
     - Build: the listing Forge drafted (S61) checked with Forge's model, edited and saved by the user; its review on the approval page.

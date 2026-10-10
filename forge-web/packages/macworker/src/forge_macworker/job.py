@@ -1,8 +1,9 @@
 """Running one job where Xcode is: inside a project's macOS VM, or on the Mac in direct mode.
 
-A job folder holds `job.json` (the JobOffer) and `source.tar.gz` (the packed project); the job
-leaves `result.json` (a JobResult) and, for archives, `archive.tar.gz`. `forge-mac-job <folder>`
-does this inside a VM; direct mode calls `run_job` in the worker's own process.
+A job folder holds `job.json` (the JobOffer) and `source.tar.gz` (the packed project, or for an
+export the archive to sign); the job leaves `result.json` (a JobResult) and, for archives and
+exports, `archive.tar.gz`. `forge-mac-job <folder>` does this inside a VM; direct mode calls
+`run_job` in the worker's own process.
 """
 
 import asyncio
@@ -10,17 +11,20 @@ import shutil
 import sys
 import tarfile
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from forge.config import AppleConfig
 from forge.local.xcode_builder import XcodeBuilder
-from forge.ports import AppleBuilder, AppleBuildError
+from forge.ports import AppleBuilder, AppleBuildError, AppleBuildResult, ApplePlatform
 
-from forge_macworker.wire import JobOffer, JobResult
+from forge_macworker.export import export_archive
+from forge_macworker.wire import ExportParams, ExportResult, JobOffer, JobResult
 
 JOB, SOURCE, RESULT, ARCHIVE = "job.json", "source.tar.gz", "result.json", "archive.tar.gz"
 BuilderFactory = Callable[[Path, Path], AppleBuilder]  # (project folder, its build data folder)
+# (params, job folder, the archive to sign, where the product goes)
+Exporter = Callable[[ExportParams, Path, Path, Path], Awaitable[ExportResult]]
 
 
 def xcode_builder(root: Path, data: Path) -> AppleBuilder:
@@ -29,20 +33,27 @@ def xcode_builder(root: Path, data: Path) -> AppleBuilder:
 
 
 async def run_job(
-    folder: Path, work: Path, make_builder: BuilderFactory = xcode_builder
-) -> JobResult:
+    folder: Path, work: Path, make_builder: BuilderFactory = xcode_builder,
+    exporter: Exporter = export_archive,
+) -> JobResult:  # fmt: skip
     """Run the job in `folder` with projects kept under `work`; write and return its result."""
     started = time.monotonic()
     offer = JobOffer.model_validate_json((folder / JOB).read_text("utf-8"))
     project = work / offer.project
     try:
-        source = await asyncio.to_thread(unpack, folder / SOURCE, project / "src")
-        builder = make_builder(source, project / "data")
-        result = await perform(offer, builder, folder)
+        if offer.export is not None:
+            exported = await exporter(offer.export, folder, folder / SOURCE, folder / ARCHIVE)
+            result = JobResult(ok=True, export=exported)
+        else:
+            source = await asyncio.to_thread(unpack, folder / SOURCE, project / "src")
+            builder = make_builder(source, project / "data")
+            result = await perform(offer, builder, folder)
     except AppleBuildError as err:
         result = JobResult(ok=False, error=str(err), hint=err.hint)
     except (tarfile.TarError, OSError) as err:
-        result = JobResult(ok=False, error=f"the project could not be unpacked: {err}")
+        result = JobResult(ok=False, error=f"the job's files could not be unpacked: {err}")
+    except RuntimeError as err:  # signing could not be set up
+        result = JobResult(ok=False, error=str(err)[:2000])
     result.seconds = time.monotonic() - started
     (folder / RESULT).write_text(result.model_dump_json(), "utf-8")
     return result
@@ -57,12 +68,28 @@ async def perform(offer: JobOffer, builder: AppleBuilder, folder: Path) -> JobRe
             return JobResult(ok=True, screen=screen)
         assert offer.build is not None
         params = offer.build
-        built = await builder.build(params.platform, params.action, params.scheme)
+        if params.action == "archive" and params.build_number is not None:
+            built = await release_archive(builder, params.platform, params.build_number,
+                                          params.scheme)  # fmt: skip
+        else:
+            built = await builder.build(params.platform, params.action, params.scheme)
         if built.ok and built.artifact:
             await asyncio.to_thread(pack_archive, Path(built.artifact), folder / ARCHIVE)
         return JobResult(ok=True, build=built)
     finally:
         await builder.close()
+
+
+async def release_archive(
+    builder: AppleBuilder, platform: ApplePlatform, build_number: int, scheme: str | None
+) -> AppleBuildResult:
+    """An App Store archive (Forge's XcodeBuilder signs it ad hoc with the build number)."""
+    make = getattr(builder, "release_archive", None)
+    if make is None:
+        raise AppleBuildError("this Mac's builder cannot make App Store archives",
+                              hint="update forge on the Mac")  # fmt: skip
+    built: AppleBuildResult = await make(platform, build_number, scheme)
+    return built
 
 
 def unpack(archive: Path, target: Path) -> Path:

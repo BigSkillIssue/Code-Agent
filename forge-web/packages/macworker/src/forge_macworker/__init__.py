@@ -5,4 +5,4 @@ build, test or screenshot job in a macOS VM of the job's project (Tart), or stra
 in direct mode (CI, a Mac of your own). Only `wire` is shared with the server.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"  # 0.2: export jobs (W22)
