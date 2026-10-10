@@ -11,6 +11,7 @@ export interface Me {
   has_password: boolean;
   totp_enabled: boolean;
   two_factor_required: boolean;
+  apple_apps?: boolean; // may build Apple apps on this server
 }
 
 export interface Identity {

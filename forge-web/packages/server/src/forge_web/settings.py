@@ -173,6 +173,11 @@ class AppleSettings(_Strict):
     keep_archives_days: float = Field(default=14, gt=0)
     # The guideline reviewer's model ("provider/model"); empty: the chat's model.
     reviewer_model: str = Field(default="", pattern=r"^$|^[\w.-]+/[\w.:@/-]+$")
+    # Apple's App Store Connect API (W22); tests point it at a stand-in on this machine.
+    asc_api_url: str = Field(
+        default="https://api.appstoreconnect.apple.com",
+        pattern=r"^https://[\w.-]+(:\d+)?$|^http://127\.0\.0\.1:\d+$",
+    )
 
     def allows(self, role: str, granted: bool) -> bool:
         """Whether a user with this role (and grant) may build Apple apps on this server."""

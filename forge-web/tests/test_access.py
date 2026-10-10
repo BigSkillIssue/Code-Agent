@@ -41,7 +41,8 @@ OWN = {
     "GET /api/git/credentials", "POST /api/git/credentials",
     "DELETE /api/git/credentials/{credential_id}", "GET /api/models", "PATCH /api/me",
     "POST /api/me/password", "POST /api/me/totp/setup", "POST /api/me/totp/enable",
-    "POST /api/me/totp/disable",
+    "POST /api/me/totp/disable", "GET /api/me/appstore-key", "PUT /api/me/appstore-key",
+    "POST /api/me/appstore-key/check", "DELETE /api/me/appstore-key",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -85,6 +86,12 @@ BODIES: dict[str, dict[str, Any]] = {
     "MacChange": {"enabled": True},
     "Grant": {"allowed": True},
     "PollRequest": {"free_slots": 1},
+    "AppStoreKeyIn": {
+        "key_id": "ABC123DEFG",
+        "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
+        "team_id": "TEAM123456",
+        "private_key": "x" * 120,
+    },
 }
 
 

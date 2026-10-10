@@ -9,6 +9,7 @@ from forge_web import __version__
 from forge_web.admin_api import admin_api_router
 from forge_web.apple.admin import apple_admin_router
 from forge_web.apple.approvals import approvals_router
+from forge_web.apple.asc_keys import asc_key_routes
 from forge_web.apple.screens_api import screens_router
 from forge_web.apple.worker_api import worker_router
 from forge_web.auth.admin import admin_router
@@ -59,7 +60,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         projects_router(), members_router(), chats_router(), files_router(), git_router(),
         sources_router(), terminals_router(), preview_router(), preview_hosts_router(),
         keys_router(), apple_admin_router(), worker_router(), screens_router(),
-        approvals_router(),
+        approvals_router(), asc_key_routes(),
         git_credentials_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):

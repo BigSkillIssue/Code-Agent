@@ -112,3 +112,22 @@ export const decideApproval = (chatId: string, requestId: string, choice: string
     request_id: requestId,
     answer: { answers: [{ question_index: 0, values: [choice] }] },
   });
+
+/** The user's App Store Connect team key as the server shows it (never the key itself). */
+export interface AppStoreKeyView {
+  key_id: string;
+  issuer_id: string;
+  team_id: string;
+  created_at: number;
+  checked_at: number;
+  check_ok: boolean;
+  check_message: string;
+}
+
+export const appStoreKey = {
+  get: () => api.get<AppStoreKeyView | null>("/api/me/appstore-key"),
+  save: (body: { key_id: string; issuer_id: string; team_id: string; private_key: string }) =>
+    api.put<AppStoreKeyView>("/api/me/appstore-key", body),
+  check: () => api.post<AppStoreKeyView>("/api/me/appstore-key/check", {}),
+  remove: () => api.delete("/api/me/appstore-key"),
+};

@@ -9,6 +9,7 @@ import { useStore } from "../state/store";
 import type { AuthConfig } from "./Auth";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 import { GitSection, KeysSection, SessionsSection, UsageSection } from "./SettingsAccess";
+import { AppStoreSection } from "./SettingsAppStore";
 
 export function SettingsPage() {
   const [me, reload] = useLoaded(useCallback(() => account.me(), []));
@@ -29,6 +30,7 @@ export function SettingsPage() {
         <IdentitiesSection providers={config?.providers ?? []} />
         <KeysSection />
         <GitSection github={(config?.providers ?? []).some((p) => p.name === "github")} />
+        {me.apple_apps && <AppStoreSection />}
         <SessionsSection />
         <UsageSection />
       </div>

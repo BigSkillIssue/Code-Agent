@@ -67,6 +67,15 @@ export const appleEn = {
   noBuilds: "No builds yet.",
   approvals: "Approvals",
   openChat: "Open the chat",
+  appStoreConnect: "App Store Connect",
+  appStoreHint:
+    "A team key of your Apple developer account (App Store Connect → Users and Access → Integrations → Team keys, access Admin). It is stored encrypted and only the server signs with it; it never reaches a project or a Mac.",
+  keyId: "Key ID",
+  issuerId: "Issuer ID",
+  teamId: "Team ID",
+  p8File: "Key file (AuthKey_….p8)",
+  checkKey: "Check",
+  keyChecked: "Checked {when}",
 };
 
 export const appleDe: typeof appleEn = {
@@ -135,4 +144,13 @@ export const appleDe: typeof appleEn = {
   noBuilds: "Noch keine Builds.",
   approvals: "Freigaben",
   openChat: "Zum Chat",
+  appStoreConnect: "App Store Connect",
+  appStoreHint:
+    "Ein Teamschlüssel deines Apple-Entwicklerkontos (App Store Connect → Benutzer und Zugriff → Integrationen → Teamschlüssel, Zugriff Admin). Er wird verschlüsselt gespeichert, und nur der Server signiert damit; in ein Projekt oder auf einen Mac kommt er nie.",
+  keyId: "Schlüssel-ID",
+  issuerId: "Aussteller-ID (Issuer ID)",
+  teamId: "Team-ID",
+  p8File: "Schlüsseldatei (AuthKey_….p8)",
+  checkKey: "Prüfen",
+  keyChecked: "Geprüft {when}",
 };

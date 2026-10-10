@@ -150,9 +150,18 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
 - [x] **W21 — Guideline reviews and approval**
     - Files: `frontend/src/components/cards/GuidelineCard.tsx`, `frontend/src/pages/AppleReview.tsx`, `forge_web/apple/{approvals,questions}.py`, migration `0007`, tests
     - Build: a card per guideline review (request, plan, product) with every finding; a page "Ready for approval" with the screenshots of every device, the reviews and the build results; "Approve" / "Back to the agent"; only an approval by the user (audit log) opens the App Store step.
-- [ ] **W22 — TestFlight and the App Store**
-    - Files: `forge_web/apple/{appstore,signing}.py`, `forge_macworker/export.py`, `frontend/src/pages/AppleRelease.tsx`, tests
-    - Build: an App Store Connect API key per user (encrypted, never in a VM or sandbox); signing and export in a second, clean job without the user's code running; upload to TestFlight; App Store texts, keywords, privacy answers, age rating and screenshots drafted by the agent, checked by the reviewer, edited by the user; submission only on the user's click; Apple's review status shown.
+- [x] **W22a — App Store Connect key and client**
+    - Files: `forge_web/apple/{asc_client,asc_keys}.py`, migration `0008`, `settings.py` (`apple.asc_api_url`), `frontend/src/pages/SettingsAppStore.tsx`, `tests/{asc_standin,test_asc_keys}.py`
+    - Build: each user's App Store Connect team key (Key ID, Issuer ID, Team ID, `.p8`) encrypted with the vault, never shown again, never sent to a sandbox or a Mac; a client that signs ES256 JWTs itself and passes Apple's error messages on; a key check; a settings section; a stand-in for Apple's API that checks every token.
+- [ ] **W22b — Release to TestFlight**
+    - Files: `forge_web/apple/{release,signing,upload}.py`, `forge_sandbox/gitops.py` (`git.archive`), `forge_macworker/{wire,export,job,runners,client}.py`, tests
+    - Build: a stored release state machine from an approval that matches the project's commit: bundle ids, certificates and profiles through the API (server side), the approved commit archived (S62) in the project's VM, exported in a fresh VM that gets only the certificate and profiles, uploaded by the server (Build Upload API), processed, and given to internal TestFlight testers.
+- [ ] **W22c — Store texts in Forge Web**
+    - Files: `forge_web/apple/listing.py`, `frontend/src/pages/AppleListing.tsx`, tests
+    - Build: the listing Forge drafted (S61) checked with Forge's model, edited and saved by the user; its review on the approval page.
+- [ ] **W22d — Store screenshots and the submission**
+    - Files: `forge_web/apple/{store_media,submit}.py`, `frontend/src/pages/AppleRelease.tsx`, tests
+    - Build: store screenshots in Apple's sizes uploaded through the App Asset Library; version, texts, age rating, category, copyright, content rights, price (free), availability, review contact and build set through the API; submission for review only on the user's click with a confirmation (audit log); Apple's review status shown; release on a second click.
 - [x] **W23 — End to end and the guide**
     - Files: `../.github/workflows/forge-web.yml` (macOS job), `tests/test_apple_flow.py`, `docs/EINRICHTUNG.md`, `docs/SECURITY.md`
     - Build: a CI job on a macOS runner builds the template through server, sandbox and a Mac worker in direct mode (GitHub's Macs cannot run VMs); a German guide: renting a Mac, Tart and softnet, the image, the worker as a service, the Apple developer account and the API key.

@@ -64,6 +64,10 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
 - Who may build is the server's decision (`apple.enabled`, `apple.allowed`, a grant per user, Mac
   minutes per month), checked for every job with the chat's run token, which works only while its
   chat runs.
+- A user's App Store Connect team key is encrypted with the vault (like model keys) and never shown
+  again; only the server signs with it (short-lived ES256 JWTs). It never goes to a sandbox, a Mac
+  or a VM: signing certificates and profiles are made on the server, and only what one export needs
+  goes to a fresh VM (W22b).
 - Guideline reviews, screenshots and Forge's approval question come from the project's sandbox and are
   shown as they came (review links only to apple.com pages). An approval is only the user's own
   answer "Ready for Apple" to that question, recorded by the server once Forge took it (a second answer

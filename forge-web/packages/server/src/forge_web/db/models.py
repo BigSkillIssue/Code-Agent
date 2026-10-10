@@ -286,3 +286,21 @@ class AppleApproval(Base):
     clean: Mapped[bool] = mapped_column(Boolean, default=False)  # no uncommitted changes then
     summary: Mapped[str] = mapped_column(Text, default="")  # the last product review's summary
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppStoreKey(Base):
+    """A user's App Store Connect team key (W22): ids and the private key, encrypted."""
+
+    __tablename__ = "appstore_keys"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    key_id: Mapped[str] = mapped_column(String(32))
+    issuer_id: Mapped[str] = mapped_column(String(64))
+    team_id: Mapped[str] = mapped_column(String(32))
+    secret: Mapped[str] = mapped_column(Text)  # the .p8 key, encrypted with the vault
+    created_at: Mapped[float] = mapped_column(Float)
+    checked_at: Mapped[float] = mapped_column(Float, default=0.0)
+    check_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    check_message: Mapped[str] = mapped_column(Text, default="")
