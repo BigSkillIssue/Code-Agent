@@ -1,0 +1,12 @@
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+
+// The server runs on a port of its own. /api goes to it, so the browser sees one origin, as on
+// hosting, where the edge sends /api to the server and everything else to this client.
+const api = process.env.API_URL ?? "http://localhost:8000";
+
+export default defineConfig({
+  plugins: [react()],
+  server: { port: 5173, proxy: { "/api": api } },
+  test: { environment: "jsdom", setupFiles: ["src/test/setup.ts"] },
+});

@@ -1,0 +1,57 @@
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { Navigate } from "react-router-dom";
+import { api, problem } from "../api/client";
+import { useAuth } from "../auth";
+
+/** The signed-in user's account: download everything stored about it, or delete it. */
+export function Account() {
+  const { user, loading, setUser } = useAuth();
+  const [error, setError] = useState("");
+  const [deleted, setDeleted] = useState(false);
+  if (deleted) return <Navigate to="/" replace />;
+  if (loading) return <p>Loading…</p>;
+  if (!user) return <Navigate to="/signin" replace />;
+
+  async function download() {
+    const { data } = await api.GET("/api/account/export");
+    if (!data) return;
+    const file = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(file);
+    link.download = "my-data.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  async function remove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const password = String(new FormData(event.currentTarget).get("password"));
+    const { error } = await api.DELETE("/api/account", { body: { password } });
+    if (error) return setError(problem(error));
+    setDeleted(true);
+    setUser(null);
+  }
+
+  return (
+    <section>
+      <h1>Your account</h1>
+      <p>Signed in as {user.email}</p>
+      <h2>Your data</h2>
+      <button type="button" onClick={download}>
+        Download my data
+      </button>
+      <h2>Delete your account</h2>
+      <form onSubmit={remove}>
+        <p>This deletes your account and everything in it. It cannot be undone.</p>
+        <label>
+          Password <input name="password" type="password" autoComplete="current-password" required />
+        </label>
+        {error && <p role="alert">{error}</p>}
+        <button type="submit" className="danger">
+          Delete my account
+        </button>
+      </form>
+    </section>
+  );
+}

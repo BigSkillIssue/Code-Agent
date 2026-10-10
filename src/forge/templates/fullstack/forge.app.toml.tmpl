@@ -15,6 +15,16 @@ port = 8000
 health = "/healthz"
 route = "/api"
 
+[[services]]
+name = "web"
+runtime = "static"
+root = "web"
+build = ["sh", "-c", "npm ci && npm run build"]
+output = "dist"
+port = 8080
+health = "/"
+route = "/"
+
 [database]
 engine = "postgres16"
 

@@ -1,0 +1,44 @@
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { api } from "./api/client";
+import type { User } from "./api/client";
+
+type Auth = {
+  user: User | null;
+  loading: boolean;
+  setUser: (user: User | null) => void;
+  signOut: () => Promise<void>;
+};
+
+const AuthContext = createContext<Auth | null>(null);
+
+/** Knows who is signed in; every page reads it with useAuth(). */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.GET("/api/auth/me").then(({ data }) => {
+      setUser(data ?? null);
+      setLoading(false);
+    });
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await api.POST("/api/auth/logout");
+    setUser(null);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading, setUser, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/** Who is signed in. */
+export function useAuth(): Auth {
+  const auth = useContext(AuthContext);
+  if (!auth) throw new Error("useAuth needs an <AuthProvider> around it");
+  return auth;
+}
