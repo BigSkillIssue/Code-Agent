@@ -1,0 +1,25 @@
+# How Forge Web hosts @@title@@. Hosting reads only this file: it never runs the Dockerfile or a
+# compose file. Secrets are listed by name; their values are set in Forge Web, never here.
+version = 1
+name = "@@name@@"
+resource_class = "small"
+clients = ["web"]
+
+[[services]]
+name = "api"
+runtime = "python3.12"
+root = "server"
+build = ["uv", "sync", "--locked", "--no-dev"]
+command = ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+port = 8000
+health = "/healthz"
+route = "/api"
+
+[database]
+engine = "postgres16"
+
+[storage]
+max_gb = 1
+
+[mail]
+daily_limit = 200

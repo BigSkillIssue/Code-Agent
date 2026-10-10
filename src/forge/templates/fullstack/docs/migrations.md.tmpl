@@ -1,0 +1,40 @@
+# Changing the database without downtime
+
+During a release the old version of the server still runs while the migration has already
+changed the database, and a failed release is rolled back to the old version on the new schema.
+So every migration must work with the code before it **and** the code after it. Split changes that
+cannot into steps across releases: first *expand*, then *contract*.
+
+## Rules
+
+1. Add, never rename or drop in the same release as the code change.
+2. New columns are nullable or have a server default.
+3. Remove a column only after a release that no longer reads or writes it.
+4. Backfill large tables in batches, not in one transaction.
+5. Create indexes on big tables with `postgresql_concurrently=True` (in a migration that sets
+   `op.get_context().autocommit_block()`).
+6. Every migration has a working `downgrade()`, even though rollbacks normally do not use it.
+
+## Renaming a column (three releases)
+
+1. **Expand:** add the new column; the code writes both and reads the new one, falling back to
+   the old; a migration copies the old values over.
+2. **Switch:** the code reads and writes only the new column.
+3. **Contract:** a migration drops the old column.
+
+## Making a column required
+
+1. Add it nullable; the code always fills it.
+2. Backfill the old rows.
+3. A migration sets `nullable=False`.
+
+## Making a migration
+
+```bash
+cd server
+uv run alembic revision --autogenerate -m "add posts"   # writes migrations/versions/<rev>_add_posts.py
+```
+
+Read the file: autogenerate misses renames (it sees a drop and an add), server defaults and
+data changes. The test `test_the_migrations_match_the_models` fails while a model change has no
+migration.

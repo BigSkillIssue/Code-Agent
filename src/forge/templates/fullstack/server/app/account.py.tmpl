@@ -1,0 +1,70 @@
+"""The user's own account: export everything stored about it (GDPR art. 15 and 20) and delete
+it (GDPR art. 17; Apple requires deletion inside the app, guideline 5.1.1(v))."""
+
+from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from app.models import Block, LoginSession, Report
+from app.security import verify_password
+from app.sessions import COOKIE, CurrentUser, Db
+
+router = APIRouter(prefix="/api/account", tags=["account"])
+
+
+class DeleteAccount(BaseModel):
+    """The password, so a forgotten open browser cannot delete the account."""
+
+    password: str = Field(max_length=200)
+
+
+def when(moment: datetime | None) -> str | None:
+    """A time as ISO 8601."""
+    return moment.isoformat() if moment else None
+
+
+@router.get("/export")
+def export(user: CurrentUser, db: Db) -> dict[str, Any]:
+    """Everything stored about the signed-in user, as JSON."""
+    sessions = db.scalars(select(LoginSession).where(LoginSession.user_id == user.id))
+    reports = db.scalars(select(Report).where(Report.reporter_id == user.id))
+    blocks = db.scalars(select(Block).where(Block.blocker_id == user.id))
+    return {
+        "account": {
+            "id": user.id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "created_at": when(user.created_at),
+        },
+        "sessions": [
+            {"created_at": when(s.created_at), "expires_at": when(s.expires_at)} for s in sessions
+        ],
+        "reports": [
+            {
+                "content_type": r.content_type,
+                "content_id": r.content_id,
+                "reason": r.reason,
+                "details": r.details,
+                "status": r.status,
+                "created_at": when(r.created_at),
+            }
+            for r in reports
+        ],
+        "blocked_user_ids": [b.blocked_id for b in blocks],
+    }
+
+
+@router.delete("", status_code=204)
+def delete_account(
+    body: DeleteAccount, user: CurrentUser, request: Request, response: Response, db: Db
+) -> None:
+    """Delete the account and everything that belongs to it."""
+    if not verify_password(user.password_hash, body.password):
+        raise HTTPException(status_code=403, detail="The password is wrong.")
+    db.delete(user)
+    db.commit()
+    request.app.state.storage.delete(f"users/{user.id}/avatar")
+    response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="lax")

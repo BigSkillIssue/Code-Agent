@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from forge import __version__
+from forge.app_cli import cmd_app
 from forge.apple_template import bundle_problem, name_problem, write_app
 from forge.config import (
     ConfigError,
@@ -44,6 +45,7 @@ commands:
   forge mcp add|list|get|remove   manage MCP servers (forge mcp for help)
   forge ollama setup|status       use a local Ollama model (picks one for this machine)
   forge apple new NAME            a SwiftUI app for iPhone, iPad, Mac and Apple Watch
+  forge app new NAME              a full-stack product: server, database, docs, CI
 """
 
 
@@ -366,6 +368,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, list[str]], int]] = {
     "mcp": cmd_mcp,
     "ollama": cmd_ollama,
     "apple": cmd_apple,
+    "app": cmd_app,
 }
 
 

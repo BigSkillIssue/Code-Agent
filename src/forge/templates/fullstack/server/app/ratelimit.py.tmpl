@@ -1,0 +1,51 @@
+"""Requests per client address and minute. Sign-in, sign-up and password reset have a lower
+limit than the rest of the API. The counts live in this process; run one process per service
+(as hosting does) or move them to a shared store."""
+
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+
+AUTH_PATHS = ("/api/auth/login", "/api/auth/signup", "/api/auth/password-reset")
+FREE_PATHS = ("/healthz",)
+
+
+@dataclass
+class RateLimiter:
+    """Fixed one-minute windows per client address and kind of request."""
+
+    per_minute: int
+    auth_per_minute: int
+    _counts: dict[tuple[str, str, int], int] = field(default_factory=dict)
+
+    def allow(self, client: str, path: str, now: float | None = None) -> bool:
+        """Count one request; False when the client is over its limit."""
+        minute = int((now if now is not None else time.time()) // 60)
+        kind = "auth" if path.startswith(AUTH_PATHS) else "api"
+        limit = self.auth_per_minute if kind == "auth" else self.per_minute
+        key = (client, kind, minute)
+        self._counts[key] = self._counts.get(key, 0) + 1
+        if len(self._counts) > 100_000:
+            self._forget(minute)
+        return self._counts[key] <= limit
+
+    def _forget(self, minute: int) -> None:
+        """Drop the counts of earlier minutes."""
+        self._counts = {key: n for key, n in self._counts.items() if key[2] == minute}
+
+
+async def rate_limit(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Refuse a client over its limit with 429 and a hint when to try again."""
+    path = request.url.path
+    limiter: RateLimiter = request.app.state.limiter
+    client = request.client.host if request.client else "unknown"
+    if path.startswith(FREE_PATHS) or limiter.allow(client, path):
+        return await call_next(request)
+    retry = str(60 - int(time.time()) % 60)
+    body = {"detail": "Too many requests. Please wait a minute."}
+    return JSONResponse(body, status_code=429, headers={"Retry-After": retry})

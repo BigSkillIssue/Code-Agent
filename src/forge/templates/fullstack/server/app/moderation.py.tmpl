@@ -1,0 +1,156 @@
+"""Reporting content and blocking people. The EU Digital Services Act asks for a notice form
+anyone can use, a decision with a statement of reasons, and word to the person who reported;
+app stores ask apps with user content to let people report it and block others.
+
+When the app gets content of its own (posts, comments, …), register how a moderator removes it:
+`REMOVERS["post"] = remove_post`, where `remove_post(db, content_id)` hides or deletes it."""
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.mail import Mail
+from app.models import Block, Report, User
+from app.sessions import CurrentUser, Db, OptionalUser
+
+router = APIRouter(prefix="/api", tags=["moderation"])
+REMOVERS: dict[str, Callable[[Session, str], None]] = {}
+Reason = Literal["illegal", "harassment", "hate", "spam", "privacy", "other"]
+
+
+class NewReport(BaseModel):
+    """A notice about one piece of content."""
+
+    content_type: str = Field(min_length=1, max_length=40)
+    content_id: str = Field(min_length=1, max_length=80)
+    reason: Reason
+    details: str = Field(default="", max_length=4000)
+    contact_email: EmailStr | None = None  # for people who are not signed in
+
+
+class ReportOut(BaseModel):
+    """A notice as moderators see it."""
+
+    id: int
+    content_type: str
+    content_id: str
+    reason: str
+    details: str
+    status: str
+    statement: str
+
+
+class Decision(BaseModel):
+    """A moderator's decision and the reasons the reporter is told."""
+
+    action: Literal["dismiss", "remove"]
+    statement: str = Field(min_length=1, max_length=4000)
+
+
+def report_out(report: Report) -> ReportOut:
+    """The moderators' view of a report."""
+    return ReportOut(
+        id=report.id,
+        content_type=report.content_type,
+        content_id=report.content_id,
+        reason=report.reason,
+        details=report.details,
+        status=report.status,
+        statement=report.statement,
+    )
+
+
+def moderator(user: User) -> User:
+    """The user, if they may moderate; 403 otherwise."""
+    if not user.is_moderator:
+        raise HTTPException(status_code=403, detail="Only moderators can do this.")
+    return user
+
+
+@router.post("/reports", status_code=201)
+def send_report(body: NewReport, user: OptionalUser, db: Db) -> ReportOut:
+    """Report content; signed in or not."""
+    report = Report(
+        reporter_id=user.id if user else None,
+        content_type=body.content_type,
+        content_id=body.content_id,
+        reason=body.reason,
+        details=body.details,
+        contact_email=str(body.contact_email or ""),
+        status="open",
+        statement="",
+    )
+    db.add(report)
+    db.commit()
+    return report_out(report)
+
+
+@router.get("/moderation/reports")
+def list_reports(user: CurrentUser, db: Db, status: str = "open") -> list[ReportOut]:
+    """Reports in one state, oldest first (moderators only)."""
+    moderator(user)
+    query = select(Report).where(Report.status == status).order_by(Report.id)
+    return [report_out(report) for report in db.scalars(query)]
+
+
+@router.post("/moderation/reports/{report_id}/decision")
+def decide(
+    report_id: int, body: Decision, user: CurrentUser, request: Request, db: Db
+) -> ReportOut:
+    """Dismiss a report or remove the content, with reasons; the reporter is told."""
+    moderator(user)
+    report = db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No such report.")
+    if body.action == "remove" and report.content_type in REMOVERS:
+        REMOVERS[report.content_type](db, report.content_id)
+    report.status = "removed" if body.action == "remove" else "dismissed"
+    report.statement = body.statement
+    report.decided_by = user.id
+    report.decided_at = datetime.now(UTC)
+    db.commit()
+    tell_reporter(request, db, report)
+    return report_out(report)
+
+
+def tell_reporter(request: Request, db: Db, report: Report) -> None:
+    """Mail the decision and its reasons to whoever reported, if we can reach them."""
+    reporter = db.get(User, report.reporter_id) if report.reporter_id else None
+    address = reporter.email if reporter else report.contact_email
+    if not address:
+        return
+    outcome = "removed" if report.status == "removed" else "left as it is"
+    text = (
+        f"Thank you for your report about {report.content_type} {report.content_id}.\n\n"
+        f"We have {outcome} the content. Our reasons:\n{report.statement}\n"
+    )
+    request.app.state.mailer.send(Mail(to=address, subject="Your report", text=text))
+
+
+@router.get("/blocks")
+def blocked(user: CurrentUser, db: Db) -> list[int]:
+    """The ids of the users the signed-in user blocked."""
+    query = select(Block.blocked_id).where(Block.blocker_id == user.id).order_by(Block.blocked_id)
+    return list(db.scalars(query))
+
+
+@router.post("/blocks/{user_id}", status_code=204)
+def block(user_id: int, user: CurrentUser, db: Db) -> None:
+    """Block a user."""
+    if user_id == user.id or db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="No such user.")
+    if db.get(Block, (user.id, user_id)) is None:
+        db.add(Block(blocker_id=user.id, blocked_id=user_id))
+        db.commit()
+
+
+@router.delete("/blocks/{user_id}", status_code=204)
+def unblock(user_id: int, user: CurrentUser, db: Db) -> None:
+    """Unblock a user."""
+    db.execute(delete(Block).where(Block.blocker_id == user.id, Block.blocked_id == user_id))
+    db.commit()
