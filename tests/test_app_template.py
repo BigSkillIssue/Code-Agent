@@ -41,6 +41,18 @@ EXPECTED = [
     "server/pyproject.toml",
     "server/tests/conftest.py",
     "server/uv.lock",
+    "docker-compose.yml",
+    "web/index.html",
+    "web/package-lock.json",
+    "web/package.json",
+    "web/src/App.test.tsx",
+    "web/src/App.tsx",
+    "web/src/api/client.ts",
+    "web/src/api/schema.d.ts",
+    "web/src/components/Layout.tsx",
+    "web/src/pages/Account.tsx",
+    "web/tsconfig.json",
+    "web/vite.config.ts",
 ]
 
 
@@ -163,3 +175,44 @@ def test_an_unknown_placeholder_is_a_template_bug() -> None:
     assert render("@@name@@ and @@title@@", {"name": "a", "title": "A"}) == "a and A"
     with pytest.raises(KeyError):
         render("@@nope@@", {"name": "a"})
+
+
+def test_the_web_client_is_a_static_service_at_the_root(product: Path) -> None:
+    manifest = load_manifest(product)
+    assert isinstance(manifest, AppManifest)
+    web = manifest.services[1]
+    assert (web.name, web.runtime, web.root, web.output, web.route) == (
+        "web",
+        "static",
+        "web",
+        "dist",
+        "/",
+    )
+    assert web.build[-1] == "npm ci && npm run build"
+
+
+def test_the_web_client_pins_its_packages(product: Path) -> None:
+    package = json.loads((product / "web" / "package.json").read_text(encoding="utf-8"))
+    versions = package["dependencies"] | package["devDependencies"]
+    assert {"react", "vite", "vitest", "typescript", "openapi-fetch"} <= set(versions)
+    for name, version in versions.items():
+        assert version[0].isdigit(), f"{name} is not pinned: {version}"
+    lock = json.loads((product / "web" / "package-lock.json").read_text(encoding="utf-8"))
+    assert lock["packages"][""]["dependencies"] == package["dependencies"]
+    assert lock["packages"][""]["devDependencies"] == package["devDependencies"]
+
+
+def test_the_typed_client_matches_the_api_snapshot(product: Path) -> None:
+    schema = json.loads((product / "server" / "openapi.json").read_text(encoding="utf-8"))
+    types = (product / "web" / "src" / "api" / "schema.d.ts").read_text(encoding="utf-8")
+    for path in schema["paths"]:
+        assert f'"{path}": {{' in types, path
+    for name in schema["components"]["schemas"]:
+        assert f"{name}: {{" in types, name
+
+
+def test_every_page_links_the_legal_pages(product: Path) -> None:
+    layout = (product / "web" / "src" / "components" / "Layout.tsx").read_text(encoding="utf-8")
+    assert '<a href="/impressum">' in layout and '<a href="/datenschutz">' in layout
+    title = (product / "web" / "index.html").read_text(encoding="utf-8")
+    assert "<title>Tally Notes</title>" in title

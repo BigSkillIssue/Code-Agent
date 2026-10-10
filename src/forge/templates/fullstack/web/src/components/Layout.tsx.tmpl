@@ -1,0 +1,39 @@
+import { Link, Outlet } from "react-router-dom";
+import { APP_NAME } from "../app";
+import { useAuth } from "../auth";
+
+/**
+ * Header, page and footer. The legal pages are plain links: hosting serves /impressum and
+ * /datenschutz itself, with the operator's details, on every page of the product.
+ */
+export function Layout() {
+  const { user, signOut } = useAuth();
+  return (
+    <div className="page">
+      <header>
+        <Link to="/" className="brand">
+          {APP_NAME}
+        </Link>
+        <nav>
+          {user ? (
+            <>
+              <Link to="/account">Account</Link>
+              <button type="button" onClick={signOut}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link to="/signin">Sign in</Link>
+          )}
+        </nav>
+      </header>
+      <main>
+        <Outlet />
+      </main>
+      <footer>
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
+      </footer>
+    </div>
+  );
+}

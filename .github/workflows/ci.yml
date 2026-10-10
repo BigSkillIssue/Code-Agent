@@ -55,8 +55,9 @@ jobs:
         run: uv run pytest -q tests/conformance/test_browser_conformance.py tests/test_browser.py
 
   fullstack:
-    # A product from `forge app new` installed from its lockfile and tested for real: the server's
-    # own tests on PostgreSQL (the gate jobs skip these tests: they need PyPI and a database).
+    # A product from `forge app new` installed from its lockfiles and tested for real: the server's
+    # own tests on PostgreSQL, the web client's tests and build (the gate jobs skip these tests:
+    # they need PyPI, npm and a database).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -73,6 +74,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install
         run: uv sync
       - name: Full-stack tests

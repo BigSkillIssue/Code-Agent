@@ -545,6 +545,8 @@ class Service(BaseModel):            # extra keys are refused in every model of 
     root: str = "."                  # the service's folder, relative to the product
     command: list[str] = []          # how to start it; required unless runtime is "static"
     build: list[str] = []            # how to build it (runs in a throwaway container)
+    output: str = "dist"             # static only: the folder in root its build writes; served
+                                     # as a single-page app (unknown paths get index.html)
     port: int                        # 1024-65535, unique in the app
     health: str = "/healthz"         # path that answers 200 when the service is up
     route: str | None = None         # public path prefix ("/", "/api"); None = internal only

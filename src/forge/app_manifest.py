@@ -43,6 +43,7 @@ class Service(_Strict):
     root: str = "."
     command: list[str] = Field(default_factory=list)
     build: list[str] = Field(default_factory=list)
+    output: str = "dist"
     port: int = Field(ge=1024, le=65535)
     health: str = Field(default="/healthz", pattern=r"^/")
     route: str | None = Field(default=None, pattern=r"^/")

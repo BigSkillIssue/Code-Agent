@@ -1,9 +1,9 @@
 """The product from `forge app new`, installed and tested for real: its server's own tests on
-PostgreSQL, and the templates inside Forge's wheel.
+PostgreSQL, the web client's tests and build, and the templates inside Forge's wheel.
 
-Marked `fullstack` and skipped by default: it needs uv, network access to PyPI and a throwaway
-PostgreSQL database in FORGE_TEST_DATABASE_URL (its schema is dropped). CI's `fullstack` job runs
-it with a PostgreSQL service: `uv run pytest -m fullstack -q`.
+Marked `fullstack` and skipped by default: it needs uv, Node 22 with npm, network access to PyPI
+and npm, and a throwaway PostgreSQL database in FORGE_TEST_DATABASE_URL (its schema is dropped).
+CI's `fullstack` job runs it with a PostgreSQL service: `uv run pytest -m fullstack -q`.
 """
 
 import os
@@ -55,3 +55,26 @@ def test_the_templates_ship_in_the_wheel(tmp_path: Path) -> None:
     names = zipfile.ZipFile(wheel).namelist()
     assert "forge/templates/fullstack/server/app/main.py.tmpl" in names
     assert "forge/templates/fullstack/dot-github/workflows/ci.yml.tmpl" in names
+
+
+def test_the_web_clients_tests_and_build_pass(product: Path) -> None:
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is not installed")
+    web = product / "web"
+    run([npm, "ci", "--no-audit", "--no-fund"], web)
+    run([npm, "test"], web)
+    run([npm, "run", "build"], web)
+    assert (web / "dist" / "index.html").is_file()
+
+
+def test_the_typed_client_is_generated_from_the_snapshot(product: Path, tmp_path: Path) -> None:
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is not installed")
+    web = product / "web"
+    if not (web / "node_modules").is_dir():
+        run([npm, "ci", "--no-audit", "--no-fund"], web)
+    shipped = (web / "src" / "api" / "schema.d.ts").read_text(encoding="utf-8")
+    run([npm, "run", "api:types"], web)
+    assert (web / "src" / "api" / "schema.d.ts").read_text(encoding="utf-8") == shipped
