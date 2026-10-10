@@ -675,6 +675,19 @@ Offered only when the session has an `AppleBuilder` (`SessionState.apple`): Forg
 - **Errors:** `exit_nonzero` (the build or tests failed; the report says why), `unsupported` (no builder, no Xcode or XcodeGen, no such scheme or simulator, a timeout, or `[apple] max_screenshots` reached), `invalid_args` (unknown platform or action).
 - **Tests:** no builder means no tools; reports of green and failed builds, tests and archives; screenshots kept per device and limited; the local builder against fake `xcodebuild`, `xcrun` and `xcodegen` (scheme and simulator choice, messages once, unsigned archives).
 
+## App (added in S65)
+
+Offered only in a full-stack product (a `forge.app.toml` at the project root, made with `forge app new`). Read-only roles do not get it. It installs packages and runs the product's tests, so it asks first, like the shell, and runs in the session's sandbox (installs need the network).
+
+| Tool | Permission | Arguments | Does |
+|---|---|---|---|
+| `app_check` | ask | — | run the product's fixed checks: lockfiles, secrets, migrations, API snapshot, tests on a throwaway PostgreSQL, web build |
+
+- **Gates, in order:** `manifest` (forge.app.toml valid), `secrets` (no keys, tokens or private key files in the project; names the file and line, never the secret), `lockfiles` (uv.lock and package-lock.json present and matching), `database` (a throwaway PostgreSQL: `initdb`/`pg_ctl`, socket in a temp folder, removed afterwards), then per Python service `migrations` (`alembic upgrade head` on the empty database and nothing left for `alembic check`), `openapi` (openapi.json equals the API) and `server-tests` (its pytest suite with `TEST_DATABASE_URL`), and per web client `web` (`npm ci`, generated API types unchanged, `npm test`, `npm run build`).
+- **Output:** `app check: passed` or `app check: failed (<n> gate(s))`, then one line per gate (`PASSED`, `FAILED`, `SKIPPED`, name, service, summary); a failed gate adds `fix: ...` and the end of its output. The report is saved as `.forge/out/app/checks.json` with the commit it ran on (`commit`, `dirty`).
+- **Errors:** `exit_nonzero` (a gate failed; the report says which and how to fix it).
+- **Tests:** every gate passes and fails on its own with its fix, against a scripted executor (fake `initdb`, `pg_ctl`, `createdb`, `uv`, `npm`, `git`); a pending migration and a committed secret fail; the database is stopped and its folder removed; the tool is offered only in products.
+
 ## Plan and interaction
 
 These four tools connect the agent loop to the pipeline. They read and write `ctx.session.spec` and `ctx.session.plan`, save through `ctx.store` after every change, and publish `QuestionAsked` / `PlanUpdated` / `StepDone` events.

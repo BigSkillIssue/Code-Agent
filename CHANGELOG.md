@@ -48,7 +48,12 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
 - **Full-stack template:** `forge app new NAME` creates a product people can keep working on:
   a FastAPI server on PostgreSQL 16 with accounts (password reset, account deletion, data
   export), content reports and blocking, rate limits, Alembic migrations, an OpenAPI snapshot,
-  tests, a runbook and CI. CI's `fullstack` job installs it and runs its tests on PostgreSQL.
+  tests, a runbook and CI, and a React + TypeScript web client typed from the server's API.
+  CI's `fullstack` job installs it and runs its tests on PostgreSQL.
+- **Run and check a product:** `forge app dev` runs it on a throwaway PostgreSQL with every
+  service's output in one stream; `forge app check` (and the agent's `app_check` tool) runs the
+  fixed gates: manifest, secrets, lockfiles, migrations, API snapshot, tests, web build. Every
+  failure names its fix; the report is saved in `.forge/out/app/checks.json`.
 
 ## 1.0.0 - 2026-10-05
 

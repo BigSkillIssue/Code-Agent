@@ -73,6 +73,62 @@ class NoExecutor:
         raise AssertionError("unexpected job_stop")
 
 
+class ScriptedExecutor:
+    """An Executor that runs nothing: `answer(cmd)` decides each command's result (None: exit 0),
+    background jobs print `job_lines[program]` and run until stopped (or `ended` names them)."""
+
+    def __init__(
+        self,
+        answer: Callable[[Command], CommandResult | None] | None = None,
+        job_lines: dict[str, list[str]] | None = None,
+    ) -> None:
+        self.answer = answer or (lambda cmd: None)
+        self.job_lines = job_lines or {}
+        self.commands: list[Command] = []
+        self.jobs: dict[str, list[str]] = {}
+        self.ended: set[str] = set()
+        self.stopped: list[str] = []
+
+    @staticmethod
+    def words(cmd: Command) -> list[str]:
+        """The command's argv with the program as a bare name (`/usr/bin/npm` -> `npm`)."""
+        argv = cmd.argv or []
+        if not argv:
+            return []
+        name = Path(argv[0]).name
+        for suffix in (".exe", ".cmd", ".bat"):
+            name = name.removesuffix(suffix)
+        return [name, *argv[1:]]
+
+    async def run(
+        self,
+        cmd: Command,
+        policy: SandboxPolicy,
+        background: bool = False,
+        on_output: Callable[[str], None] | None = None,
+    ) -> CommandResult:
+        self.commands.append(cmd)
+        if background:
+            job_id = f"job{len(self.jobs) + 1}"
+            self.jobs[job_id] = list(self.job_lines.get(self.words(cmd)[0], []))
+            return CommandResult(exit_code=None, stdout="", stderr="", job_id=job_id)
+        return self.answer(cmd) or CommandResult(exit_code=0, stdout="", stderr="")
+
+    async def job_output(self, job_id: str, since_line: int = 0) -> CommandResult:
+        lines = self.jobs[job_id]
+        code = 1 if job_id in self.ended else None
+        text = "\n".join(lines[since_line:])
+        return CommandResult(exit_code=code, stdout=text, stderr="", total_lines=len(lines))
+
+    async def job_stop(self, job_id: str) -> CommandResult:
+        self.stopped.append(job_id)
+        return CommandResult(exit_code=-15, stdout="", stderr="SIGTERM")
+
+    def ran(self, *words: str) -> list[Command]:
+        """The commands that started with these words."""
+        return [c for c in self.commands if self.words(c)[: len(words)] == list(words)]
+
+
 def git(root: Path, *args: str) -> str:
     """Run git in `root` and return its stdout."""
     proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True)
