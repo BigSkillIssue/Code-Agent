@@ -357,7 +357,7 @@ Rules for this phase, in addition to `AGENTS.md`:
 - Tests never call real services (Stripe, Apple, Google, Microsoft, LLMs).
 - Order: S63–S68 first (Forge builds complete, checkable products), then Forge Web's phase D. S69 and S70 wait for Forge Web's W35, S71 goes with W37 and S72 with W38; `PROGRESS.md` says which comes next.
 
-- [ ] **S63 — App manifest**
+- [x] **S63 — App manifest**
     - Contracts: App manifest (new section, written first in this step)
     - Files: `src/forge/app_manifest.py`, `docs/CONTRACTS.md`, `tests/test_app_manifest.py`
     - Build: pydantic models of `forge.app.toml` (read with `tomllib`): `services` (name, runtime `python3.12 | node22 | static`, command, port, health path), `database`, `storage`, `mail`, `env` and `secrets` (names only, never values), resource class, `clients` (web, apple, android, windows), `payments`; `load_manifest(path)` returns the manifest or its problems as values (field and message), never an exception.
