@@ -65,7 +65,14 @@ export function AppleReleasePage() {
               </Link>
             </p>
           )}
-          {approval && <p>{t("releaseApproved", { commit: approval.commit.slice(0, 10) })}</p>}
+          {approval && (
+            <p className="flex flex-wrap gap-2">
+              <span>{t("releaseApproved", { commit: approval.commit.slice(0, 10) })}</span>
+              <Link to={`/p/${projectId}/apple/listing`} className="ml-auto text-accent underline">
+                {t("openListing")}
+              </Link>
+            </p>
+          )}
           {review && key === null && (
             <p>
               {t("releaseNeedsKey")}{" "}

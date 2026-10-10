@@ -65,7 +65,7 @@ export interface GuidelineFinding {
 
 /** The Apple reviewer's verdict on the request ("prompt"), the plan or the finished app. */
 export interface GuidelineReview {
-  stage: "prompt" | "plan" | "product";
+  stage: "prompt" | "plan" | "product" | "listing";
   verdict: Verdict;
   summary: string;
   findings: GuidelineFinding[];

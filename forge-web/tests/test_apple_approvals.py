@@ -135,6 +135,7 @@ async def test_the_page_shows_the_latest_review_of_each_stage_and_the_builds(
         mine, theirs = chat["id"], other_chat["id"]
         reviews = [(mine, 1, "prompt", "concern", "old"), (mine, 2, "prompt", "ok", "new"),
                    (mine, 3, "product", "violation", "the app"),
+                   (mine, 4, "listing", "ok", "the store texts"),
                    (theirs, 1, "plan", "ok", "someone else's")]  # fmt: skip
         async with server.services.db.session() as session, session.begin():
             for chat_id, seq, stage, verdict, summary in reviews:
@@ -151,7 +152,7 @@ async def test_the_page_shows_the_latest_review_of_each_stage_and_the_builds(
                                  seconds=42, outcome="test on ios: succeeded"))  # fmt: skip
         found = (await client.get(f"/api/projects/{project['id']}/apple/review")).json()
     shown = [(r["stage"], r["summary"]) for r in found["reviews"]]
-    assert shown == [("prompt", "new"), ("product", "the app")]  # newest per stage, in order
+    assert shown == [("prompt", "new"), ("product", "the app"), ("listing", "the store texts")]
     assert found["reviews"][1]["findings"][0]["guideline"] == "4.2"
     assert found["reviews"][0]["chat_id"] == chat["id"]
     assert [(j["kind"], j["outcome"]) for j in found["builds"]] == [

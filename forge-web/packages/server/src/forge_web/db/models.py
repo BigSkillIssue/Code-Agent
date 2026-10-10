@@ -346,3 +346,16 @@ class AppleRelease(Base):
     data: Mapped[str] = mapped_column(Text, default="{}")  # JSON: what the steps left
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
+
+
+class AppleListing(Base):
+    """The App Store listing a user finished for an Apple project (W22c): what goes to Apple."""
+
+    __tablename__ = "apple_listings"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[str] = mapped_column(Text, default="{}")  # Forge's StoreListing as JSON
+    user_id: Mapped[str] = mapped_column(String(32), default="")  # who saved it last
+    updated_at: Mapped[float] = mapped_column(Float, default=0.0)

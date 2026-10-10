@@ -1,4 +1,5 @@
-// The Apple reviewer's verdict on the request, the plan or the finished app, with every finding.
+// The Apple reviewer's verdict on the request, the plan, the finished app or its store texts,
+// with every finding.
 // The review comes from the project's sandbox: links are only made for Apple's own pages.
 
 import { CheckCircle2, ShieldCheck, TriangleAlert, XCircle } from "lucide-react";
@@ -9,6 +10,7 @@ const STAGE: Record<GuidelineReview["stage"], TextKey> = {
   prompt: "reviewOfPrompt",
   plan: "reviewOfPlan",
   product: "reviewOfProduct",
+  listing: "reviewOfListing",
 };
 
 const VERDICT: Record<Verdict, { label: TextKey; tone: string; Icon: typeof CheckCircle2 }> = {

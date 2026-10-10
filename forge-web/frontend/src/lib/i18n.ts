@@ -2,6 +2,7 @@
 
 import { adminDe, adminEn } from "./texts/admin";
 import { appleDe, appleEn } from "./texts/apple";
+import { listingDe, listingEn } from "./texts/listing";
 import { releaseDe, releaseEn } from "./texts/release";
 
 const coreEn = {
@@ -219,7 +220,7 @@ const coreEn = {
   total: "Total",
 };
 
-const en = { ...coreEn, ...adminEn, ...appleEn, ...releaseEn };
+const en = { ...coreEn, ...adminEn, ...appleEn, ...releaseEn, ...listingEn };
 
 type Texts = typeof en;
 
@@ -439,7 +440,7 @@ const coreDe: typeof coreEn = {
   total: "Gesamt",
 };
 
-const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...releaseDe };
+const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...releaseDe, ...listingDe };
 
 export type TextKey = keyof Texts;
 

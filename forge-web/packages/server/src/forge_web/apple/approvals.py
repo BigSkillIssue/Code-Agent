@@ -28,7 +28,7 @@ from forge_web.db.models import AppleApproval, AppleJob, Chat, ChatEvent, User
 from forge_web.files_api import allowed
 from forge_web.services import Services
 
-STAGES = ("prompt", "plan", "product")
+STAGES = ("prompt", "plan", "product", "listing")  # the store texts after the approval (S61)
 SCAN = 200  # the newest reviews and requests looked at
 SHOWN = 20  # builds and approvals on the page
 COMMIT = re.compile(r"^[0-9a-f]{40,64}$")

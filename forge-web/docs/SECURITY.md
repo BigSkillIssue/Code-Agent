@@ -79,6 +79,9 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
   project is still at that commit with nothing uncommitted; it builds exactly that commit
   (`git archive`, tracked files only) and is in the audit log (`apple.release_started`,
   `apple.release_retried`).
+- Store texts (W22c): Forge's draft is read from the project and shown as text only (React escapes it);
+  what goes to Apple is the listing the user saved on the server, checked with Forge's own model, never
+  the project's file. Saving needs the editor role and is in the audit log (`apple.listing_saved`).
 - Accepted risk: the project's sandbox packs the commit (`git.archive`) and could hand over other
   files than the commit's; whatever it hands over is built in the project's VM like every other
   build, so the user's own sandbox can only change its own app.

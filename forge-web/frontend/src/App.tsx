@@ -7,6 +7,7 @@ import { ChatView } from "./components/ChatView";
 import { Sidebar } from "./components/Sidebar";
 import { t } from "./lib/i18n";
 import { AdminPage } from "./pages/Admin";
+import { AppleListingPage } from "./pages/AppleListing";
 import { AppleReleasePage } from "./pages/AppleRelease";
 import { AppleReviewPage } from "./pages/AppleReview";
 import { AuthPages, type AuthConfig } from "./pages/Auth";
@@ -121,6 +122,7 @@ export function App() {
           <Route path="p/:projectId" element={<ProjectPage />} />
           <Route path="p/:projectId/apple" element={<AppleReviewPage />} />
           <Route path="p/:projectId/apple/release" element={<AppleReleasePage />} />
+          <Route path="p/:projectId/apple/listing" element={<AppleListingPage />} />
           <Route path="c/:chatId" element={<ChatPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />
