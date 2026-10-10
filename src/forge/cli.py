@@ -46,6 +46,7 @@ commands:
   forge ollama setup|status       use a local Ollama model (picks one for this machine)
   forge apple new NAME            a SwiftUI app for iPhone, iPad, Mac and Apple Watch
   forge app new NAME              a full-stack product: server, database, docs, CI
+  forge app dev|check             run a product locally / run its fixed checks
 """
 
 

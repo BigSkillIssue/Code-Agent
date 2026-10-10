@@ -37,6 +37,8 @@ from typing import Annotated, Any, Literal, TypeVar, get_args, get_origin
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from forge import prompts
+from forge.app_checks import check_app, report_text, save_report
+from forge.app_manifest import MANIFEST
 from forge.checks import sandbox_policy, save_plan, settle_step
 from forge.config import ForgeConfig, forge_home
 from forge.ctx import Ctx, McpTools, Team
@@ -118,7 +120,8 @@ LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TOOL_GROUPS = frozenset(
-    {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp", "apple"}
+    {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp"}
+    | {"apple", "app"}
 )
 BROWSER_ROLE_TOOLS = frozenset({"web_search"})  # besides the browser group
 _DATA_KEYS = frozenset({"default", "enum", "const", "examples"})
@@ -277,6 +280,8 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
         tools = [t for t in tools if t.name not in AGENT_TOOLS]
     if ctx.state.apple is None:  # no Mac to build on: the tools could only fail
         tools = [t for t in tools if t.group != "apple"]
+    if not (ctx.root / MANIFEST).is_file():  # not a full-stack product (S65)
+        tools = [t for t in tools if t.group != "app"]
     return [*tools, *mcp_tools(ctx, role)] if ctx.state.mcp else drop_mcp(tools)
 
 
@@ -1518,6 +1523,22 @@ def keep_screen(ctx: Ctx, screen: AppleScreen) -> None:
     ctx.state.apple_screens = [
         s for s in ctx.state.apple_screens if (s.platform, s.device, s.dark) != same
     ] + [screen]
+
+
+# =====================================================================================
+# APP (full-stack products, S65)
+# =====================================================================================
+
+
+@tool(group="app", permission="ask", read_only=False)
+async def app_check(ctx: Ctx) -> ToolResult:
+    """Run the product's fixed checks: lockfiles, secrets, migrations, API snapshot, tests on a throwaway PostgreSQL, web build. Every failure names its fix."""
+    report = await check_app(ctx.root, ctx.executor, sandbox_policy(ctx))
+    save_report(ctx.root, report)
+    return ToolResult(
+        call_id="", ok=report.ok, code=None if report.ok else "exit_nonzero",
+        text=report_text(report),
+    )  # fmt: skip
 
 
 # =====================================================================================
