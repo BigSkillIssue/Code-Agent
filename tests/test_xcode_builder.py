@@ -353,3 +353,15 @@ async def test_a_release_archive_is_signed_ad_hoc_with_its_build_number(
     assert "generic/platform=macOS" in call and "CURRENT_PROJECT_VERSION=7" in call
     # Signed ad hoc, not left unsigned: the entitlements (the Mac sandbox) live in the signature.
     assert "CODE_SIGN_IDENTITY=-" in call and "CODE_SIGNING_ALLOWED=NO" not in call
+
+
+async def test_an_iphone_release_archive_is_left_unsigned_for_the_export(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes = Fakes(tmp_path, monkeypatch)
+    result = await builder(project, tmp_path).release_archive("ios", 8)
+    assert result.ok and result.artifact.endswith("-ios-8.xcarchive")
+    call = fakes.calls("xcodebuild")[-1]
+    assert "generic/platform=iOS" in call and "CURRENT_PROJECT_VERSION=8" in call
+    # Apple's iOS and watchOS SDKs refuse ad hoc signatures; the export signs these archives.
+    assert "CODE_SIGNING_ALLOWED=NO" in call and "CODE_SIGN_IDENTITY=-" not in call

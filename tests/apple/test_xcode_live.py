@@ -92,9 +92,11 @@ async def test_a_release_archive_keeps_its_entitlements_and_build_number(
     assert info["CFBundleVersion"] == "7"
     signed = subprocess.run(["codesign", "-d", "--entitlements", "-", "--xml", str(bundle)],
                             capture_output=True, text=True, check=False)  # fmt: skip
-    assert signed.returncode == 0, signed.stderr  # signed (ad hoc), so export can re-sign it
     if platform == "macos":
+        assert signed.returncode == 0, signed.stderr  # signed ad hoc, so export can re-sign it
         assert "com.apple.security.app-sandbox" in signed.stdout  # the Mac App Store needs it
     else:
+        # iOS allows no ad hoc signature: the archive stays unsigned until the export signs it.
+        assert signed.returncode != 0 and "not signed" in signed.stderr, signed.stderr
         watch = bundle / "Watch" / "TallyWatch.app"
         assert plistlib.loads((watch / "Info.plist").read_bytes())["CFBundleVersion"] == "7"
