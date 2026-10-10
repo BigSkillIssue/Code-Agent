@@ -20,6 +20,7 @@ CORE = [
     "release_flow.py",
     "app_checks.py",
     "app_dev.py",
+    "app_flow.py",
 ]
 FORBIDDEN_IN_CORE = ("textual", "rich", "sqlite3", "sqlalchemy", "subprocess", "forge.local")
 
@@ -44,6 +45,7 @@ UPWARD = {
     # The release checks of full-stack products (S65-S67): below the pipeline, like Apple's.
     "release_review.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
     "release_flow.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
+    "app_flow.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
     "app_checks.py": ("forge.tools", "forge.agent", "forge.pipeline", "forge.cli"),
     "app_dev.py": ("forge.tools", "forge.agent", "forge.pipeline", "forge.cli"),
 }

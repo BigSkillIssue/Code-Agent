@@ -165,6 +165,14 @@ class AppleConfig(_Strict):
     )
 
 
+class AppConfig(_Strict):
+    """Full-stack products made with `forge app new` (S65, S67b)."""
+
+    # Review the request, the plan and the finished product before it is hosted (S67b, --app),
+    # and ask you whether it may go live; on in Forge Web's app projects.
+    review: bool = False
+
+
 class ReleaseConfig(_Strict):
     """The release review of full-stack products before they are hosted (S66)."""
 
@@ -203,6 +211,7 @@ class ForgeConfig(_Strict):
     web: WebConfig = Field(default_factory=WebConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     apple: AppleConfig = Field(default_factory=AppleConfig)
+    app: AppConfig = Field(default_factory=AppConfig)
     release: ReleaseConfig = Field(default_factory=ReleaseConfig)
     mcp_servers: dict[str, McpServerConfig] = {}
     hooks: dict[HookEventName, list[HookConfig]] = {}

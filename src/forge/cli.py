@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="check Apple's guidelines at the request, the plan and the built app; you approve it",
     )
     parser.add_argument(
+        "--app",
+        action="store_true",
+        help="review a full-stack product before it is hosted; you decide whether it goes live",
+    )
+    parser.add_argument(
         "--fake",
         metavar="SCRIPT.json",
         help="replace every model with a FakeProvider replaying SCRIPT (offline runs and tests)",
@@ -107,6 +112,8 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
     cfg = load_config(root, profile=options.profile)
     if options.apple:
         cfg.apple.review = True
+    if options.app:
+        cfg.app.review = True
     for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
         print(f"warning: {warning}", file=sys.stderr)
     if options.fake is None:

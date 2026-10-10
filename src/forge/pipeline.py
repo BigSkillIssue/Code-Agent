@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from forge import prompts, release_flow
 from forge.agent import over_budget, run_agent
+from forge.app_flow import AppCheckpoint
 from forge.apple_flow import AppleCheckpoint
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
@@ -33,6 +34,8 @@ class Report(BaseModel):
     usage: Usage
     ready_for_apple: bool = False  # S60: only when the user approved the app
     apple_summary: str = ""  # S60: why the app is (not) ready for Apple
+    ready_to_host: bool = False  # S67b: only when the user said the product may go live
+    host_summary: str = ""  # S67b: why the product may (not) go live
 
 
 class ReviewAnswer(BaseModel):
@@ -298,10 +301,12 @@ def assumptions_of(ctx: Ctx, spec: TaskSpec | None) -> list[str]:
 
 
 def checkpoints_for(ctx: Ctx) -> list[release_flow.Checkpoint]:
-    """The checkpoints this task runs (S67a): Apple's with `--apple`."""
+    """The checkpoints this task runs (S67a): Apple's with `--apple`, hosting's with `--app`."""
     found: list[release_flow.Checkpoint] = []
     if ctx.cfg.apple.review:
         found.append(AppleCheckpoint())
+    if ctx.cfg.app.review:
+        found.append(AppCheckpoint())
     return found
 
 
@@ -404,6 +409,9 @@ def report_text(report: Report) -> str:
     if report.apple_summary:
         ready = "yes" if report.ready_for_apple else "no"
         lines.append(f"Ready for Apple: {ready} ({report.apple_summary})")
+    if report.host_summary:
+        ready = "yes" if report.ready_to_host else "no"
+        lines.append(f"Ready to go live: {ready} ({report.host_summary})")
     usage = report.usage
     tokens = f"{usage.input_tokens} in, {usage.output_tokens} out tokens"
     lines.append(f"Cost: ${usage.cost_usd:.4f} ({tokens})")

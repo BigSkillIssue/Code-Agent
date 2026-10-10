@@ -96,7 +96,7 @@ async def review_product(
 ) -> ReleaseReview:
     """Judge the finished product: its code, its fixed checks and its screenshots."""
     task = prompts.render("release_review_product", material=checks or "(none)")
-    return await review(ctx, "product", task, screens or [])
+    return await review(ctx, "product", task, screens)
 
 
 async def review(
@@ -175,9 +175,12 @@ def all_areas(findings: list[ReleaseFinding], areas: list[str]) -> list[ReleaseF
 
 
 def screens_message(reviewer: Ctx, screens: list[Screen] | None) -> list[Message] | None:
-    """The screenshots as one message; a note when the reviewer's model cannot see them."""
-    if not screens:
+    """The screenshots as one message; a note when there are none (an empty list) or when the
+    reviewer's model cannot see them; nothing when no screenshots belong to the stage (None)."""
+    if screens is None:
         return None
+    if not screens:
+        return [text_message("user", prompts.render("release_review_no_screens"))]
     if not can_see(reviewer):
         return [text_message("user", prompts.render("release_review_blind"))]
     labels = "\n".join(f"{n}. {s.label}" for n, s in enumerate(screens, start=1))

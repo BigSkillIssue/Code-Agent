@@ -94,6 +94,7 @@ async def open_session(
     )
     ctx.state.team = AgentRegistry()
     ctx.state.browser_factory = PlaywrightBrowsers(cfg.browser)  # starts on first use
+    ctx.state.preview_browsers = PlaywrightBrowsers(cfg.browser, allow_local=True)
     if sys.platform == "darwin" and shutil.which("xcodebuild"):
         ctx.state.apple = XcodeBuilder(root, cfg.apple)
     if cfg.mcp_servers:
@@ -131,8 +132,9 @@ async def close_session(ctx: Ctx) -> None:
     for browser in ctx.state.browsers.values():
         await browser.close()
     ctx.state.browsers.clear()
-    if ctx.state.browser_factory is not None:
-        await ctx.state.browser_factory.close()
+    for factory in (ctx.state.browser_factory, ctx.state.preview_browsers):
+        if factory is not None:
+            await factory.close()
     if ctx.state.apple is not None:
         await ctx.state.apple.close()
     for port in (ctx.executor, ctx.store):

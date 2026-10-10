@@ -23,6 +23,7 @@ after `forge trust`. `forge config check` prints the effective configuration (se
 | `web` | WebConfig | - | See `[web]`. |
 | `browser` | BrowserConfig | - | See `[browser]`. |
 | `apple` | AppleConfig | - | See `[apple]`. |
+| `app` | AppConfig | - | See `[app]`. |
 | `release` | ReleaseConfig | - | See `[release]`. |
 | `mcp_servers` | table of McpServerConfig | `{}` | MCP servers to connect; see `[mcp_servers.<name>]`. |
 | `hooks` | table of list of HookConfig | `{}` | Shell hooks per event: session_start, prompt_submit, pre_tool, post_tool, step_done, pre_compact, stop, subagent_stop. |
@@ -128,6 +129,15 @@ Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).
 | `review` | bool | `false` | Check the request, the plan and the built app against Apple's guidelines and ask you to approve the app (`--apple`). |
 | `listing` | bool | `true` | After you approve the app, draft its App Store texts (`.forge/out/apple/listing.json`) and have them reviewed. |
 | `devices` | table of str | - | Simulator per platform (`ios`, `ipados`, `watchos`); the newest of the same family when it is missing. |
+
+## [app]
+
+Full-stack products made with `forge app new` (S65, S67b).
+Full-stack products (`forge app new`).
+
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `review` | bool | `false` | Check the request, the plan and the finished product against the release rulebooks and ask you whether it may go live (`--app`). |
 
 ## [release]
 

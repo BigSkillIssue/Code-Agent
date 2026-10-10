@@ -13,6 +13,7 @@ from pydantic_core import PydanticUndefined
 
 from forge.config import (
     DEFAULT_ROLES,
+    AppConfig,
     AppleConfig,
     ApprovalConfig,
     BrowserConfig,
@@ -52,6 +53,7 @@ DOCS: dict[str, str] = {
     "web": "See `[web]`.",
     "browser": "See `[browser]`.",
     "apple": "See `[apple]`.",
+    "app": "See `[app]`.",
     "release": "See `[release]`.",
     "headless": "Run the browser without a window.",
     "channel": "Use an installed browser (`chrome`, `msedge`) instead of Playwright's Chromium.",
@@ -106,6 +108,10 @@ DOCS: dict[str, str] = {
 
 # Fields whose name another section already uses with a different meaning.
 SECTION_DOCS: dict[type[BaseModel], dict[str, str]] = {
+    AppConfig: {
+        "review": "Check the request, the plan and the finished product against the release "
+        "rulebooks and ask you whether it may go live (`--app`).",
+    },
     ReleaseConfig: {
         "rulebook_files": "Your own rules for the release reviewer, one Markdown file per "
         "rulebook (named after the file); they add to the built-in rulebooks. Relative paths "
@@ -139,6 +145,7 @@ SECTIONS: list[tuple[str, type[BaseModel], str]] = [
         AppleConfig,
         "Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).",
     ),
+    ("[app]", AppConfig, "Full-stack products (`forge app new`)."),
     (
         "[release]",
         ReleaseConfig,

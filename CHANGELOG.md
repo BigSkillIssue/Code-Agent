@@ -54,6 +54,14 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   service's output in one stream; `forge app check` (and the agent's `app_check` tool) runs the
   fixed gates: manifest, secrets, lockfiles, migrations, API snapshot, tests, web build. Every
   failure names its fix; the report is saved in `.forge/out/app/checks.json`.
+- **Release reviewer:** an independent `release_reviewer` (its own model, a fresh context,
+  read-only tools) judges a product against rulebooks for hosting it: acceptable use, GDPR,
+  German law (Impressum, order and cancellation buttons), user content (DSA), security and
+  resources, plus the operator's own rulebooks (`[release] rulebook_files`).
+- **`--app`:** the request and the plan are reviewed; the finished product is reviewed only
+  after a green `app check`, with screenshots at desktop and phone size; then you decide: go
+  live, send it back, or not yet. Only your "go live" makes it ready to host. Checkpoints are
+  plug-ins now; Apple's work as before.
 
 ## 1.0.0 - 2026-10-05
 

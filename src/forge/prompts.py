@@ -32,6 +32,8 @@ Table of contents:
   RELEASE_REVIEWER independent check of a full-stack product before it is hosted -> findings
                  per rulebook (RELEASE_REVIEW_*: its user messages; RELEASE_RULEBOOKS: the
                  operator's own rules)
+  APP_FIX        send failed checks or the release reviewer's violations back to the coder
+                 (APP_FEEDBACK: the user's changes before a product goes live)
   OVERRIDES      small additions per model family
   render()       join a prompt's static text, overrides and filled slots
 
@@ -677,6 +679,18 @@ RELEASE_REVIEW_SCREENS = """\
 Screenshots of the web client, in this order:
 """
 
+RELEASE_REVIEW_NO_SCREENS = """\
+There are no screenshots: the product could not be started and photographed here. Judge the interface from the code, and say in a concern that nobody has looked at it yet.
+"""
+
+APP_FIX = """\
+The checks of the finished product found problems. Fix them in the project, then run app_check until it passes. The problems:
+"""
+
+APP_FEEDBACK = """\
+The user looked at the finished product and wants changes before it goes live. Make them, then run app_check until it passes. The user's words:
+"""
+
 RELEASE_REVIEW_BLIND = """\
 Screenshots were taken, but your model cannot see images, so they are left out. Judge the interface from the code, and say so in a concern.
 """
@@ -722,6 +736,9 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "release_rulebooks": (RELEASE_RULEBOOKS, "{material}"),
     "release_review_screens": (RELEASE_REVIEW_SCREENS, "{material}"),
     "release_review_blind": (RELEASE_REVIEW_BLIND, ""),
+    "release_review_no_screens": (RELEASE_REVIEW_NO_SCREENS, ""),
+    "app_fix": (APP_FIX, "{material}"),
+    "app_feedback": (APP_FEEDBACK, "{material}"),
     "step": (STEP, STEP_TAIL),
     "reviewer": (REVIEWER, REVIEWER_TAIL),
     "final_review": (FINAL_REVIEW, FINAL_REVIEW_TAIL),

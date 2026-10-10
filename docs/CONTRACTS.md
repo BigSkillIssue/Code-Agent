@@ -263,9 +263,11 @@ class Browser(Protocol):               # targets: visible text, "css=<selector>"
     async def close(self) -> None: ...
 
 class BrowserFactory(Protocol):        # a fresh context (no profile, no downloads) per agent
-    async def new_browser(self) -> Browser: ...
+    async def new_browser(self, viewport: tuple[int, int] | None = None) -> Browser: ...  # S67b: (width, height)
     async def close(self) -> None: ...
 ```
+
+`SessionState.preview_browsers` (S67b) is a second factory that may open local addresses: Forge uses it itself to photograph a product it runs on localhost (desktop and phone sizes) for the release review. It is never given to an agent.
 
 **Apple builds (added in S58a).** Apple projects (Swift, SwiftUI) are built, tested and shown on simulated devices through this port. `local/xcode_builder.py` implements it on a Mac with Xcode (running XcodeGen first when the project has a `project.yml`); a server may implement it with a remote Mac. `SessionState.apple` holds it; without one the `apple` tools are not offered. Expected failures (no Xcode, no such scheme or device, a timeout) raise `AppleBuildError`; a build that fails is a result with `ok=False` and the compiler's messages. Settings live in `[apple]` (`timeout_s`, `max_screenshots`, `devices`: the preferred simulator per platform).
 
@@ -374,6 +376,8 @@ class Report(BaseModel):
     usage: Usage
     ready_for_apple: bool = False    # S60: only when the user approved the app (--apple)
     apple_summary: str = ""          # S60: why the app is (not) ready for Apple
+    ready_to_host: bool = False      # S67b: only when the user said the product may go live (--app)
+    host_summary: str = ""           # S67b: why the product may (not) go live, with the checked commit
 ```
 
 ## Agent loop — `src/forge/agent.py`

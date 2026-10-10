@@ -389,7 +389,7 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: a `Checkpoint` protocol with three points (request, plan, product) and the user's final approval; the pipeline runs the checkpoints it is given; Apple becomes the first checkpoint with its behaviour unchanged. `pipeline.py` is about 400 lines: extract first, so it stays under 500.
     - Tests: a dummy checkpoint is called at the three points in order and can stop a run; two checkpoints run one after the other; the Apple pipeline tests stay green without a change.
     - Verify: `uv run pytest tests/test_release_flow.py tests/test_apple_pipeline.py tests/test_apple_listing.py -q`
-- [ ] **S67b — App checkpoints and "Ready to go live"**
+- [x] **S67b — App checkpoints and "Ready to go live"**
     - Contracts: Plan models (`Report.ready_to_host`)
     - Files: `src/forge/app_flow.py`, `src/forge/pipeline.py` (`Report.ready_to_host`), `src/forge/cli.py` (`--app`), `src/forge/config.py` (`[app] review`), `docs/CONTRACTS.md`, `tests/test_app_pipeline.py`
     - Build: with `--app` the release reviewer checks the request and the plan; the product is reviewed only after a green `app check`, with desktop and mobile screenshots of the web client; a violation stops the run until the agent fixes it or the user overrides it; at the end the user is asked GO_LIVE / SEND_BACK / NOT_YET. Only the user's GO_LIVE sets `Report.ready_to_host`; headless runs and `--yes` never do.
