@@ -167,7 +167,7 @@ async def test_screenshots_must_be_pictures(world: SimpleNamespace) -> None:
     request = asyncio.create_task(ask(world, "/apple/screenshot", platform="ipados", dark="true"))
     job = await waiting
     assert job is not None and job["screenshot"] == {"platform": "ipados", "device": None,
-                                                     "dark": True}  # fmt: skip
+                                                     "dark": True, "fit": None}  # fmt: skip
     fake = JobResult.model_construct(
         ok=True,
         screen=AppleScreen.model_construct(

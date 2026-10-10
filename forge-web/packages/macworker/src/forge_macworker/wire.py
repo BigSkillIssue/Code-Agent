@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 TOKEN_PREFIX = "fmw"
 JobKind = Literal["build", "screenshot", "export"]
 EXPORTS_FROM = (0, 2, 0)  # the first worker version that knows export jobs
+STORE_SHOTS_FROM = (0, 3, 0)  # ... and screenshots fitted to an App Store size
 MAX_SCREEN_BYTES = 12 * 1024 * 1024
 MAX_LOG_CHARS = 100_000
 MAX_ISSUES = 500
@@ -35,12 +36,21 @@ class BuildParams(BaseModel):
     build_number: int | None = Field(default=None, ge=1, le=10**12)
 
 
+class StoreSize(BaseModel):
+    """An exact size the App Store takes for a screenshot, in pixels."""
+
+    width: int = Field(ge=100, le=8000)
+    height: int = Field(ge=100, le=8000)
+
+
 class ScreenshotParams(BaseModel):
-    """Start the app on a device (or the Mac) and take a picture."""
+    """Start the app on a device (or the Mac) and take a picture; with `fit`, made exactly that
+    size for the App Store (scaled, padded, without transparency)."""
 
     platform: ApplePlatform
     device: str | None = Field(default=None, max_length=200)
     dark: bool = False
+    fit: StoreSize | None = None
 
 
 class ExportParams(BaseModel):
@@ -154,7 +164,17 @@ def check_png(data_b64: str) -> None:
 
 def knows_exports(version: str) -> bool:
     """Whether a worker of this version can run export jobs."""
+    return version_of(version) >= EXPORTS_FROM
+
+
+def knows_store_shots(version: str) -> bool:
+    """Whether a worker of this version can fit screenshots to an App Store size."""
+    return version_of(version) >= STORE_SHOTS_FROM
+
+
+def version_of(version: str) -> tuple[int, ...]:
+    """A worker's version as numbers ((0,) when it sent none or nonsense)."""
     try:
-        return tuple(int(part) for part in version.split(".")[:3]) >= EXPORTS_FROM
+        return tuple(int(part) for part in version.split(".")[:3])
     except ValueError:
-        return False
+        return (0,)

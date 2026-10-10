@@ -16,15 +16,17 @@ from pathlib import Path
 
 from forge.config import AppleConfig
 from forge.local.xcode_builder import XcodeBuilder
-from forge.ports import AppleBuilder, AppleBuildError, AppleBuildResult, ApplePlatform
+from forge.ports import AppleBuilder, AppleBuildError, AppleBuildResult, ApplePlatform, AppleScreen
 
 from forge_macworker.export import export_archive
-from forge_macworker.wire import ExportParams, ExportResult, JobOffer, JobResult
+from forge_macworker.store_shots import fit_screenshot
+from forge_macworker.wire import ExportParams, ExportResult, JobOffer, JobResult, StoreSize
 
 JOB, SOURCE, RESULT, ARCHIVE = "job.json", "source.tar.gz", "result.json", "archive.tar.gz"
 BuilderFactory = Callable[[Path, Path], AppleBuilder]  # (project folder, its build data folder)
 # (params, job folder, the archive to sign, where the product goes)
 Exporter = Callable[[ExportParams, Path, Path, Path], Awaitable[ExportResult]]
+Fitter = Callable[[AppleScreen, StoreSize], Awaitable[AppleScreen]]  # a picture to a store size
 
 
 def xcode_builder(root: Path, data: Path) -> AppleBuilder:
@@ -34,7 +36,7 @@ def xcode_builder(root: Path, data: Path) -> AppleBuilder:
 
 async def run_job(
     folder: Path, work: Path, make_builder: BuilderFactory = xcode_builder,
-    exporter: Exporter = export_archive,
+    exporter: Exporter = export_archive, fitter: Fitter = fit_screenshot,
 ) -> JobResult:  # fmt: skip
     """Run the job in `folder` with projects kept under `work`; write and return its result."""
     started = time.monotonic()
@@ -47,7 +49,7 @@ async def run_job(
         else:
             source = await asyncio.to_thread(unpack, folder / SOURCE, project / "src")
             builder = make_builder(source, project / "data")
-            result = await perform(offer, builder, folder)
+            result = await perform(offer, builder, folder, fitter)
     except AppleBuildError as err:
         result = JobResult(ok=False, error=str(err), hint=err.hint)
     except (tarfile.TarError, OSError) as err:
@@ -59,12 +61,16 @@ async def run_job(
     return result
 
 
-async def perform(offer: JobOffer, builder: AppleBuilder, folder: Path) -> JobResult:
+async def perform(
+    offer: JobOffer, builder: AppleBuilder, folder: Path, fitter: Fitter = fit_screenshot
+) -> JobResult:
     """Build or photograph, as the offer says; an archive is packed into the job folder."""
     try:
         if offer.screenshot is not None:
             shot = offer.screenshot
             screen = await builder.screenshot(shot.platform, shot.device, shot.dark)
+            if shot.fit is not None:  # for the App Store: exactly its size
+                screen = await fitter(screen, shot.fit)
             return JobResult(ok=True, screen=screen)
         assert offer.build is not None
         params = offer.build

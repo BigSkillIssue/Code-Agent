@@ -26,6 +26,7 @@ from forge_macworker.wire import (
     ScreenshotParams,
     SigningMaterial,
     knows_exports,
+    knows_store_shots,
 )
 from forge_web.db.engine import Database
 from forge_web.db.models import AppleJob
@@ -109,11 +110,11 @@ class AppleJobs:
         return job_id
 
     async def claim(self, worker_id: str, wait_s: float, version: str = "") -> JobOffer | None:
-        """The oldest waiting job for this worker; waits up to `wait_s` for one to come. Export
-        jobs go only to workers that know them."""
+        """The oldest waiting job for this worker; waits up to `wait_s` for one to come. Jobs a
+        worker's version does not know (exports, store screenshots) go to newer workers only."""
         deadline = time.monotonic() + wait_s
         async with self.queued:
-            while (offer := await self._take(worker_id, knows_exports(version))) is None:
+            while (offer := await self._take(worker_id, version)) is None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None
@@ -121,12 +122,12 @@ class AppleJobs:
                     await asyncio.wait_for(self.queued.wait(), remaining)
             return offer
 
-    async def _take(self, worker_id: str, exports: bool) -> JobOffer | None:
+    async def _take(self, worker_id: str, version: str) -> JobOffer | None:
         async with self.db.session() as session, session.begin():
             rows = await session.scalars(
                 select(AppleJob).where(AppleJob.status == "queued").order_by(AppleJob.created_at)
             )
-            fits = (r for r in rows if r.id in self.waiting and (exports or r.kind != "export"))
+            fits = (r for r in rows if r.id in self.waiting and can_run(r, version))
             row = next(fits, None)
             if row is None:
                 return None
@@ -206,6 +207,15 @@ class AppleJobs:
                 )
             )
         return float(total or 0.0) / 60
+
+
+def can_run(row: AppleJob, version: str) -> bool:
+    """Whether a worker of this version knows this kind of job."""
+    if row.kind == "export":
+        return knows_exports(version)
+    if row.kind == "screenshot" and json.loads(row.params).get("fit"):
+        return knows_store_shots(version)
+    return True
 
 
 def offer_of(row: AppleJob, timeout_s: float) -> JobOffer:

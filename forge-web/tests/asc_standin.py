@@ -26,6 +26,7 @@ from asc_standin_release import (
     testflight_routes,
     upload_routes,
 )
+from asc_standin_store import StoreState, library_routes
 
 KEY_ID, ISSUER_ID, TEAM_ID = "ABC123DEFG", "69a6de7e-1111-47e3-e053-5b8c7c11a4d1", "TEAM123456"
 
@@ -48,6 +49,7 @@ class AscState:
     calls: list[tuple[str, str]] = field(default_factory=list)
     refuse_identifiers: bool = False  # an individual key: no access to identifiers
     release: ReleaseState = field(default_factory=ReleaseState)
+    store: StoreState = field(default_factory=StoreState)
 
 
 def unpad(text: str) -> bytes:
@@ -124,6 +126,7 @@ def standin_app(state: AscState) -> FastAPI:
     provisioning_routes(app, state.release, state, error)
     upload_routes(app, state.release, state, error)
     testflight_routes(app, state.release, error)
+    library_routes(app, state.store, state.release, state, error)
     return app
 
 

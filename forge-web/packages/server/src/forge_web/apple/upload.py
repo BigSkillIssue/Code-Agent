@@ -80,7 +80,7 @@ async def send_file(asc: AscClient, upload_id: str, platform: str, product: Path
     await asc.patch(f"/v1/buildUploadFiles/{made['id']}", done)  # fmt: skip
 
 
-async def send_part(asc: AscClient, operation: dict[str, Any], product: Path) -> None:
+async def send_part(asc: AscClient, operation: dict[str, Any], source: Path | bytes) -> None:
     """One part, to the URL Apple gave (without the API token)."""
     url = str(operation.get("url", ""))
     if not upload_url_allowed(url, asc.base_url):
@@ -88,7 +88,10 @@ async def send_part(asc: AscClient, operation: dict[str, Any], product: Path) ->
             0, f"Apple asked for an upload to an unexpected address ({urlsplit(url).hostname})"
         )
     offset, length = int(operation.get("offset", 0)), int(operation.get("length", 0))
-    data = await asyncio.to_thread(read_range, product, offset, length)
+    if isinstance(source, bytes):
+        data = source[offset : offset + length]
+    else:
+        data = await asyncio.to_thread(read_range, source, offset, length)
     headers = {str(h["name"]): str(h["value"]) for h in operation.get("requestHeaders") or []}
     for attempt in range(PART_TRIES):
         try:

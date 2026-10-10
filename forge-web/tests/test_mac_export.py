@@ -19,6 +19,7 @@ from forge_macworker.export import SIGNING, export_archive
 from forge_macworker.job import ARCHIVE, JOB, SOURCE, run_job
 from forge_macworker.runners import DirectRunner
 from forge_macworker.wire import ExportParams, ExportResult, JobOffer, Profile, SigningMaterial
+from forge_web.apple import worker_api
 from forge_web.apple.jobs import NewJob
 from test_apple_server import mac_header, world  # noqa: F401  (the server's Apple world)
 from test_macworker import Builder
@@ -150,7 +151,9 @@ async def test_a_release_archive_job_asks_for_the_build_number(tmp_path: Path) -
 async def test_an_export_job_from_the_server_to_a_mac_and_back(
     world: Any,  # noqa: F811
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(worker_api, "POLL_WAIT_S", 0.5)  # the old worker need not wait long
     seen: list[SigningMaterial] = []
 
     async def exporter(params: ExportParams, folder: Path, archive: Path, target: Path) -> Any:

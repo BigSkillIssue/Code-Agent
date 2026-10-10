@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Protocol
 
 from forge_macworker.export import export_archive
-from forge_macworker.job import RESULT, BuilderFactory, Exporter, run_job, xcode_builder
+from forge_macworker.job import RESULT, BuilderFactory, Exporter, Fitter, run_job, xcode_builder
+from forge_macworker.store_shots import fit_screenshot
 from forge_macworker.wire import JobResult
 
 log = logging.getLogger(__name__)
@@ -38,11 +39,12 @@ class DirectRunner:
 
     def __init__(
         self, work: Path, make_builder: BuilderFactory = xcode_builder,
-        exporter: Exporter = export_archive,
+        exporter: Exporter = export_archive, fitter: Fitter = fit_screenshot,
     ) -> None:  # fmt: skip
         self.work = work
         self.make_builder = make_builder
         self.exporter = exporter
+        self.fitter = fitter
         self.locks: dict[str, asyncio.Lock] = {}
 
     async def prepare(self, project: str, job_id: str) -> Path:
@@ -54,7 +56,8 @@ class DirectRunner:
     async def run(self, project: str, folder: Path) -> JobResult:
         """Run the job here, one at a time per project."""
         async with self.locks.setdefault(project, asyncio.Lock()):
-            return await run_job(folder, self.work / "projects", self.make_builder, self.exporter)
+            return await run_job(folder, self.work / "projects", self.make_builder, self.exporter,
+                                 self.fitter)  # fmt: skip
 
     async def reap(self) -> None:
         """Nothing to stop."""

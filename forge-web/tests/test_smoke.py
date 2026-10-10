@@ -69,4 +69,4 @@ def test_forge_mac_worker_version_command() -> None:
         [sys.executable, "-m", "forge_macworker", "--version"], capture_output=True, text=True,
         check=True,
     )  # fmt: skip
-    assert out.stdout.strip() == "forge-mac-worker 0.2.0"
+    assert out.stdout.strip() == "forge-mac-worker 0.3.0"

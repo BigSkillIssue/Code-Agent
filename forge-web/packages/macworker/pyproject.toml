@@ -1,6 +1,6 @@
 [project]
 name = "forge-macworker"
-version = "0.2.0"
+version = "0.3.0"
 description = "Forge Web's Mac build worker: runs Apple builds, tests and screenshots for a Forge Web server, each project in its own macOS VM (Tart)."
 requires-python = ">=3.12"
 license = { text = "MIT" }
