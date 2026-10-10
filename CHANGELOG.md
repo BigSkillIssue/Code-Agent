@@ -41,6 +41,15 @@ Phase 7 (S58-S60), Apple apps:
   mode. Violations go back to the planner or the coder; what they cannot fix, you decide. Only an
   app you approve is reported as ready for Apple.
 
+Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
+
+- **App manifest:** `forge.app.toml` describes a product for hosting (services, database,
+  storage, mail, secret names, clients, payments); every problem is reported with its field.
+- **Full-stack template:** `forge app new NAME` creates a product people can keep working on:
+  a FastAPI server on PostgreSQL 16 with accounts (password reset, account deletion, data
+  export), content reports and blocking, rate limits, Alembic migrations, an OpenAPI snapshot,
+  tests, a runbook and CI. CI's `fullstack` job installs it and runs its tests on PostgreSQL.
+
 ## 1.0.0 - 2026-10-05
 
 The first release: everything planned in `docs/STEPS.md` (S01-S48).

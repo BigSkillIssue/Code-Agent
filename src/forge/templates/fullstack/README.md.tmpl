@@ -1,0 +1,64 @@
+# @@title@@
+
+Made with `forge app new`. A product people can keep working on: a Python server (FastAPI,
+SQLAlchemy 2, Alembic, PostgreSQL 16) with accounts, moderation and migrations, its tests, docs
+and CI, and `forge.app.toml`, which tells Forge Web how to host it.
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `server/app/` | the API: `main.py` builds the app; `auth.py`, `account.py`, `moderation.py` are its routes |
+| `server/app/models.py` | the tables; change them together with a migration in `server/migrations/versions/` |
+| `server/openapi.json` | the API description; the clients' types are generated from it |
+| `server/tests/` | the server's tests (they need PostgreSQL, see below) |
+| `docs/runbook.md` | running it: health, logs, backups, incidents |
+| `docs/migrations.md` | changing the database without breaking a running release |
+| `forge.app.toml` | what hosting needs: services, database, storage, mail, secret names |
+
+## Run it locally
+
+You need [uv](https://docs.astral.sh/uv/) and a PostgreSQL 16 database (for example
+`docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=dev postgres:16`).
+
+```bash
+cd server
+uv sync
+export DATABASE_URL=postgresql://postgres:dev@localhost:5432/postgres
+uv run alembic upgrade head
+uv run uvicorn app.main:create_app --factory --reload --port 8000
+```
+
+The API is at http://localhost:8000/api and its interactive description at
+http://localhost:8000/api/docs. Mail is written to the log until a mail relay is configured.
+
+## Tests
+
+The tests use a real PostgreSQL database and **empty it** first, so give them a database of their
+own:
+
+```bash
+cd server
+createdb app_test   # or: psql -c 'create database app_test'
+TEST_DATABASE_URL=postgresql://postgres:dev@localhost:5432/app_test uv run pytest
+```
+
+They check the API against `openapi.json` and the migrations against the models. After changing
+the API, run `uv run python -m app.openapi_snapshot` and commit the new `openapi.json`. After
+changing a model, add a migration: `uv run alembic revision --autogenerate -m "what changed"`,
+read it, and follow `docs/migrations.md`.
+
+## Hosting
+
+Forge Web hosts the product from `forge.app.toml`, not from the Dockerfile (that one is for
+people who want to run the server elsewhere). Hosting
+
+- builds each service with its `build` command in a throwaway container and starts it with its
+  `command`, with the service's `.venv/bin` first on `PATH`;
+- sets `DATABASE_URL`, `PORT`, `APP_URL`, `STORAGE_DIR`, `MAIL_RELAY_URL` and `MAIL_RELAY_TOKEN`,
+  and each secret listed under `secrets` (values are entered in Forge Web, never in this repo);
+- checks `/healthz` before and after every release and rolls back when it fails;
+- serves `/impressum`, `/datenschutz` and the "report content" link itself, with the operator's
+  details entered in Forge Web.
+
+Every release is reviewed and approved by you before it goes live.

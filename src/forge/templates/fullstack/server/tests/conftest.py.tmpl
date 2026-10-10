@@ -1,0 +1,117 @@
+"""The tests run against a real PostgreSQL database named by TEST_DATABASE_URL. Its schema is
+dropped and rebuilt by the migrations, so never point it at a database you need."""
+
+import os
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.orm import Session
+
+from app.db import Base
+from app.mail import LogMailer
+from app.main import create_app
+from app.models import User
+from app.settings import Settings, database_url
+
+SERVER = Path(__file__).resolve().parent.parent
+PASSWORD = "correct horse battery"
+
+
+def alembic_config(url: str) -> Config:
+    """Alembic's configuration for the test database."""
+    config = Config(str(SERVER / "alembic.ini"))
+    config.set_main_option("script_location", str(SERVER / "migrations"))
+    config.attributes["url"] = url
+    return config
+
+
+@pytest.fixture(scope="session")
+def db_url() -> str:
+    """The test database, emptied and migrated to the newest schema once per run."""
+    raw = os.environ.get("TEST_DATABASE_URL", "")
+    if not raw:
+        pytest.exit("TEST_DATABASE_URL is not set: see README.md, 'Tests'", returncode=2)
+    url = database_url(raw)
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+    engine.dispose()
+    command.upgrade(alembic_config(url), "head")
+    return url
+
+
+@pytest.fixture
+def mailer() -> LogMailer:
+    """Mail the app sends during a test."""
+    return LogMailer()
+
+
+@pytest.fixture
+def app(db_url: str, mailer: LogMailer, tmp_path: Path) -> Iterator[FastAPI]:
+    """A fresh app on empty tables."""
+    engine = create_engine(db_url)
+    names = ", ".join(table.name for table in Base.metadata.sorted_tables)
+    with engine.begin() as connection:
+        connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+    engine.dispose()
+    settings = Settings(database_url=db_url, storage_dir=tmp_path / "data", app_url="https://app.test")
+    application = create_app(settings, mailer=mailer)
+    yield application
+    application.state.engine.dispose()
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    """A browser talking to the app over HTTPS (the session cookie is HTTPS-only)."""
+    with TestClient(app, base_url="https://testserver") as browser:
+        yield browser
+
+
+@pytest.fixture
+def new_client(app: FastAPI) -> Iterator[Callable[[], TestClient]]:
+    """More browsers, for tests with several people."""
+    browsers: list[TestClient] = []
+
+    def make() -> TestClient:
+        browser = TestClient(app, base_url="https://testserver")
+        browsers.append(browser)
+        return browser
+
+    yield make
+    for browser in browsers:
+        browser.close()
+
+
+@pytest.fixture
+def sign_up() -> Callable[..., dict[str, Any]]:
+    """Make an account in a browser and return the user."""
+
+    def make(browser: TestClient, email: str = "ada@example.com") -> dict[str, Any]:
+        body = {"email": email, "password": PASSWORD, "display_name": email.split("@")[0]}
+        response = browser.post("/api/auth/signup", json=body)
+        assert response.status_code == 201, response.text
+        user: dict[str, Any] = response.json()
+        return user
+
+    return make
+
+
+@pytest.fixture
+def make_moderator(app: FastAPI) -> Callable[[str], None]:
+    """Let a user moderate."""
+
+    def make(email: str) -> None:
+        with Session(app.state.engine) as db:
+            user = db.scalars(select(User).where(User.email == email)).one()
+            user.is_moderator = True
+            db.commit()
+
+    return make

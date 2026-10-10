@@ -1,0 +1,58 @@
+"""Health, the API description, migrations, storage and rate limits."""
+
+from pathlib import Path
+
+import pytest
+from alembic import command
+from fastapi.testclient import TestClient
+
+from app.openapi_snapshot import SNAPSHOT, current, render
+from app.ratelimit import RateLimiter
+from app.storage import LocalStorage
+from conftest import alembic_config
+
+
+def test_healthz_answers_while_the_database_does(client: TestClient) -> None:
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_the_api_matches_openapi_json() -> None:
+    assert SNAPSHOT.read_text(encoding="utf-8") == render(current()), (
+        "The API changed. Run `uv run python -m app.openapi_snapshot`, check the difference "
+        "in openapi.json and commit it (the web client's types come from it)."
+    )
+
+
+def test_the_migrations_match_the_models(db_url: str) -> None:
+    command.check(alembic_config(db_url))  # fails when a model change has no migration
+
+
+def test_the_migrations_go_down_and_up_again(db_url: str) -> None:
+    config = alembic_config(db_url)
+    command.downgrade(config, "base")
+    command.upgrade(config, "head")
+
+
+def test_storage_keeps_files_inside_its_folder(tmp_path: Path) -> None:
+    storage = LocalStorage(tmp_path)
+    storage.save("users/1/avatar.png", b"png")
+    assert storage.load("users/1/avatar.png") == b"png"
+    storage.delete("users/1/avatar.png")
+    storage.delete("users/1/avatar.png")
+    with pytest.raises(FileNotFoundError):
+        storage.load("users/1/avatar.png")
+    for key in ("../escape", "/etc/passwd", "a/../../b", ""):
+        with pytest.raises(ValueError):
+            storage.save(key, b"x")
+
+
+def test_rate_limits_count_per_client_kind_and_minute() -> None:
+    limiter = RateLimiter(per_minute=3, auth_per_minute=1)
+    assert limiter.allow("1.2.3.4", "/api/auth/login", now=0)
+    assert not limiter.allow("1.2.3.4", "/api/auth/login", now=1)
+    assert limiter.allow("5.6.7.8", "/api/auth/login", now=1)  # another client
+    assert all(limiter.allow("1.2.3.4", "/api/reports", now=2) for _ in range(3))
+    assert not limiter.allow("1.2.3.4", "/api/reports", now=3)
+    assert limiter.allow("1.2.3.4", "/api/auth/login", now=61)  # the next minute

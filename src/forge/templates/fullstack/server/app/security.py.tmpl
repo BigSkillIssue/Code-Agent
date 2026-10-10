@@ -1,0 +1,32 @@
+"""Passwords and tokens."""
+
+import hashlib
+import secrets
+
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
+
+_hasher = PasswordHasher()
+
+
+def hash_password(password: str) -> str:
+    """An Argon2id hash of the password."""
+    return _hasher.hash(password)
+
+
+def verify_password(password_hash: str, password: str) -> bool:
+    """Whether the password matches the hash."""
+    try:
+        return _hasher.verify(password_hash, password)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def new_token() -> str:
+    """A random token for a cookie or a link."""
+    return secrets.token_urlsafe(32)
+
+
+def token_hash(token: str) -> str:
+    """What the database keeps of a token: a leaked table gives no usable token."""
+    return hashlib.sha256(token.encode()).hexdigest()

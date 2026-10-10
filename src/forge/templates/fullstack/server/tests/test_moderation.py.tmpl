@@ -1,0 +1,85 @@
+"""Reports (notice and action under the Digital Services Act) and blocking."""
+
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app import moderation
+from app.mail import LogMailer
+
+SignUp = Callable[..., dict[str, Any]]
+REPORT = {"content_type": "post", "content_id": "17", "reason": "harassment", "details": "rude"}
+
+
+@pytest.fixture
+def removed() -> Iterator[list[str]]:
+    """Posts a moderator removed (through a registered remover)."""
+    posts: list[str] = []
+
+    def remove_post(db: Session, content_id: str) -> None:
+        posts.append(content_id)
+
+    moderation.REMOVERS["post"] = remove_post
+    yield posts
+    del moderation.REMOVERS["post"]
+
+
+def test_anyone_can_report(client: TestClient) -> None:
+    body = REPORT | {"contact_email": "visitor@example.com"}
+    response = client.post("/api/reports", json=body)
+    assert response.status_code == 201
+    assert response.json()["status"] == "open"
+
+
+def test_only_moderators_see_reports(client: TestClient, sign_up: SignUp) -> None:
+    assert client.get("/api/moderation/reports").status_code == 401
+    sign_up(client)
+    assert client.get("/api/moderation/reports").status_code == 403
+
+
+def test_a_decision_tells_the_reporter_why(
+    client: TestClient,
+    new_client: Callable[[], TestClient],
+    sign_up: SignUp,
+    make_moderator: Callable[[str], None],
+    mailer: LogMailer,
+    removed: list[str],
+) -> None:
+    reporter = new_client()
+    sign_up(reporter, "grace@example.com")
+    report = reporter.post("/api/reports", json=REPORT).json()
+    sign_up(client)
+    make_moderator("ada@example.com")
+    assert [r["id"] for r in client.get("/api/moderation/reports").json()] == [report["id"]]
+    decision = {"action": "remove", "statement": "Insults break rule 2 of our terms."}
+    response = client.post(f"/api/moderation/reports/{report['id']}/decision", json=decision)
+    assert response.status_code == 200
+    assert response.json()["status"] == "removed"
+    assert removed == ["17"]
+    assert mailer.sent[-1].to == "grace@example.com"
+    assert "rule 2" in mailer.sent[-1].text
+    assert client.get("/api/moderation/reports").json() == []
+
+
+def test_a_decision_needs_reasons(
+    client: TestClient, sign_up: SignUp, make_moderator: Callable[[str], None]
+) -> None:
+    report = client.post("/api/reports", json=REPORT).json()
+    sign_up(client)
+    make_moderator("ada@example.com")
+    empty = {"action": "dismiss", "statement": ""}
+    assert client.post(f"/api/moderation/reports/{report['id']}/decision", json=empty).status_code == 422
+
+
+def test_blocking(client: TestClient, new_client: Callable[[], TestClient], sign_up: SignUp) -> None:
+    other = sign_up(new_client(), "grace@example.com")
+    me = sign_up(client)
+    assert client.post(f"/api/blocks/{other['id']}").status_code == 204
+    assert client.post(f"/api/blocks/{other['id']}").status_code == 204  # twice is fine
+    assert client.get("/api/blocks").json() == [other["id"]]
+    assert client.post(f"/api/blocks/{me['id']}").status_code == 404
+    assert client.delete(f"/api/blocks/{other['id']}").status_code == 204
+    assert client.get("/api/blocks").json() == []

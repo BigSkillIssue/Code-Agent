@@ -1,0 +1,54 @@
+# Runbook: @@title@@
+
+What to do while the product runs. Hosting (Forge Web) does the routine work; this page says what
+it does and what is left for you.
+
+## Is it up?
+
+- `GET /healthz` answers `{"status": "ok"}` while the server runs and the database answers.
+  Hosting checks it before and after every release and rolls a release back when it fails.
+- The go-live page in Forge Web shows each release, its checks and its health.
+
+## Logs
+
+The server logs to standard output; Forge Web shows the logs per service. Mail sent without a
+relay (local runs) appears in the log, too. Never log passwords, tokens or full request bodies.
+
+## Backups and restore
+
+- Hosting dumps the database (`pg_dump`) before every migration and every night, encrypted and
+  off the host.
+- To restore, pick a backup in Forge Web. Locally: `pg_restore --clean --dbname "$DATABASE_URL"
+  backup.dump`, then `uv run alembic upgrade head` if the backup is older than the code.
+
+## Releases and rollbacks
+
+- A release is a commit that passed `forge app check`, the release review and your approval.
+- Migrations run once, before the new release takes traffic. Write them so the previous release
+  still works on the new schema (`docs/migrations.md`); then a rollback needs no down-migration.
+
+## Secrets
+
+Secrets (names in `forge.app.toml`, values in Forge Web) reach the server as environment
+variables. To rotate one, set the new value in Forge Web and release again; the old value stops
+working when the release switches.
+
+## Abuse and content reports
+
+- Notices arrive in `/api/moderation/reports` (moderators only). Decide every one: remove the
+  content or dismiss the notice, always with a statement of reasons; the reporter gets it by mail.
+- Make someone a moderator in the database: `UPDATE users SET is_moderator = true WHERE email =
+  '…';`
+- Illegal content must be handled quickly; keep the decisions (the `reports` table does).
+
+## Requests from users
+
+- **Export:** users download their data themselves (`GET /api/account/export`).
+- **Deletion:** users delete their account themselves (`DELETE /api/account`); their rows go with
+  it, their reports stay without their name.
+- If someone asks by mail instead, do the same for them and answer within one month (GDPR).
+
+## Too many requests
+
+Each client address may make 300 API requests and 10 sign-in, sign-up or reset requests per
+minute (`server/app/settings.py`); more get `429` with `Retry-After`.

@@ -1,0 +1,13 @@
+# For people who run the server outside Forge Web. Forge Web's hosting does not use this file:
+# it builds and starts the server from forge.app.toml.
+FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
+WORKDIR /srv/server
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
+COPY . .
+RUN useradd --system app && mkdir -p data && chown app data
+USER app
+ENV PATH="/srv/server/.venv/bin:$PATH" PORT=8000
+EXPOSE 8000
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT"]

@@ -1,0 +1,86 @@
+"""Sign-up, sign-in, sign-out and password reset."""
+
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+from fastapi.testclient import TestClient
+
+from app.mail import LogMailer
+from conftest import PASSWORD
+
+SignUp = Callable[..., dict[str, Any]]
+
+
+def test_sign_up_signs_in(client: TestClient, sign_up: SignUp) -> None:
+    user = sign_up(client, "Ada@Example.com")
+    assert user["email"] == "ada@example.com"
+    assert client.get("/api/auth/me").json()["id"] == user["id"]
+
+
+def test_the_session_cookie_is_secure_and_host_only(client: TestClient) -> None:
+    body = {"email": "ada@example.com", "password": PASSWORD}
+    cookie = client.post("/api/auth/signup", json=body).headers["set-cookie"]
+    assert cookie.startswith("__Host-session=")
+    for part in ("Secure", "HttpOnly", "Path=/", "SameSite=lax"):
+        assert part in cookie
+    assert "Domain" not in cookie
+
+
+def test_one_account_per_email(client: TestClient, sign_up: SignUp) -> None:
+    sign_up(client)
+    again = client.post("/api/auth/signup", json={"email": "ADA@example.com", "password": PASSWORD})
+    assert again.status_code == 409
+
+
+def test_short_passwords_are_refused(client: TestClient) -> None:
+    body = {"email": "ada@example.com", "password": "short"}
+    assert client.post("/api/auth/signup", json=body).status_code == 422
+
+
+def test_sign_out_and_in(client: TestClient, sign_up: SignUp) -> None:
+    sign_up(client)
+    assert client.post("/api/auth/logout").status_code == 204
+    assert client.get("/api/auth/me").status_code == 401
+    wrong = {"email": "ada@example.com", "password": "not the password"}
+    assert client.post("/api/auth/login", json=wrong).status_code == 401
+    right = {"email": "ada@example.com", "password": PASSWORD}
+    assert client.post("/api/auth/login", json=right).status_code == 200
+    assert client.get("/api/auth/me").status_code == 200
+
+
+def reset_token(mailer: LogMailer) -> str:
+    """The token in the newest reset mail."""
+    link = next(line for line in mailer.sent[-1].text.splitlines() if "token=" in line)
+    assert link.startswith("https://app.test/reset-password?")
+    return parse_qs(urlparse(link).query)["token"][0]
+
+
+def test_password_reset(client: TestClient, sign_up: SignUp, mailer: LogMailer) -> None:
+    sign_up(client)
+    assert client.post("/api/auth/password-reset", json={"email": "ada@example.com"}).status_code == 202
+    assert mailer.sent[-1].to == "ada@example.com"
+    token = reset_token(mailer)
+    new = {"token": token, "password": "a brand new password"}
+    assert client.post("/api/auth/password-reset/confirm", json=new).status_code == 204
+    assert client.get("/api/auth/me").status_code == 401  # every session ended
+    login = {"email": "ada@example.com", "password": "a brand new password"}
+    assert client.post("/api/auth/login", json=login).status_code == 200
+    assert client.post("/api/auth/password-reset/confirm", json=new).status_code == 400  # used
+
+
+def test_a_reset_does_not_tell_whether_an_account_exists(
+    client: TestClient, mailer: LogMailer
+) -> None:
+    body = {"email": "nobody@example.com"}
+    assert client.post("/api/auth/password-reset", json=body).status_code == 202
+    assert mailer.sent == []
+
+
+def test_sign_in_is_rate_limited(client: TestClient) -> None:
+    wrong = {"email": "ada@example.com", "password": "guessing"}
+    codes = [client.post("/api/auth/login", json=wrong) for _ in range(25)]
+    limited = [response for response in codes if response.status_code == 429]
+    assert limited, "25 sign-ins in a row were never limited"
+    assert limited[0].headers["retry-after"].isdigit()
+    assert client.get("/healthz").status_code == 200  # health checks are never limited

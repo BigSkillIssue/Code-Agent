@@ -1,0 +1,43 @@
+"""Settings from the environment. Hosting sets DATABASE_URL, PORT and the mail relay's address
+and token; see forge.app.toml and README.md."""
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Everything the server reads from its environment."""
+
+    database_url: str
+    app_name: str = "@@title@@"
+    app_url: str = "http://localhost:5173"  # where the web client runs (links in mails)
+    mail_relay_url: str = ""
+    mail_relay_token: str = ""
+    storage_dir: Path = Path("data")
+    session_days: int = 30
+    requests_per_minute: int = 300  # per client address
+    auth_requests_per_minute: int = 10  # sign-in, sign-up and password reset
+
+
+def database_url(raw: str) -> str:
+    """The URL with SQLAlchemy's psycopg driver, whatever form hosting gives it in."""
+    for prefix in ("postgres://", "postgresql://"):
+        if raw.startswith(prefix):
+            return "postgresql+psycopg://" + raw.removeprefix(prefix)
+    return raw
+
+
+def load_settings() -> Settings:
+    """Settings from the environment; DATABASE_URL is required."""
+    raw = os.environ.get("DATABASE_URL", "")
+    if not raw:
+        raise RuntimeError("DATABASE_URL is not set (see README.md, 'Run it locally')")
+    return Settings(
+        database_url=database_url(raw),
+        app_url=os.environ.get("APP_URL", Settings.app_url),
+        mail_relay_url=os.environ.get("MAIL_RELAY_URL", ""),
+        mail_relay_token=os.environ.get("MAIL_RELAY_TOKEN", ""),
+        storage_dir=Path(os.environ.get("STORAGE_DIR", "data")),
+    )
