@@ -109,6 +109,7 @@ def apple_run(
     builder: Builder | None = None,
     review_on: bool = True,
     headless: bool = False,
+    listing: list[FakeTurn] | None = None,
 ) -> tuple[Ctx, FakeProvider]:
     (root / "project.yml").write_text(PROJECT)
     counter = {"path": "Shared/Counter.swift", "content": "struct C {}\n"}
@@ -124,7 +125,9 @@ def apple_run(
         "apple_reviewer": apple,
     }
     replies = [[Answer(question_index=0, values=[a]) for a in batch] for batch in answers or []]
-    cfg = ForgeConfig(apple=AppleConfig(review=review_on))
+    if listing is not None:
+        roles["apple_writer"] = listing
+    cfg = ForgeConfig(apple=AppleConfig(review=review_on, listing=listing is not None))
     ctx = make_ctx(root, cfg=cfg, renderer=ScriptedRenderer(answers=replies), headless=headless)
     fake = install_fake(cfg, FakeProvider(roles=roles))
     ctx.state.apple = builder if builder is not None else Builder()

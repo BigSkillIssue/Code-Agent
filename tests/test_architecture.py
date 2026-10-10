@@ -15,6 +15,7 @@ CORE = [
     "tools.py",
     "apple_review.py",
     "apple_flow.py",
+    "apple_listing.py",
 ]
 FORBIDDEN_IN_CORE = ("textual", "rich", "sqlite3", "sqlalchemy", "subprocess", "forge.local")
 
@@ -29,6 +30,13 @@ UPWARD = {
     # The Apple checks sit between the agent loop and the pipeline that runs them (S59, S60).
     "apple_review.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
     "apple_flow.py": ("forge.pipeline", "forge.cli", "forge.tui", "forge.api"),
+    "apple_listing.py": (
+        "forge.apple_flow",
+        "forge.pipeline",
+        "forge.cli",
+        "forge.tui",
+        "forge.api",
+    ),
 }
 
 

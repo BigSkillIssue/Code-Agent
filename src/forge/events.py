@@ -140,10 +140,11 @@ class GuidelineFinding(BaseModel):
 
 
 class GuidelineReview(Event):
-    """The Apple reviewer's verdict on the request, the plan or the finished app (S59)."""
+    """The Apple reviewer's verdict on the request, the plan or the finished app (S59), or on
+    its App Store listing (S61)."""
 
     kind: Literal["guideline_review"] = "guideline_review"
-    stage: Literal["prompt", "plan", "product"]
+    stage: Literal["prompt", "plan", "product", "listing"]
     verdict: GuidelineStatus  # the worst finding; "concern" when the review failed
     summary: str
     findings: list[GuidelineFinding] = []

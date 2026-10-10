@@ -335,5 +335,10 @@ Forge builds native Apple apps (Swift, SwiftUI) for iPhone, iPad, Mac and Apple 
     - Files: `pipeline.py`, `apple_flow.py`, `apple_review.py`, `cli.py` (`--apple`), `config.py` (`apple.review`), `tests/test_apple_pipeline.py`
     - Build: with `--apple` (or `[apple] review = true`) the prompt is reviewed before planning, the plan after planning and the product after a green build with screenshots of every device; a violation stops the run until the agent revises it or the user overrides it; at the end the user approves the result before it counts as ready for Apple.
     - Verify: `uv run pytest tests/test_apple_pipeline.py -q`
+- [x] **S61 — The App Store listing**
+    - Files: `apple_listing.py`, `apple_flow.py`, `apple_review.py`, `events.py`, `agent.py`, `tools.py`, `config.py` (`apple.listing`, role `apple_writer`), `config_docs.py`, `prompts.py`, `docs/CONTRACTS.md`, `docs/config.md`, `tests/test_apple_listing.py`
+    - Contracts: `GuidelineReview.stage` gains `"listing"`.
+    - Build: after the user approves the app, a read-only writer (`apple_writer`) drafts the App Store listing within Apple's limits (name, subtitle, description, keywords in bytes, promotional text, copyright, category, age rating and privacy answers, notes for the user; never URLs), the Apple reviewer checks it (stage `listing`), a rejected draft is written once more with the fixes, and it is saved in `.forge/out/apple/listing.json`.
+    - Verify: `uv run pytest tests/test_apple_listing.py -q`
 
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.

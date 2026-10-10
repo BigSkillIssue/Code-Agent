@@ -42,6 +42,7 @@ explore = ["openai/gpt-5-mini"]
 researcher = ["anthropic/claude-sonnet", "openai/gpt-5-mini"]
 browser = ["anthropic/claude-sonnet", "openai/gpt-5"]
 apple_reviewer = ["openai/gpt-5", "anthropic/claude-sonnet"]
+apple_writer = ["anthropic/claude-sonnet", "openai/gpt-5"]
 ```
 
 ## [sandbox]
@@ -123,6 +124,7 @@ Needs a Mac with Xcode (`xcodebuild`) and XcodeGen (`brew install xcodegen`).
 | `timeout_s` | float | `1800` | Seconds one build, test run or archive may take. |
 | `max_screenshots` | int | `40` | Simulator and Mac screenshots per session. |
 | `review` | bool | `false` | Check the request, the plan and the built app against Apple's guidelines and ask you to approve the app (`--apple`). |
+| `listing` | bool | `true` | After you approve the app, draft its App Store texts (`.forge/out/apple/listing.json`) and have them reviewed. |
 | `devices` | table of str | - | Simulator per platform (`ios`, `ipados`, `watchos`); the newest of the same family when it is missing. |
 
 ## [providers.<name>]
