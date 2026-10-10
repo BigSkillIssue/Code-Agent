@@ -1,8 +1,9 @@
 """AppleBuilder on this Mac: XcodeGen, xcodebuild and simctl (docs/CONTRACTS.md, Ports).
 
-Builds go to a folder of their own outside the project (DerivedData, archives), and nothing is
-signed here: simulators need no signature, and archives are signed later, where the signing
-keys are.
+Builds go to a folder of their own outside the project (DerivedData, archives), and no signing
+key is used here: simulators need no signature, and archives are signed for the App Store later,
+where the signing keys are. A release archive is signed ad hoc so that its entitlements survive
+until then.
 """
 
 import asyncio
@@ -52,6 +53,10 @@ PLAIN_ISSUE = re.compile(r"^(?:xcodebuild: )?(?P<sev>error|warning): (?P<msg>.+)
 TESTS = re.compile(r"Executed (\d+) tests?, with (\d+) failures?")
 LOG_TAIL_LINES = 60
 BOOT_TIMEOUT_S = 600  # a cold simulator on a busy Mac
+# Signed without a key ("-"): the entitlements are kept in the signature, which the export for
+# the App Store replaces with the real one. Nothing here needs a team or a profile.
+AD_HOC = ("CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "CODE_SIGNING_REQUIRED=NO",
+          "DEVELOPMENT_TEAM=", "PROVISIONING_PROFILE_SPECIFIER=")  # fmt: skip
 
 
 class XcodeBuilder:
@@ -92,6 +97,21 @@ class XcodeBuilder:
             argv += [destination, "-derivedDataPath", str(self.derived), action]
         code, out = await self.run([*argv, "CODE_SIGNING_ALLOWED=NO"], self.cfg.timeout_s)
         return parse_build(out, code == 0, platform, action, scheme, artifact if code == 0 else "")
+
+    async def release_archive(
+        self, platform: ApplePlatform, build_number: int, scheme: str | None = None
+    ) -> AppleBuildResult:
+        """An archive for the App Store: signed ad hoc and with this build number (every target,
+        so the Watch app's matches the iPhone app's)."""
+        project = await self.project()
+        scheme = scheme or await self.scheme(project, platform)
+        archive = self.data / "archives" / f"{scheme}-{platform}-{build_number}.xcarchive"
+        argv = ["xcodebuild", *project, "-scheme", scheme, "-destination", ARCHIVE[platform],
+                "-derivedDataPath", str(self.derived), "archive", "-archivePath", str(archive),
+                *AD_HOC, f"CURRENT_PROJECT_VERSION={build_number}"]  # fmt: skip
+        code, out = await self.run(argv, self.cfg.timeout_s)
+        artifact = str(archive) if code == 0 else ""
+        return parse_build(out, code == 0, platform, "archive", scheme, artifact)
 
     async def screenshot(
         self, platform: ApplePlatform, device: str | None = None, dark: bool = False
