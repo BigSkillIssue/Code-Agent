@@ -31,8 +31,9 @@ HookEventName = Literal[
     "subagent_stop",
 ]
 
-# Keys an untrusted project may not set: they can run code or send data elsewhere.
-TRUST_GATED_KEYS = ("providers", "mcp_servers", "hooks")
+# Keys an untrusted project may not set: they can run code or send data elsewhere, or (release)
+# change what the release reviewer checks.
+TRUST_GATED_KEYS = ("providers", "mcp_servers", "hooks", "release")
 ENV_PREFIX = "FORGE_"
 # Not config keys: where Forge keeps user files, and which shell executables to use.
 RESERVED_ENV = frozenset({"FORGE_HOME", "FORGE_BASH", "FORGE_POWERSHELL"})
@@ -50,6 +51,8 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     # Another model family than the coder's first, so the check does not share its blind spots.
     "apple_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
     "apple_writer": ["anthropic/claude-sonnet", "openai/gpt-5"],  # the App Store texts (S61)
+    # Checks a product before it is hosted (S66); like the Apple reviewer, another model family.
+    "release_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
 }
 
 
@@ -162,6 +165,14 @@ class AppleConfig(_Strict):
     )
 
 
+class ReleaseConfig(_Strict):
+    """The release review of full-stack products before they are hosted (S66)."""
+
+    # The admin's own rules, one Markdown file per rulebook (its name is the file's name); they
+    # add to the built-in rulebooks and never relax them. Relative paths start at ~/.forge.
+    rulebook_files: list[str] = []
+
+
 class McpServerConfig(_Strict):
     """An MCP server: a local command (stdio) or a URL (HTTP)."""
 
@@ -192,6 +203,7 @@ class ForgeConfig(_Strict):
     web: WebConfig = Field(default_factory=WebConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     apple: AppleConfig = Field(default_factory=AppleConfig)
+    release: ReleaseConfig = Field(default_factory=ReleaseConfig)
     mcp_servers: dict[str, McpServerConfig] = {}
     hooks: dict[HookEventName, list[HookConfig]] = {}
     profiles: dict[str, dict[str, Any]] = {}

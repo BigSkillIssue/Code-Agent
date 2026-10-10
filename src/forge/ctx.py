@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from forge.config import ForgeConfig
-from forge.events import GuidelineReview
+from forge.events import GuidelineReview, ReleaseReview
 from forge.hooks import Hooks
 from forge.monitors import Monitors
 from forge.plan import Plan
@@ -115,6 +115,7 @@ class SessionState:
     apple_screens: list[AppleScreen] = field(default_factory=list)  # latest per device, for review
     apple_shots: int = 0  # apple_screenshot calls so far
     apple_reviews: list[GuidelineReview] = field(default_factory=list)  # every Apple review
+    release_reviews: list[ReleaseReview] = field(default_factory=list)  # every release review
 
 
 @dataclass

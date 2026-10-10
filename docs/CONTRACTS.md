@@ -89,6 +89,25 @@ class GuidelineReview(Event):
     error: str = ""                  # no review could be made; never counts as a pass
 ```
 
+```python
+# events.py — the release reviewer (S66): a full-stack product before it is hosted
+RELEASE_AREAS = ("hosting", "privacy", "german_law", "content", "security", "resources")  # release_review.py
+class ReleaseFinding(BaseModel):
+    area: str                        # a RELEASE_AREAS rulebook, or the name of an operator's rulebook
+    status: GuidelineStatus
+    rule: str = ""                   # e.g. "DSA Art. 16", "DDG § 5"
+    reason: str
+    fix: str = ""
+class ReleaseReview(Event):
+    kind: Literal["release_review"] = "release_review"
+    stage: Literal["prompt", "plan", "product"]
+    verdict: GuidelineStatus         # the worst finding; "concern" when the review failed
+    summary: str
+    findings: list[ReleaseFinding] = []     # every area at least once (missing ones: concern)
+    areas: list[str] = []            # the built-in rulebooks and the operator's ([release] rulebook_files)
+    error: str = ""                  # no review could be made; never counts as a pass
+```
+
 Rule: every event serializes to one JSON line (`model_dump_json()`); headless mode (S40) prints exactly these lines.
 
 ## Provider interface — `src/forge/providers/base.py`

@@ -115,6 +115,7 @@ OUTPUT_CAP_FAIL = 10_000  # head+tail chars on failure
 
 READ_ONLY_ROLES = frozenset(
     {"reviewer", "explore", "researcher", "planner", "apple_reviewer", "apple_writer"}
+    | {"release_reviewer"}
 )
 LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research"})
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})

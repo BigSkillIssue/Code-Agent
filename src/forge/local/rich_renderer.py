@@ -15,6 +15,7 @@ from forge.events import (
     ModelDelta,
     ModelDone,
     PlanUpdated,
+    ReleaseReview,
     SessionDone,
     StepDone,
     TodosUpdated,
@@ -121,6 +122,8 @@ def describe(event: Event) -> Text:
         return Text(f"{'done' if event.ok else 'stopped'}: {event.report}", style="bold")
     if isinstance(event, GuidelineReview):
         return Text(review_lines(event), style=REVIEW_STYLES[event.verdict])
+    if isinstance(event, ReleaseReview):
+        return Text(release_lines(event), style=REVIEW_STYLES[event.verdict])
     return Text(str(event.model_dump(exclude={"session_id", "ts"})), style="dim")
 
 
@@ -135,6 +138,24 @@ def review_lines(review: GuidelineReview) -> str:
         fix = f" -> {finding.fix}" if finding.fix else ""
         mark = REVIEW_MARKS[finding.status]
         lines.append(f"  {mark} {finding.area}{rule}: {finding.reason}{fix}")
+    passed = sum(f.status == "ok" for f in review.findings)
+    if passed:
+        lines.append(f"  {REVIEW_MARKS['ok']} {passed} areas ok")
+    return "\n".join(lines)
+
+
+def release_lines(review: ReleaseReview) -> str:
+    """A release review: its verdict and summary, then each finding that is not ok."""
+    head = f"Release review of the {review.stage}: {review.verdict}"
+    lines = [head + (" (the review failed)" if review.error else ""), f"  {review.summary}"]
+    for finding in review.findings:
+        if finding.status == "ok":
+            continue
+        rule = f" {finding.rule}" if finding.rule else ""
+        fix = f" -> {finding.fix}" if finding.fix else ""
+        lines.append(
+            f"  {REVIEW_MARKS[finding.status]} {finding.area}{rule}: {finding.reason}{fix}"
+        )
     passed = sum(f.status == "ok" for f in review.findings)
     if passed:
         lines.append(f"  {REVIEW_MARKS['ok']} {passed} areas ok")
