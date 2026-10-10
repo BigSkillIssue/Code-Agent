@@ -13,6 +13,7 @@ from forge_web.admin_api import load_saved_settings
 from forge_web.apple.jobs import AppleJobs
 from forge_web.apple.release import Releases
 from forge_web.apple.sandbox_api import apple_routes
+from forge_web.apple.submission import Submissions
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
 from forge_web.chats.runs import RunManager
@@ -124,14 +125,17 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     )  # fmt: skip
     holder["runs"] = runs
     releases = Releases(db, vault, settings, apple, runs.call)
+    submissions = Submissions(releases)
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
+        submissions=submissions,
     )  # fmt: skip
     await after_start(services, docker)
-    await releases.start()  # releases a restart interrupted go on
+    await releases.start()  # releases and submissions a restart interrupted go on
+    await submissions.start()
     return services
 
 
@@ -219,6 +223,7 @@ async def stop_services(services: Services) -> None:
     """Close everything in reverse order (containers keep running)."""
     for task in services.tasks:
         task.cancel()
+    await services.submissions.close()
     await services.releases.close()
     await services.runs.close()
     await services.egress.close()

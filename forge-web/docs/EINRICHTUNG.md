@@ -471,15 +471,43 @@ Leute arbeiten, immer mit VMs.
 
 Bauen, Testen und Bildschirmfotos gehen ohne Konto. Für **TestFlight und den App Store** brauchst
 du eine Mitgliedschaft im **Apple Developer Program** (99 $ im Jahr, <https://developer.apple.com/programs/>)
-und einen **App-Store-Connect-API-Schlüssel**:
+und einen **App-Store-Connect-Teamschlüssel**:
 
 1. <https://appstoreconnect.apple.com> → **Benutzer und Zugriff → Integrationen → App Store Connect
-   API → Teamschlüssel** → **Schlüssel generieren**, Zugriff **App-Manager**.
+   API → Teamschlüssel** → **Schlüssel generieren**, Zugriff **Admin** (Forge legt Zertifikate und
+   Profile an; mit „App-Manager“ lehnt Apple das ab).
 2. Die Datei `AuthKey_….p8` herunterladen (das geht **nur einmal**) und sicher aufbewahren; die
-   **Schlüssel-ID** und die **Aussteller-ID** (Issuer ID) stehen auf derselben Seite.
+   **Schlüssel-ID**, die **Aussteller-ID** (Issuer ID) und deine **Team-ID** (developer.apple.com →
+   Konto → Mitgliedschaft) brauchst du gleich.
+3. In Forge Web: **Einstellungen → App Store Connect** → die IDs eintragen, die `.p8`-Datei wählen,
+   **Speichern**. Forge prüft den Schlüssel sofort.
 
-Diesen Schlüssel trägst du später in Forge ein; er wird verschlüsselt gespeichert und kommt nie in
-eine VM oder die Sandbox eines Projekts. Eingereicht wird bei Apple **nur, wenn du selbst klickst**.
+Der Schlüssel wird verschlüsselt gespeichert und kommt nie in eine VM oder die Sandbox eines
+Projekts; nur der Server signiert damit.
+
+**Einmal von Hand in App Store Connect** (das kann Apples API nicht):
+
+- **Vereinbarungen** annehmen (Geschäft → Vereinbarungen), sonst lehnt Apple jeden Upload ab.
+- **EU-Händlerstatus** (Digital Services Act) angeben (Geschäft → Händlerstatus), sonst erscheint die
+  App in der EU nicht.
+- Den **App-Eintrag** anlegen: Apps → **+ → Neue App**, Plattformen iOS und macOS, Name, Sprache,
+  SKU (frei wählbar) und die **Bundle-ID** deiner App. Startest du zuerst ein Release, registriert
+  Forge die Bundle-ID und sagt dir, dass der App-Eintrag noch fehlt; danach steht die ID zur Auswahl.
+- **App-Datenschutz** beantworten (App → App-Datenschutz). Forges Entwurf der Store-Texte listet,
+  welche Daten die App erhebt; übertrage das dort.
+- In **TestFlight → Interne Tests → Forge** dich selbst als Tester hinzufügen (die Gruppe legt Forge
+  beim ersten Release an).
+
+**Der Weg in Forge Web** (Seite „Zur Freigabe“ → „Zum Veröffentlichen“):
+
+1. **Zu TestFlight**: Forge baut genau den freigegebenen Commit, signiert ihn in einer eigenen VM und
+   lädt ihn hoch; nach Apples Verarbeitung ist er in TestFlight.
+2. **Store-Texte** prüfen und speichern (Support- und Datenschutz-URL sind Pflicht).
+3. **Für den App Store vorbereiten** mit deinem Kontakt für App Review: Forge füllt die Version aus und
+   lädt Bildschirmfotos aller Geräte in Apples Größen hoch. Eingereicht ist damit noch nichts.
+4. **Bei Apple einreichen** – nur nach deiner Bestätigung. Forge zeigt, was App Review sagt.
+5. **Im App Store veröffentlichen**, wenn Apple die Version freigegeben hat – wieder nur auf deinen
+   Klick.
 
 ### 9.9 Wenn etwas nicht geht
 

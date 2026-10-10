@@ -359,3 +359,29 @@ class AppleListing(Base):
     data: Mapped[str] = mapped_column(Text, default="{}")  # Forge's StoreListing as JSON
     user_id: Mapped[str] = mapped_column(String(32), default="")  # who saved it last
     updated_at: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class AppleSubmission(Base):
+    """A release on its way through App Review to the App Store (W22d): prepared on the user's
+    click, submitted only after the user confirmed it, released on another click."""
+
+    __tablename__ = "apple_submissions"
+    __table_args__ = (
+        Index("apple_submissions_by_project", "project_id", "created_at"),
+        Index("apple_submissions_by_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    release_id: Mapped[str] = mapped_column(String(32))
+    platform: Mapped[str] = mapped_column(String(16))
+    version: Mapped[str] = mapped_column(String(32))  # e.g. 1.0
+    status: Mapped[str] = mapped_column(String(16))  # preparing|ready|failed|submitted|released
+    step: Mapped[str] = mapped_column(String(16))
+    error: Mapped[str] = mapped_column(Text, default="")
+    hint: Mapped[str] = mapped_column(Text, default="")
+    contact: Mapped[str] = mapped_column(Text, default="{}")  # App Review's contact, JSON
+    data: Mapped[str] = mapped_column(Text, default="{}")  # JSON: what the steps left
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)

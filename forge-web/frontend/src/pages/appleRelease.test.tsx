@@ -21,6 +21,9 @@ const release = (changes: Partial<AppleRelease>): AppleRelease => ({
 });
 
 const mocks = vi.hoisted(() => ({ review: vi.fn(), key: vi.fn(), list: vi.fn(), start: vi.fn(), retry: vi.fn() }));
+vi.mock("../api/submissions", () => ({
+  appleSubmissions: () => ({ list: async () => [], prepare: vi.fn(), submit: vi.fn(), release: vi.fn() }),
+}));
 vi.mock("../api/apple", () => ({
   appleReview: mocks.review,
   appStoreKey: { get: mocks.key },

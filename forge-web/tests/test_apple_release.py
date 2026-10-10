@@ -18,16 +18,19 @@ from typing import Any
 import httpx
 import pytest
 from cryptography.hazmat.primitives.serialization import pkcs12
-from forge.ports import AppleAction, AppleBuildResult, ApplePlatform
+from forge.ports import AppleAction, AppleBuildResult, ApplePlatform, AppleScreen
+from forge.providers.base import ImagePart
 from sqlalchemy import select
 
 from asc_standin import ISSUER_ID, KEY_ID, TEAM_ID, AscStandIn
+from asc_standin_store import png
 from forge_macworker.client import WorkerClient
 from forge_macworker.export import SIGNING
 from forge_macworker.runners import DirectRunner
 from forge_macworker.wire import ExportParams, ExportResult, SigningMaterial
 from forge_web.db.models import AppleApproval, AuditEntry
 from support import LiveServer, dev_settings
+from test_store_media import fitter
 
 BUNDLE = "com.example.tally"
 
@@ -65,6 +68,12 @@ class Mac:
         return AppleBuildResult(ok=True, platform=platform, action="archive", scheme="Tally",
                                 artifact=str(archive))  # fmt: skip
 
+    async def screenshot(
+        self, platform: ApplePlatform, device: str | None = None, dark: bool = False
+    ) -> AppleScreen:
+        image = ImagePart(media_type="image/png", data_b64=base64.b64encode(png(300, 600)).decode())
+        return AppleScreen(platform=platform, device=device or platform, dark=dark, image=image)
+
     async def close(self) -> None:
         """Nothing to stop."""
 
@@ -95,6 +104,7 @@ def settings_for(data: Path, asc: AscStandIn) -> Any:
     settings = dev_settings(data)
     settings.apple.enabled, settings.apple.allowed = True, "everyone"
     settings.apple.asc_api_url, settings.apple.release_poll_s = asc.url, 0.05
+    settings.apple.review_poll_s = 0.05
     return settings
 
 
@@ -115,7 +125,7 @@ async def mac_online(client: httpx.AsyncClient, url: str, work: Path) -> AsyncIt
     """A stand-in Mac connected to the server while the block runs."""
     Mac.sources, Mac.exports = [], []
     token = (await client.post("/api/admin/apple/macs", json={"name": "mac"})).json()["token"]
-    worker = WorkerClient(url, token, DirectRunner(work, Mac, export))
+    worker = WorkerClient(url, token, DirectRunner(work, Mac, export, fitter))
     stop = asyncio.Event()
     serving = asyncio.create_task(worker.serve(stop))
     try:
@@ -224,6 +234,8 @@ async def test_a_failed_release_starts_again_where_it_failed(
         [failed] = await until(lambda: finished(client, project_id, 1))
         assert (failed["status"], failed["step"]) == ("failed", "identify")
         assert BUNDLE in failed["error"] and "App Store Connect" in failed["hint"]
+        registered = {b["attributes"]["identifier"] for b in asc.state.bundle_ids}
+        assert BUNDLE in registered  # so the user can pick it for the new app record
         asc.add_app("Tally", BUNDLE)  # the user makes the app record
         again = await client.post(f"{url}/{failed['id']}/retry")
         assert again.status_code == 200, again.text

@@ -7,6 +7,7 @@ import { Link, useParams } from "react-router-dom";
 import { type AppleRelease, appleReleases, appleReview, appStoreKey, type ReleaseStep } from "../api/apple";
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { AppStoreSubmit } from "./AppStoreSubmit";
 import { Button, date, Section, useAction, useLoaded } from "./parts";
 
 const STEP_TEXT: Record<ReleaseStep, TextKey> = {
@@ -101,6 +102,7 @@ export function AppleReleasePage() {
             ))}
           </ul>
         </Section>
+        {releases && <AppStoreSubmit projectId={projectId} appName={project?.name ?? ""} releases={releases} />}
       </div>
     </div>
   );

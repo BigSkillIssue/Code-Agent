@@ -180,6 +180,7 @@ class AppleSettings(_Strict):
     )
     release_poll_s: float = Field(default=30, gt=0)  # asking Apple about a build's processing
     processing_timeout_s: float = Field(default=3 * 3600, gt=0)  # Apple's processing, at most
+    review_poll_s: float = Field(default=600, gt=0)  # asking App Review how far it is
 
     def allows(self, role: str, granted: bool) -> bool:
         """Whether a user with this role (and grant) may build Apple apps on this server."""

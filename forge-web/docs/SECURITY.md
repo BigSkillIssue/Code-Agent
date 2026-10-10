@@ -82,6 +82,13 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
 - Store texts (W22c): Forge's draft is read from the project and shown as text only (React escapes it);
   what goes to Apple is the listing the user saved on the server, checked with Forge's own model, never
   the project's file. Saving needs the editor role and is in the audit log (`apple.listing_saved`).
+- App Store (W22d): store screenshots are made on a Mac from the released commit and checked on the
+  server (exact size, no transparency) before they are uploaded. Nothing reaches App Review without
+  the user: "Prepare" only fills the version in preparation; "Submit" needs a confirmation that names
+  the version and is refused when the release no longer belongs to the project's newest approval;
+  "Release" works only for a version Apple approved. All three are in the audit log
+  (`apple.submission_prepared`, `apple.submitted`, `apple.released`). The contact for App Review is
+  what the user typed for this submission; Forge Web sends no other personal data to Apple.
 - Accepted risk: the project's sandbox packs the commit (`git.archive`) and could hand over other
   files than the commit's; whatever it hands over is built in the project's VM like every other
   build, so the user's own sandbox can only change its own app.

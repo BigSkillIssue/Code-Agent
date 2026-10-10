@@ -178,12 +178,14 @@ async def processed(asc: AscClient, image_id: str, poll_s: float, tries: int = 1
     raise MediaProblem("Apple did not process the screenshots in time")
 
 
-async def place(asc: AscClient, slot: Slot, image_id: str, localization_id: str) -> str:
+async def place(
+    asc: AscClient, group: str, family: str, image_id: str, localization_id: str
+) -> str:
     """Show an image as a screenshot of the version's localization; the placement's id."""
     body = {
         "data": {
             "type": "appAssetLibraryPlacements",
-            "attributes": {"placementType": SCREENSHOT, "placementGroup": slot.group},
+            "attributes": {"placementType": SCREENSHOT, "placementGroup": group},
             "relationships": {
                 "image": {"data": {"type": "appAssetLibraryImages", "id": image_id}},
                 "appStoreVersionLocalization": {
@@ -195,7 +197,7 @@ async def place(asc: AscClient, slot: Slot, image_id: str, localization_id: str)
     try:
         made = await asc.post("/v1/appAssetLibraryPlacements", body)  # fmt: skip
     except AscError as err:
-        raise MediaProblem(f"the {slot.family} screenshot could not be placed: {err}") from None
+        raise MediaProblem(f"the {family} screenshot could not be placed: {err}") from None
     return str(made["data"]["id"])
 
 

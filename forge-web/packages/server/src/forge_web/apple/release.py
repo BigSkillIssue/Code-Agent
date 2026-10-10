@@ -28,7 +28,7 @@ from forge_web.apple import upload
 from forge_web.apple.archive_info import ArchiveProblem, archive_info, product_of
 from forge_web.apple.asc_client import AscClient, AscError, asc_client_of
 from forge_web.apple.jobs import ARCHIVE, AppleJobs, NewJob
-from forge_web.apple.signing import Owner, SigningProblem, signing_for
+from forge_web.apple.signing import Owner, SigningProblem, registered, signing_for
 from forge_web.containers.driver import SandboxError
 from forge_web.db.engine import Database
 from forge_web.db.models import AppleRelease
@@ -188,11 +188,14 @@ class Releases:
     async def step_identify(
         self, row: AppleRelease, data: dict[str, Any], asc: AscClient, _folder: Path
     ) -> None:
-        """Which app it is (its record in App Store Connect) and which bundles it holds."""
+        """Which app it is (its record in App Store Connect) and which bundles it holds; the
+        bundle IDs are registered here, so the user can make the app record with them."""
         info = await asyncio.to_thread(archive_info, self.job_file(data["archive_job"]))
         if info.build != str(row.build_number) or not info.version:
             raise ReleaseProblem(f"the archive is version {info.version!r} build {info.build!r}, "
                                  f"not build {row.build_number}")  # fmt: skip
+        for identifier in info.bundles:  # registered first: the app record in App Store
+            await registered(asc, identifier, row.platform)  # Connect can only use those
         apps = await asc.get("/v1/apps", **{"filter[bundleId]": info.bundle_id})
         found = [a for a in apps.get("data", [])
                  if a.get("attributes", {}).get("bundleId") == info.bundle_id]  # fmt: skip
