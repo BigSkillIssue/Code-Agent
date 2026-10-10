@@ -2,6 +2,7 @@
 the plan before building and of the product at the end, where the user approves it or not.
 
 Apple apps (S60) are the first kind of checkpoint and full-stack products (S67b) the second.
+Before planning a checkpoint may work on the refined request (the product's blueprint, S68).
 The pipeline runs whichever checkpoints a task has, in order; each keeps its own rules for what
 blocks, what goes back to the agent and what the user decides.
 """
@@ -36,6 +37,9 @@ class Checkpoint(Protocol):
     async def check_request(self, ctx: Ctx, prompt: str) -> None:
         """Review the request before anything is planned; raise CheckpointStopped to stop."""
 
+    async def prepare_plan(self, ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+        """Work on the refined request before it is planned (e.g. a blueprint); return it."""
+
     async def check_plan(self, ctx: Ctx, plan: Plan, replan: Replan) -> Plan:
         """Review the plan before it is built; return it, or a plan made again."""
 
@@ -50,6 +54,13 @@ async def check_request(checkpoints: list[Checkpoint], ctx: Ctx, prompt: str) ->
     """Every checkpoint's review of the request, in order."""
     for checkpoint in checkpoints:
         await checkpoint.check_request(ctx, prompt)
+
+
+async def prepare_plan(checkpoints: list[Checkpoint], ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+    """Every checkpoint's work on the refined request before planning, in order."""
+    for checkpoint in checkpoints:
+        spec = await checkpoint.prepare_plan(ctx, spec)
+    return spec
 
 
 async def check_plan(checkpoints: list[Checkpoint], ctx: Ctx, plan: Plan, replan: Replan) -> Plan:

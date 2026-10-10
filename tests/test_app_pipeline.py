@@ -113,6 +113,7 @@ def app_run(
     headless: bool = False,
     review_on: bool = True,
     preview: Preview | None = None,
+    architect: list[FakeTurn] | None = None,
 ) -> tuple[Ctx, FakeProvider]:
     plan = FakeToolCall(name="submit_plan", arguments={"steps": STEPS})
     write = FakeToolCall(
@@ -127,6 +128,7 @@ def app_run(
             FakeTurn(text='{"ok": true, "summary": "Lists added."}'),
         ],
         "release_reviewer": reviews,
+        "architect": architect or [],
     }
     replies = [[Answer(question_index=0, values=[a]) for a in batch] for batch in answers or []]
     cfg = ForgeConfig(app=AppConfig(review=review_on))
@@ -278,3 +280,28 @@ def test_the_app_flag_turns_the_review_on(tmp_project: Path) -> None:
     options.fake = None
     _, cfg = load(options)
     assert cfg.app.review
+
+
+async def test_the_plan_follows_the_blueprint_and_its_review_reads_it(product: Path) -> None:
+    blueprint = {
+        "summary": "Shared lists with live ticks.",
+        "entities": [{"name": "ShoppingList", "fields": [{"name": "title", "type": "str"}]}],
+        "api": [{"method": "GET", "path": "/api/lists", "access": "user", "purpose": "my lists"}],
+        "auth": "Email and password.",
+        "components": [
+            {"name": "server", "kind": "server", "responsibilities": ["lists"]},
+            {"name": "web", "kind": "web", "responsibilities": ["pages"]},
+        ],
+    }
+    ctx, fake = app_run(
+        product,
+        [verdict(), verdict(), verdict()],
+        answers=[[NOT_YET]],
+        architect=[FakeTurn(text=json.dumps(blueprint))],
+    )
+    await run_task("a shared shopping list", ctx)
+    planner = next(r for r in fake.requests if r.model == "planner")
+    assert "in this order: server (server), web (web)" in planner.system
+    plan_review = requests_of(fake, "release_reviewer")[1]
+    assert "Shared lists with live ticks." in plan_review
+    assert (product / "docs" / "architecture.md").is_file()

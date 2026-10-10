@@ -342,6 +342,7 @@ async def run_planned(
 ) -> Report:
     """Plan, execute and review; checkpoints review the plan and the product too (S67a)."""
     checkpoints = checkpoints or []
+    spec = await release_flow.prepare_plan(checkpoints, ctx, spec)
     plan = await make_plan(spec, ctx)
 
     async def replan(revised: TaskSpec) -> Plan:

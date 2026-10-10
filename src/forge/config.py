@@ -53,6 +53,7 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "apple_writer": ["anthropic/claude-sonnet", "openai/gpt-5"],  # the App Store texts (S61)
     # Checks a product before it is hosted (S66); like the Apple reviewer, another model family.
     "release_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
+    "architect": ["anthropic/claude-sonnet", "openai/gpt-5"],  # a product's blueprint (S68)
 }
 
 

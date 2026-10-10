@@ -45,6 +45,9 @@ class Dummy:
     async def check_request(self, ctx: Ctx, prompt: str) -> None:
         self.at("request")
 
+    async def prepare_plan(self, ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+        return spec
+
     async def check_plan(self, ctx: Ctx, plan: Plan, replan: Replan) -> Plan:
         self.at("plan")
         if not self.constraint:

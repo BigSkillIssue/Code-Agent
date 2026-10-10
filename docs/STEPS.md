@@ -395,7 +395,7 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: with `--app` the release reviewer checks the request and the plan; the product is reviewed only after a green `app check`, with desktop and mobile screenshots of the web client; a violation stops the run until the agent fixes it or the user overrides it; at the end the user is asked GO_LIVE / SEND_BACK / NOT_YET. Only the user's GO_LIVE sets `Report.ready_to_host`; headless runs and `--yes` never do.
     - Tests: a run to GO_LIVE; a red `app check` skips the product review and goes back to the agent; SEND_BACK continues with the user's note; NOT_YET ends without `ready_to_host`; headless and `--yes` never approve; Apple runs are unchanged.
     - Verify: `uv run pytest tests/test_app_pipeline.py tests/test_apple_pipeline.py -q`
-- [ ] **S68 — Product blueprint**
+- [x] **S68 — Product blueprint**
     - Files: `src/forge/blueprint.py`, `src/forge/prompts.py` (ARCHITECT), `src/forge/config.py` (role `architect`), `src/forge/app_flow.py`, `tests/test_blueprint.py`
     - Build: in `--app` runs, the `architect` role turns the refined request into a blueprint before planning: entities, API, auth, storage, clients, payments and hosting needs → `.forge/out/product/blueprint.json` and `docs/architecture.md` in the product. The planner makes one group of plan steps per component; the plan review reads the blueprint; the blueprint must agree with `forge.app.toml`.
     - Tests: a recorded request yields a valid blueprint; every component gets its group of steps; a blueprint with payments but none in the manifest is a problem; invalid JSON is retried once; the plan review receives the blueprint.

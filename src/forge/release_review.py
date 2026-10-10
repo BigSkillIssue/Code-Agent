@@ -85,9 +85,12 @@ async def review_prompt(ctx: Ctx, prompt: str) -> ReleaseReview:
     return await review(ctx, "prompt", prompts.render("release_review_prompt", material=prompt))
 
 
-async def review_plan(ctx: Ctx, plan: Plan) -> ReleaseReview:
-    """Judge the task specification and the plan before anything is built."""
+async def review_plan(ctx: Ctx, plan: Plan, blueprint: str = "") -> ReleaseReview:
+    """Judge the task specification and the plan (and the blueprint it follows) before
+    anything is built."""
     task = prompts.render("release_review_plan", material=plan_text(plan))
+    if blueprint:
+        task += "\n\n" + prompts.render("release_review_blueprint", material=blueprint)
     return await review(ctx, "plan", task)
 
 

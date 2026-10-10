@@ -115,6 +115,7 @@ def prompt_for(ctx: Ctx, role: str) -> str:
             "apple_reviewer",
             "apple_writer",
             "release_reviewer",
+            "architect",
         )
         return role if role in own_prompt else "team_member"
     if role == "coder" and ctx.state.mode in ("subagents", "team"):
@@ -138,7 +139,7 @@ def apple_text(ctx: Ctx) -> str:
     """Apple guidance for Apple projects and wherever Apple apps can be built (else empty).
     The Apple reviewer and the store writer do not build, so they do not get the builder's
     guidance."""
-    if ctx.role in ("apple_reviewer", "apple_writer", "release_reviewer"):
+    if ctx.role in ("apple_reviewer", "apple_writer", "release_reviewer", "architect"):
         return ""
     return prompts.render("apple") if ctx.state.apple or is_apple_project(ctx.root) else ""
 

@@ -46,6 +46,7 @@ browser = ["anthropic/claude-sonnet", "openai/gpt-5"]
 apple_reviewer = ["openai/gpt-5", "anthropic/claude-sonnet"]
 apple_writer = ["anthropic/claude-sonnet", "openai/gpt-5"]
 release_reviewer = ["openai/gpt-5", "anthropic/claude-sonnet"]
+architect = ["anthropic/claude-sonnet", "openai/gpt-5"]
 ```
 
 ## [sandbox]

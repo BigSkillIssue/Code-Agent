@@ -1,7 +1,8 @@
 """Hosting checkpoints in the pipeline (S67b, `--app` or `[app] review`): a full-stack product
 is checked before it may go live.
 
-The release reviewer judges the request before planning and the plan before building. At the
+The release reviewer judges the request before planning; the architect's blueprint (S68) shapes
+the plan, and the reviewer judges the plan with it before building. At the
 end the product must pass its fixed checks (`forge app check`); only then is it run, photographed
 at desktop and phone size, and reviewed. Failed checks and violations go back to the coder first;
 what it cannot fix, the user decides. Last, the user says whether it may go live. Only their
@@ -19,10 +20,11 @@ from typing import Any
 from forge import app_dev, prompts
 from forge.agent import run_agent
 from forge.app_checks import AppCheckReport, check_app, report_text, save_report
+from forge.blueprint import Blueprint, blueprint_for, blueprint_text
 from forge.checks import sandbox_policy
 from forge.ctx import Ctx
 from forge.events import ReleaseReview
-from forge.plan import Plan, Question
+from forge.plan import Plan, Question, TaskSpec
 from forge.ports import BrowserError
 from forge.questions import ask
 from forge.release_flow import CheckpointStopped, Outcome, Replan
@@ -48,6 +50,14 @@ class AppCheckpoint:
 
     name = "app"
 
+    def __init__(self) -> None:
+        self.blueprint: Blueprint | None = None
+
+    async def prepare_plan(self, ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+        """The architect's blueprint (S68); the planner follows it."""
+        spec, self.blueprint = await blueprint_for(ctx, spec)
+        return spec
+
     async def check_request(self, ctx: Ctx, prompt: str) -> None:
         """Review the request against the release rulebooks."""
         await settle(ctx, await review_prompt(ctx, prompt))
@@ -55,7 +65,7 @@ class AppCheckpoint:
     async def check_plan(self, ctx: Ctx, plan: Plan, replan: Replan) -> Plan:
         """Review the plan; a violation is planned again with the reviewer's fixes."""
         for attempt in range(FIX_ROUNDS + 1):
-            review = await review_plan(ctx, plan)
+            review = await review_plan(ctx, plan, blueprint_text(self.blueprint))
             if not blocking(review) or review.error or attempt == FIX_ROUNDS:
                 await settle(ctx, review)
                 return plan

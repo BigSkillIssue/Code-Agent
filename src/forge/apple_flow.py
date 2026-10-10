@@ -55,6 +55,10 @@ class AppleCheckpoint:
         """Review the request against Apple's guidelines."""
         await check_request(ctx, prompt)
 
+    async def prepare_plan(self, ctx: Ctx, spec: TaskSpec) -> TaskSpec:
+        """Nothing to do before planning."""
+        return spec
+
     async def check_plan(self, ctx: Ctx, plan: Plan, replan: Replan) -> Plan:
         """Review the plan against Apple's guidelines."""
         return await check_plan(ctx, plan, replan)

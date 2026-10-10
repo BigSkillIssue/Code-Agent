@@ -62,6 +62,10 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   after a green `app check`, with screenshots at desktop and phone size; then you decide: go
   live, send it back, or not yet. Only your "go live" makes it ready to host. Checkpoints are
   plug-ins now; Apple's work as before.
+- **Blueprint:** with `--app`, an `architect` role turns the refined request into the product's
+  entities, API, sign-in, storage, clients, payments and hosting needs, split into components
+  (`.forge/out/product/blueprint.json` and `docs/architecture.md`); the planner makes one group
+  of steps per component and fixes `forge.app.toml` where it lacks what the blueprint needs.
 
 ## 1.0.0 - 2026-10-05
 
