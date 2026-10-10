@@ -384,7 +384,7 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: like `apple_review.py`: a role of its own, a fresh context, read-only tools, a JSON answer, the worst finding wins, a failed review never passes; reviews of the request, the plan and the product. Built-in rulebooks: hosting and acceptable use, privacy (GDPR), German law (Impressum, consumer law), content (DSA: user content needs report and block), security, resources. Extra rules come from the admin's files in `[release] rulebook_files`. The Apple reviewer stays unchanged.
     - Tests: a clean product passes; user content without a report button is a violation; a missing Impressum link is a violation; a rule from an admin's file produces its finding; malformed JSON or a model error never passes; every built-in area appears at least once; the reviewer gets none of the builder's messages.
     - Verify: `uv run pytest tests/test_release_review.py -q`
-- [ ] **S67a — Checkpoints as plug-ins**
+- [x] **S67a — Checkpoints as plug-ins**
     - Files: `src/forge/release_flow.py`, `src/forge/pipeline.py`, `src/forge/apple_flow.py`, `tests/test_release_flow.py`
     - Build: a `Checkpoint` protocol with three points (request, plan, product) and the user's final approval; the pipeline runs the checkpoints it is given; Apple becomes the first checkpoint with its behaviour unchanged. `pipeline.py` is about 400 lines: extract first, so it stays under 500.
     - Tests: a dummy checkpoint is called at the three points in order and can stop a run; two checkpoints run one after the other; the Apple pipeline tests stay green without a change.
