@@ -75,3 +75,26 @@ async def test_screenshots_of_every_device(app: Path, platform: ApplePlatform, d
         Path(folder).mkdir(parents=True, exist_ok=True)
         mode = "dark" if screen.dark else "light"
         (Path(folder) / f"{platform}-{mode}.png").write_bytes(data)
+
+
+@pytest.mark.parametrize("platform", ["ios", "macos"])
+async def test_a_release_archive_keeps_its_entitlements_and_build_number(
+    app: Path, platform: ApplePlatform
+) -> None:
+    import plistlib
+    import subprocess
+
+    result = await builder(app).release_archive(platform, 7)
+    assert result.ok, build_report(result, app)
+    [bundle] = (Path(result.artifact) / "Products" / "Applications").glob("*.app")
+    contents = bundle / "Contents" if platform == "macos" else bundle
+    info = plistlib.loads((contents / "Info.plist").read_bytes())
+    assert info["CFBundleVersion"] == "7"
+    signed = subprocess.run(["codesign", "-d", "--entitlements", "-", "--xml", str(bundle)],
+                            capture_output=True, text=True, check=False)  # fmt: skip
+    assert signed.returncode == 0, signed.stderr  # signed (ad hoc), so export can re-sign it
+    if platform == "macos":
+        assert "com.apple.security.app-sandbox" in signed.stdout  # the Mac App Store needs it
+    else:
+        watch = bundle / "Watch" / "TallyWatch.app"
+        assert plistlib.loads((watch / "Info.plist").read_bytes())["CFBundleVersion"] == "7"

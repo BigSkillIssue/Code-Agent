@@ -15,6 +15,7 @@ from pathlib import Path
 
 from forge import prompts
 from forge.agent import run_agent
+from forge.apple_listing import prepare_listing
 from forge.apple_review import review_plan, review_product, review_prompt
 from forge.ctx import Ctx
 from forge.events import GuidelineReview
@@ -99,7 +100,8 @@ async def checked_product(ctx: Ctx, builder: AppleBuilder) -> AppleOutcome | Non
         return AppleOutcome(False, stop_reason(review))
     choice = await ask_approval(ctx, review)
     if choice == APPROVE:
-        return AppleOutcome(True, "You approved the app for Apple.")
+        listing = await prepare_listing(ctx) if ctx.cfg.apple.listing else ""
+        return AppleOutcome(True, f"You approved the app for Apple. {listing}".strip())
     return None if choice == SEND_BACK else AppleOutcome(False, "You have not approved it yet.")
 
 

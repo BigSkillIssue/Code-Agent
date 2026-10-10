@@ -111,6 +111,8 @@ SECTION_DOCS: dict[type[BaseModel], dict[str, str]] = {
         "the newest of the same family when it is missing.",
         "review": "Check the request, the plan and the built app against Apple's guidelines and "
         "ask you to approve the app (`--apple`).",
+        "listing": "After you approve the app, draft its App Store texts "
+        "(`.forge/out/apple/listing.json`) and have them reviewed.",
     },
 }
 

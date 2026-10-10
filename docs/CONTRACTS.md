@@ -69,7 +69,8 @@ class Compacted(Event):     kind: Literal["compacted"] = "compacted";       leve
 class SessionDone(Event):   kind: Literal["session_done"] = "session_done"; ok: bool; report: str
 class ErrorEvent(Event):    kind: Literal["error"] = "error";               message: str
 
-# S59: the independent Apple reviewer's verdict on the request, the plan or the finished app
+# S59: the independent Apple reviewer's verdict on the request, the plan or the finished app;
+# S61: also on the app's App Store listing (stage "listing")
 GuidelineArea = Literal["safety", "performance", "business", "design", "legal", "hig"]
 GuidelineStatus = Literal["ok", "concern", "violation"]
 class GuidelineFinding(BaseModel):
@@ -80,7 +81,7 @@ class GuidelineFinding(BaseModel):
     fix: str = ""
 class GuidelineReview(Event):
     kind: Literal["guideline_review"] = "guideline_review"
-    stage: Literal["prompt", "plan", "product"]
+    stage: Literal["prompt", "plan", "product", "listing"]
     verdict: GuidelineStatus         # the worst finding; "concern" when the review failed
     summary: str
     findings: list[GuidelineFinding] = []   # every area at least once (missing ones: concern)

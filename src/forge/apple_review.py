@@ -29,7 +29,7 @@ AREAS: tuple[GuidelineArea, ...] = get_args(GuidelineArea)
 SEVERITY: dict[GuidelineStatus, int] = {"ok": 0, "concern": 1, "violation": 2}
 REVIEW_TURNS = 30  # reading the project and a few of Apple's pages
 FIX_TURNS = 3
-Stage = Literal["prompt", "plan", "product"]
+Stage = Literal["prompt", "plan", "product", "listing"]
 
 
 class ReviewAnswer(BaseModel):

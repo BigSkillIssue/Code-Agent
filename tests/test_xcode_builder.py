@@ -340,3 +340,16 @@ async def test_a_cancelled_step_stops_its_program(project: Path, tmp_path: Path)
     else:
         os.kill(pid, 9)
         pytest.fail("the program kept running after its step was cancelled")
+
+
+async def test_a_release_archive_is_signed_ad_hoc_with_its_build_number(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes = Fakes(tmp_path, monkeypatch)
+    result = await builder(project, tmp_path).release_archive("macos", 7)
+    archive = tmp_path / "data" / "archives" / "Demo_macOS-macos-7.xcarchive"
+    assert result.ok and result.action == "archive" and result.artifact == str(archive)
+    call = fakes.calls("xcodebuild")[-1]
+    assert "generic/platform=macOS" in call and "CURRENT_PROJECT_VERSION=7" in call
+    # Signed ad hoc, not left unsigned: the entitlements (the Mac sandbox) live in the signature.
+    assert "CODE_SIGN_IDENTITY=-" in call and "CODE_SIGNING_ALLOWED=NO" not in call

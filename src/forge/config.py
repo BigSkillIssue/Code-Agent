@@ -49,6 +49,7 @@ DEFAULT_ROLES: dict[str, list[str]] = {
     "browser": ["anthropic/claude-sonnet", "openai/gpt-5"],
     # Another model family than the coder's first, so the check does not share its blind spots.
     "apple_reviewer": ["openai/gpt-5", "anthropic/claude-sonnet"],
+    "apple_writer": ["anthropic/claude-sonnet", "openai/gpt-5"],  # the App Store texts (S61)
 }
 
 
@@ -149,6 +150,8 @@ class AppleConfig(_Strict):
     # Review the request, the plan and the built app against Apple's guidelines (S60, --apple)
     # and ask the user to approve the app; on in Forge Web's Apple projects.
     review: bool = False
+    # After the user approves the app, draft its App Store listing and have it reviewed (S61).
+    listing: bool = True
     # The simulator each platform runs on; the newest one of the same family when missing.
     devices: dict[str, str] = Field(
         default_factory=lambda: {
