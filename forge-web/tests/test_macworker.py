@@ -259,3 +259,17 @@ async def test_the_image_gets_the_worker_with_forges_own_core(
     assert f'"{mount}/forge_macworker-0.1.0-py3-none-any.whl"' in install
     assert f'--with "{mount}/forge-1.0.0-py3-none-any.whl"' in install
     assert "--find-links" not in install  # PyPI has an unrelated package called "forge"
+
+
+async def test_a_worker_stops_at_once_while_it_waits_for_work(
+    world: Any,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    transport = httpx.ASGITransport(app=world.mac._transport.app)
+    stop = asyncio.Event()
+    client = WorkerClient("http://srv", world.token, DirectRunner(tmp_path / "mac", Builder),
+                          slots=1, transport=transport)  # fmt: skip
+    serving = asyncio.create_task(client.serve(stop))
+    await asyncio.sleep(0.3)  # in the middle of a long poll (the server waits up to 25 s)
+    stop.set()
+    await asyncio.wait_for(serving, 2)  # a launchd stop or Ctrl+C must not hang

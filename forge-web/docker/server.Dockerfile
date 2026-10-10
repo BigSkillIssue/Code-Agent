@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # The Forge Web server image: the web server with the built UI and a Docker CLI that starts one
 # sandbox container per project on the host's Docker (its socket is mounted in, see compose.yaml).
 # Build from the repository root:

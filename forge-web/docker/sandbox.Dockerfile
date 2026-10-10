@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # The sandbox image: one container per project runs the Forge Web sandbox daemon as PID 1
 # (under docker's --init). Build from the repository root:
 #   docker build -f forge-web/docker/sandbox.Dockerfile -t forge-web-sandbox .

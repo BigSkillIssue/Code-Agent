@@ -104,16 +104,24 @@ def server(tmp_path: Path) -> Iterator[LiveServer]:
 
 @pytest.fixture
 async def client(server: LiveServer) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(base_url=server.url, headers=server.headers(), timeout=120) as c:
+    # A fresh connection per request: a long wait must not trip over a closing keep-alive one.
+    fresh = httpx.Limits(max_keepalive_connections=0)
+    async with httpx.AsyncClient(base_url=server.url, headers=server.headers(), timeout=120,
+                                 limits=fresh) as c:  # fmt: skip
         yield c
 
 
 async def until(check: Callable[[], Awaitable[Any]], timeout: float, every: float = 1) -> Any:
-    """Wait for `check()` to return something truthy, and return it."""
+    """Wait for `check()` to return something truthy, and return it (a dropped connection on
+    the way is asked again: a busy CI Mac sometimes drops one)."""
     async with asyncio.timeout(timeout):
-        while not (found := await check()):
+        while True:
+            try:
+                if found := await check():
+                    return found
+            except httpx.TransportError as err:
+                print(f"asking again after {err!r}")
             await asyncio.sleep(every)
-        return found
 
 
 async def new_mac(client: httpx.AsyncClient) -> str:
@@ -212,7 +220,11 @@ async def test_the_whole_flow_on_this_mac_with_xcode(
         page = await approve_the_app(client, timeout=50 * 60)  # real builds and simulators
     finally:
         worker.terminate()
-        worker.wait(30)
+        try:
+            worker.wait(30)
+        except subprocess.TimeoutExpired:
+            worker.kill()
+            worker.wait(30)
     check_the_page(page)
     if os.environ.get("APPLE_SHOTS_DIR"):
         keep(page["screens"], Path(os.environ["APPLE_SHOTS_DIR"]))

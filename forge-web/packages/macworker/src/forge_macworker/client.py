@@ -53,7 +53,7 @@ class WorkerClient:
                 if stop.is_set():
                     break
                 try:
-                    offer = await self.poll()
+                    offer = await self.poll_unless(stop)
                 except (httpx.HTTPError, ValueError) as err:
                     log.warning("asking the server for work failed: %s", err)
                     await wait_or_stop(stop, backoff)
@@ -69,6 +69,21 @@ class WorkerClient:
             await asyncio.gather(*self.tasks, return_exceptions=True)
             await self.runner.close()
             await self.http.aclose()
+
+    async def poll_unless(self, stop: asyncio.Event) -> JobOffer | None:
+        """One long poll, given up as soon as `stop` is set (a stopping service must not wait)."""
+        polling = asyncio.ensure_future(self.poll())
+        stopping = asyncio.ensure_future(stop.wait())
+        try:
+            await asyncio.wait({polling, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopping.cancel()
+        if not polling.done():
+            polling.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await polling
+            return None
+        return polling.result()
 
     async def poll(self) -> JobOffer | None:
         """One long poll; a job or None."""
