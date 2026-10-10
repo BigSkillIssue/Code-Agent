@@ -529,3 +529,60 @@ limits = { max_cost_usd = 1.0 }
 ```
 
 Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. A project config may **not** set `providers.*`, `mcp_servers.*` or `hooks.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning.
+
+## App manifest — `src/forge/app_manifest.py`
+
+Every product Forge builds (Phase 8) describes itself in `forge.app.toml` at its root. Hosting (Forge Web) reads only this file; it never runs the product's `Dockerfile` or `docker-compose.yml`. Secrets are listed by name; their values live in Forge Web's vault and never in the product.
+
+```python
+Runtime = Literal["python3.12", "node22", "static"]
+ResourceClass = Literal["small", "medium", "large"]
+Client = Literal["web", "apple", "android", "windows"]
+
+class Service(BaseModel):            # extra keys are refused in every model of this file
+    name: str                        # lowercase slug, unique in the app
+    runtime: Runtime
+    root: str = "."                  # the service's folder, relative to the product
+    command: list[str] = []          # how to start it; required unless runtime is "static"
+    build: list[str] = []            # how to build it (runs in a throwaway container)
+    port: int                        # 1024-65535, unique in the app
+    health: str = "/healthz"         # path that answers 200 when the service is up
+    route: str | None = None         # public path prefix ("/", "/api"); None = internal only
+
+class Database(BaseModel):
+    engine: Literal["postgres16"] = "postgres16"
+
+class Storage(BaseModel):
+    max_gb: int = 1                  # 1-100
+
+class Mail(BaseModel):
+    daily_limit: int = 200           # 1-10000; mail goes out through Forge Web's relay only
+
+class Payments(BaseModel):
+    kind: Literal["none", "relay"] = "none"   # "relay": Forge Web's payments relay (W35)
+    digital_goods: bool = False      # sold in native apps: the stores' own purchases (Apple 3.1.1)
+
+class AppManifest(BaseModel):
+    version: Literal[1] = 1
+    name: str                        # lowercase slug: the app's host name
+    resource_class: ResourceClass = "small"
+    services: list[Service]          # at least one
+    database: Database | None = None
+    storage: Storage | None = None
+    mail: Mail | None = None
+    env: dict[str, str] = {}         # plain settings; names like SECRET, TOKEN, PASSWORD, *_KEY refused
+    secrets: list[str] = []          # names only, never values
+    clients: list[Client] = ["web"]
+    payments: Payments = Payments()
+
+class ManifestProblem(BaseModel):
+    field: str                       # dotted path, e.g. "services.1.port"; "" for the whole file
+    message: str
+    line: int | None = None          # for TOML syntax errors
+
+MANIFEST = "forge.app.toml"
+def parse_manifest(text: str) -> AppManifest | list[ManifestProblem]: ...
+def load_manifest(path: Path) -> AppManifest | list[ManifestProblem]: ...   # a file or the product folder
+```
+
+Rules: problems are values, never exceptions; every problem is reported, not only the first. Names in `env` and `secrets` are upper-case (`^[A-Z][A-Z0-9_]*$`), may not repeat between the two, and may not be `PORT` or `DATABASE_URL` (hosting sets them). Routes are unique and start with `/`, as do health paths.
