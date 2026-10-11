@@ -14,6 +14,7 @@ from forge.providers.base import ToolCall, Usage
 from pydantic import BaseModel, Field, ValidationError
 
 from forge_web.apple.questions import PURPOSE, is_approval
+from forge_web.hosting import questions as go_live
 
 # Model text and live command output are only shown while they stream: the finished message
 # (model_done) and the tool result (tool_finished) carry the same content and are stored.
@@ -92,6 +93,8 @@ def _request(item: dict[str, Any]) -> dict[str, Any] | None:
     }
     if kind == "question" and is_approval(checked["payload"]):
         checked["purpose"] = PURPOSE  # Forge's "Is the app ready for Apple?"
+    elif kind == "question" and go_live.is_go_live(checked["payload"]):
+        checked["purpose"] = go_live.PURPOSE  # Forge's "Ready to go live?"
     return checked
 
 

@@ -2,6 +2,7 @@
 
 from alembic import context
 
+from forge_web.db import hosting_models  # noqa: F401  (its tables join Base's metadata)
 from forge_web.db.models import Base
 
 connection = context.config.attributes["connection"]

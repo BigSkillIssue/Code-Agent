@@ -120,8 +120,14 @@ class HostRunner:
                 result = await self.release(job.plan, source, secret_values)
             elif job.kind == "rollback":
                 result = await self.rollback(job.app, job.environment)
-            else:
+            elif job.kind == "stop":
                 result = await self.stop(job.app, job.environment)
+            else:
+                result = JobResult(
+                    ok=False,
+                    error=f"this host worker cannot run {job.kind} jobs",
+                    hint="update forge-host-worker on this host",
+                )
         except HostError as error:
             result = JobResult(ok=False, error=str(error), hint=error.hint)
         except SourceError as error:

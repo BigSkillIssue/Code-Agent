@@ -21,9 +21,9 @@ from forge_hostworker import firewall
 from forge_hostworker.cli import main
 from forge_hostworker.docker import HostError, container_owner, mapped_id
 from forge_hostworker.doctor import TEST_IMAGE, doctor, report, worker_check
-from forge_hostworker.edge import LEGAL_PATHS, Edge, LiveApp, Upstream, app_host, caddy_config
+from forge_hostworker.edge import LEGAL_PATHS, Edge, LiveApp, Upstream, caddy_config
 from forge_hostworker.runner import HostRunner
-from forge_hostworker.wire import HostJob
+from forge_hostworker.wire import HostJob, app_host
 
 DOMAIN = "apps.example"
 LEGAL = "https://forge.example.com/legal"

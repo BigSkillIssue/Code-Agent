@@ -27,6 +27,7 @@ from forge_web.containers.driver import ContainerDriver
 from forge_web.files_api import files_router
 from forge_web.gateway.api import keys_router
 from forge_web.git_api import git_router
+from forge_web.hosting.deploy_api import admin_deploy_router, deploy_router, host_router
 from forge_web.members import members_router
 from forge_web.preview import preview_hosts_router, preview_router
 from forge_web.preview_auth import preview_base
@@ -65,7 +66,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         keys_router(), apple_admin_router(), worker_router(), screens_router(),
         approvals_router(), asc_key_routes(), release_routes(), listing_routes(),
         submission_routes(),
-        git_credentials_router(),
+        git_credentials_router(), host_router(), deploy_router(), admin_deploy_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

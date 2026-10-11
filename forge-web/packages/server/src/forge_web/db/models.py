@@ -28,6 +28,7 @@ class User(Base):
     totp_last_step: Mapped[int] = mapped_column(Integer, default=0)  # no code is used twice
     recovery_codes: Mapped[str] = mapped_column(Text, default="")  # SHA-256 hashes, one per line
     apple_allowed: Mapped[bool] = mapped_column(Boolean, default=False)  # Mac builds granted
+    hosting_trusted: Mapped[bool] = mapped_column(Boolean, default=False)  # no admin approval
 
 
 class Project(Base):

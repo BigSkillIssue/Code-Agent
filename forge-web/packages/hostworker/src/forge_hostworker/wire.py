@@ -9,6 +9,11 @@ reports with `POST /api/host/jobs/<id>/result`. Every call carries
 A `DeployPlan` is everything the worker needs, resolved by the server: fixed runtime images,
 commands, ports, limits and the *names* of secrets. The worker never reads a product's
 Dockerfile or compose file.
+
+One deploy is several jobs, so the server knows after each step where it stands: `check` (the
+host's own tests and migrations on a throwaway database), `backup` (the app's database dumped
+on the host), `migrate` (the release's migrations on the app's database) and `release` (start,
+health, switch). `rollback` and `stop` act on what runs.
 """
 
 import base64
@@ -35,7 +40,15 @@ MAX_LOG_CHARS = 20_000
 SEAL_INFO = b"forge-hostworker secrets v1"
 Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
-JobKind = Literal["release", "rollback", "stop"]
+JobKind = Literal["check", "backup", "migrate", "release", "rollback", "stop"]
+PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
+WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release")  # and the packed source
+
+
+def app_host(app: str, environment: str, apps_domain: str) -> str:
+    """The host name of an app in an environment (the edge serves it, the server shows it)."""
+    suffix = apps_domain.strip(".").lower()
+    return f"{app}.{suffix}" if environment == "production" else f"{app}.staging.{suffix}"
 
 
 def app_name(value: str) -> str:
@@ -68,6 +81,10 @@ class ServicePlan(BaseModel):
     route: str | None = Field(default=None, pattern=r"^/[A-Za-z0-9/_-]{0,99}$")  # for the edge
     env: dict[str, str] = Field(default_factory=dict, max_length=64)
     secrets: list[str] = Field(default_factory=list, max_length=64)
+    # The host's own checks and the migrations, as the server found them in the product.
+    check_build: list[str] | None = Field(default=None, max_length=50)  # None: `build`
+    test: list[str] = Field(default_factory=list, max_length=50)
+    migrate: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("root", "output")
     @classmethod
@@ -112,6 +129,7 @@ class DeployPlan(BaseModel):
     release: int = Field(ge=1, le=10**9)
     services: list[ServicePlan] = Field(min_length=1, max_length=8)
     database: bool = False
+    storage_gb: int = Field(default=0, ge=0, le=100)  # files of the app's own (0: none)
     limits: Limits = Field(default_factory=Limits)
     build_image_network: str = Field(default="forge-build", pattern=r"^[a-z][a-z0-9-]{0,62}$")
 
@@ -128,22 +146,23 @@ class DeployPlan(BaseModel):
 
 
 class HostJob(BaseModel):
-    """One job for the worker: run a release, go back to the previous one, or stop an app."""
+    """One job for the worker (see the module's notes for the kinds)."""
 
     id: str = Field(pattern=r"^[0-9a-f]{32}$")
     kind: JobKind
     app: str = Field(pattern=SLUG)
     environment: Environment
-    plan: DeployPlan | None = None  # release jobs only
+    plan: DeployPlan | None = None  # check, migrate and release jobs
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
 
     _app = field_validator("app")(app_name)
 
     @model_validator(mode="after")
     def plan_fits(self) -> "HostJob":
-        """A release job carries the plan of the same app and environment; no other job does."""
-        if (self.kind == "release") != (self.plan is not None):
-            raise ValueError("a release job needs a plan, other jobs none")
+        """Planned jobs carry the plan of the same app and environment; no other job does."""
+        if (self.kind in PLANNED) != (self.plan is not None):
+            raise ValueError(f"a {self.kind} job needs a plan" if self.kind in PLANNED
+                             else f"a {self.kind} job carries no plan")  # fmt: skip
         if self.plan is not None and (self.plan.app, self.plan.environment) != (
             self.app,
             self.environment,
@@ -173,6 +192,14 @@ class ServiceState(BaseModel):
     healthy: bool
 
 
+class CheckState(BaseModel):
+    """One of the host's own checks of a release (a service's tests or its migrations)."""
+
+    name: str = Field(max_length=80)  # e.g. "api: tests"
+    ok: bool
+    detail: str = Field(default="", max_length=2_000)
+
+
 class JobResult(BaseModel):
     """How a job ended. `ok` is False when the release is not live: it could not be built, did
     not get healthy (then the previous release keeps running: `rolled_back`), or the job could
@@ -186,6 +213,7 @@ class JobResult(BaseModel):
     hint: str = Field(default="", max_length=2_000)
     log_tail: str = Field(default="", max_length=MAX_LOG_CHARS)
     seconds: float = Field(default=0, ge=0)
+    checks: list[CheckState] = Field(default_factory=list, max_length=32)  # check jobs
 
 
 class SealedSecrets(BaseModel):

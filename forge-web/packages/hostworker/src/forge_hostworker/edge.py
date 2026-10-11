@@ -20,7 +20,7 @@ import httpx
 
 from forge_hostworker.docker import Docker
 from forge_hostworker.runner import HostRunner, network, service_container
-from forge_hostworker.wire import DeployPlan
+from forge_hostworker.wire import DeployPlan, app_host
 
 LEGAL_PATHS = ("/impressum", "/datenschutz", "/melden")
 ASK_PORT = 47201
@@ -46,12 +46,6 @@ class LiveApp:
     environment: str
     host: str
     upstreams: tuple[Upstream, ...]
-
-
-def app_host(app: str, environment: str, apps_domain: str) -> str:
-    """The host name of an app in an environment."""
-    suffix = apps_domain.strip(".").lower()
-    return f"{app}.{suffix}" if environment == "production" else f"{app}.staging.{suffix}"
 
 
 async def live_apps(runner: HostRunner, docker: Docker, apps_domain: str) -> list[LiveApp]:

@@ -19,6 +19,8 @@ from forge_web.db.engine import Database
 from forge_web.db.writer import EventWriter
 from forge_web.egress import Egress
 from forge_web.gateway.proxy import Gateway, PrivateServer
+from forge_web.hosting.deploy import Deploys
+from forge_web.hosting.hosts import HostQueue
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
@@ -46,6 +48,8 @@ class Services:
     apple: AppleJobs
     releases: Releases
     submissions: Submissions
+    hosts: HostQueue
+    deploys: Deploys
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

@@ -29,3 +29,11 @@ project_disk_mb = 10000
 [gateway]
 server_keys_for = "granted"  # admins | granted | everyone
 monthly_limit_usd = 20.0
+
+# Hosting the apps Forge builds on your own Linux servers (docs/EINRICHTUNG.md §11).
+# [hosting]
+# enabled = true
+# apps_domain = "meine-apps.de"   # apps answer at <app>.meine-apps.de and <app>.staging.meine-apps.de
+# [hosting.images]                # the runtime images the hosts pull (fixed versions)
+# "python3.12" = "ghcr.io/bigskillissue/forge-runtime-python:3.12"
+# static = "ghcr.io/bigskillissue/forge-runtime-static:1"

@@ -199,6 +199,31 @@ class DevSettings(_Strict):
     fake_script: str = ""  # a FakeProvider script file instead of the built-in greeting
 
 
+def _runtime_images() -> dict[str, str]:
+    """The runtime images hosted apps run on (`docker/runtime-*.Dockerfile`, built by the admin)."""
+    return {
+        "python3.12": "ghcr.io/bigskillissue/forge-runtime-python:3.12",
+        "node22": "ghcr.io/bigskillissue/forge-runtime-node:22",
+        "static": "ghcr.io/bigskillissue/forge-runtime-static:1",
+    }
+
+
+class HostingSettings(_Strict):
+    """Hosting the products Forge builds on the admin's own Linux servers (`forge-host-worker`),
+    after the host's own checks and the creator's and an admin's approval."""
+
+    enabled: bool = False
+    # Apps answer at <app>.<apps_domain> and <app>.staging.<apps_domain> (the hosts' edge).
+    apps_domain: str = Field(
+        default="", pattern=r"^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$"
+    )
+    images: dict[str, str] = Field(default_factory=_runtime_images)
+    max_source_mb: int = Field(default=200, ge=1)  # the packed commit of one deploy
+    check_timeout_s: float = Field(default=1_800, gt=0)  # the host's own checks
+    job_timeout_s: float = Field(default=1_800, gt=0)  # every other job on a host
+    job_grace_s: float = Field(default=600, gt=0)  # a host's report may take this much longer
+
+
 class WebSettings(_Strict):
     """Every setting of one Forge Web server."""
 
@@ -213,6 +238,7 @@ class WebSettings(_Strict):
     quotas: QuotaSettings = QuotaSettings()
     preview: PreviewSettings = PreviewSettings()
     apple: AppleSettings = AppleSettings()
+    hosting: HostingSettings = HostingSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

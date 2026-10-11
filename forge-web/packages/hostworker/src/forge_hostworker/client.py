@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from forge_hostworker import __version__
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
+    WITH_SOURCE,
     HostJob,
     JobResult,
     PollAnswer,
@@ -114,9 +115,10 @@ class HostClient:
         with tempfile.TemporaryDirectory(prefix="forge-host-") as scratch:
             try:
                 source, values = None, {}
-                if job.kind == "release":
+                if job.kind in WITH_SOURCE:
                     source = Path(scratch) / "source.tar.gz"
                     await self.download(job.id, source)
+                if job.kind == "release":
                     values = await self.secrets(job.id)
                 result = await asyncio.wait_for(self.runner.run(job, source, values), job.timeout_s)
             except TimeoutError:
