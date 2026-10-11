@@ -1,0 +1,36 @@
+# The Forge host worker as a systemd service (the app server, never the Forge Web server).
+#   sudo cp forge-host-worker.service /etc/systemd/system/
+#   sudo systemctl edit forge-host-worker      # set FORGE_SERVER, APPS_DOMAIN, LEGAL_BASE
+#   sudo systemctl enable --now forge-host-worker
+# It runs as root: under userns-remap only root can hand each release folder to the user its
+# containers run as, and the firewall needs root anyway. The apps themselves run unprivileged
+# under gVisor. Guide: docs/EINRICHTUNG.md §11.
+[Unit]
+Description=Forge host worker (runs the hosted apps)
+Documentation=https://github.com/BigSkillIssue/Code-Agent/tree/main/forge-web/docs/EINRICHTUNG.md
+After=network-online.target docker.service caddy-api.service
+Wants=network-online.target caddy-api.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=FORGE_SERVER=https://forge.example.com
+Environment=APPS_DOMAIN=meine-apps.de
+Environment=LEGAL_BASE=https://forge.example.com/legal
+StateDirectory=forge-host
+StateDirectoryMode=0700
+# The rules for app containers go in before the first app starts, after every reboot.
+ExecStartPre=/opt/forge-host/bin/forge-host-worker firewall --apply
+ExecStart=/opt/forge-host/bin/forge-host-worker run --server ${FORGE_SERVER} \
+    --data /var/lib/forge-host --apps-domain ${APPS_DOMAIN} --legal-base ${LEGAL_BASE}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/forge-host /run
+PrivateTmp=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

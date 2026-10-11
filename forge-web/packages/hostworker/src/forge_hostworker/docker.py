@@ -7,6 +7,7 @@ privileges and an unprivileged user. The worker refuses to start where runsc is 
 import asyncio
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 TAIL_CHARS = 20_000
@@ -96,3 +97,43 @@ async def require_runsc(docker: Docker) -> None:
             hint="install gVisor and register it (`sudo runsc install`, then restart Docker); "
             "see docs/EINRICHTUNG.md §11",
         )
+
+
+async def uses_userns(docker: Docker) -> bool:
+    """Whether Docker remaps container users to the host's subordinate ids (`userns-remap`)."""
+    found = await docker("info", "--format", "{{json .SecurityOptions}}", timeout=60)
+    return found.code == 0 and "name=userns" in found.out
+
+
+def mapped_id(container_id: int, subids: str, name: str = "dockremap") -> int:
+    """The host id a container id becomes under userns-remap (`subids`: /etc/subuid's text)."""
+    for line in subids.splitlines():
+        parts = line.strip().split(":")
+        numbers = len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit()
+        if numbers and parts[0] == name and container_id < int(parts[2]):
+            return int(parts[1]) + container_id
+    raise HostError(
+        f"/etc/subuid or /etc/subgid has no range for {name}",
+        hint='set "userns-remap": "default" in /etc/docker/daemon.json and restart Docker',
+    )
+
+
+async def container_owner(
+    docker: Docker, user: str, root: bool, etc: Path = Path("/etc")
+) -> tuple[int, int] | None:
+    """The host uid and gid of the containers' user, when the worker (root) must hand release
+    folders to it; None when the folders are already the worker's own (it is that user)."""
+    userns = await uses_userns(docker)
+    if not root:
+        if userns:
+            raise HostError(
+                "Docker remaps users (userns-remap), so the worker must run as root",
+                hint="start it with deploy/host/forge-host-worker.service",
+            )
+        return None
+    uid, gid = (int(part) for part in user.split(":"))
+    if not userns:
+        return uid, gid
+    subuid = (etc / "subuid").read_text(encoding="utf-8")
+    subgid = (etc / "subgid").read_text(encoding="utf-8")
+    return mapped_id(uid, subuid), mapped_id(gid, subgid)

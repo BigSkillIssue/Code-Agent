@@ -544,3 +544,205 @@ Projekts; nur der Server signiert damit.
   Adresse unter `[gateway.upstreams]` einträgt, z. B. `ollama = "http://gpu-rechner:11434/v1"`.
 - Regelmäßig **sichern** (Abschnitt 7) und **aktualisieren**.
 - Mehr dazu: `docs/SECURITY.md`.
+
+---
+
+## 11. Eigene Apps hosten: einen App-Server anschließen (optional)
+
+Forge kann fertige Produkte bauen: Server, Datenbank und Web-App (Projektart „App“). Damit sie
+für alle erreichbar sind, laufen sie auf einem **eigenen Linux-Server, dem App-Server**. Er holt
+sich seine Aufträge selbst bei Forge Web ab (nur ausgehend, wie der Mac in Abschnitt 9), baut jede
+Version in einem Wegwerf-Container und startet sie abgeschottet. Jede App bekommt eine eigene
+Adresse mit HTTPS, z. B. `shop.meine-apps.de` (live) und `shop.staging.meine-apps.de` (zum Testen).
+
+> **Wichtig:** Der App-Server ist **nie derselbe Rechner wie Forge Web.** Die Apps sind fremder
+> Code; der Forge-Web-Server hält den Docker-Zugang und alle Schlüssel. Nimm einen eigenen Server
+> (oder eine eigene VM bei deinem Anbieter).
+
+Hinweis: Der Bereich **Verwaltung → Hosting** (Server anlegen, Token, Freigaben) entsteht in den
+nächsten Schritten. Den App-Server kannst du schon vorbereiten und mit `doctor` prüfen.
+
+### 11.1 Der Server
+
+- **Linux** mit x86-64 oder ARM64, am besten **Ubuntu 24.04** oder **Debian 12**.
+- Mindestens **4 CPU-Kerne, 8 GB Arbeitsspeicher, 80 GB Platte**. Pro App rechnet man mit
+  1 Kern und 1 GB (Server, Web und Datenbank zusammen); mehr, wenn die Apps viel genutzt werden.
+- Die Ports **80 und 443** aus dem Internet erreichbar, **SSH** am besten nur von deiner Adresse.
+- Nichts anderes Wichtiges auf diesem Server.
+
+### 11.2 Docker und gVisor installieren
+
+Per SSH als root (oder mit `sudo`):
+
+```bash
+curl -fsSL https://get.docker.com | sh
+# gVisor (runsc): https://gvisor.dev/docs/user_guide/install/
+ARCH=$(uname -m)
+URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
+wget ${URL}/runsc ${URL}/runsc.sha512
+sha512sum -c runsc.sha512 && chmod a+rx runsc && mv runsc /usr/local/bin/
+```
+
+Dann die Docker-Einstellungen aus `deploy/host/daemon.json` übernehmen und Docker neu starten:
+
+```bash
+cp deploy/host/daemon.json /etc/docker/daemon.json
+systemctl restart docker
+docker info | grep -iE 'runsc|userns'
+```
+
+Was die Datei einstellt:
+
+- **gVisor** als Laufzeit `runsc`: Jede App läuft mit einem eigenen kleinen Kernel, nicht direkt
+  auf dem Linux des Servers. Ohne `runsc` startet der App-Dienst gar nicht erst.
+- **User-Namespaces** (`userns-remap`): Auch „root“ in einem Container ist auf dem Server nur ein
+  unbedeutender Benutzer.
+- **Ein fester Adressbereich** (`10.88.0.0/16`) für die Netze der Apps; die Firewall (11.6) kennt
+  ihn.
+
+Docker legt beim Neustart den Benutzer `dockremap` und seine Einträge in `/etc/subuid` und
+`/etc/subgid` selbst an.
+
+### 11.3 Caddy installieren (HTTPS für jede App)
+
+Caddy nimmt die Anfragen an und holt für jede App automatisch ein Zertifikat von Let's Encrypt,
+aber **nur für Apps, die der App-Dienst als live meldet**. So kann niemand mit erfundenen Namen
+Zertifikate für deinen Server anfordern.
+
+```bash
+apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  > /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+# Der App-Dienst gibt Caddy seine Einstellungen über die Admin-Schnittstelle:
+systemctl disable --now caddy
+systemctl enable --now caddy-api
+```
+
+`caddy-api` startet Caddy ohne Caddyfile und merkt sich die letzten Einstellungen über einen
+Neustart hinweg. Die Admin-Schnittstelle hört nur auf `127.0.0.1:2019`, also nur auf dem Server
+selbst.
+
+**Impressum, Datenschutz und „Inhalt melden“** liefert Caddy für jede App von Forge Web aus, unter
+festen Adressen (`/impressum`, `/datenschutz`, `/melden`). Eine App kann diese Seiten weder
+entfernen noch überdecken.
+
+### 11.4 DNS und die Apps-Domain
+
+Nimm für die Apps eine **eigene Domain**, z. B. `meine-apps.de` – nicht die von Forge und nicht die
+der Vorschau. Lege beim Domain-Anbieter zwei Wildcard-Einträge an (statt `198.51.100.20` die IP
+des App-Servers):
+
+| Name | Typ | Wert |
+| --- | --- | --- |
+| `*.meine-apps.de` | A | `198.51.100.20` |
+| `*.staging.meine-apps.de` | A | `198.51.100.20` |
+
+Hat der App-Server IPv6, lege zusätzlich AAAA-Einträge an.
+
+**Die Public Suffix List (dringend empfohlen).** Alle Apps teilen sich `meine-apps.de`. Ohne
+weiteres dürfte eine App Cookies für die ganze Domain setzen und damit die Anmeldung einer anderen
+App stören. Browser verhindern das, wenn die Domain in der **Public Suffix List** steht, dann gilt
+jede `app.meine-apps.de` als eigene Website (so machen es auch GitHub Pages und Heroku):
+
+1. Beim Domain-Anbieter einen TXT-Eintrag `_psl.meine-apps.de` mit dem Link zu deinem Antrag
+   anlegen (den bekommst du in Schritt 2).
+2. Auf <https://github.com/publicsuffix/list> einen Pull Request stellen: im Abschnitt
+   **PRIVATE DOMAINS** die zwei Zeilen `meine-apps.de` und `staging.meine-apps.de`, mit deinem
+   Namen als Betreiber. Die Regeln stehen in der Vorlage des Pull Requests.
+3. Die Aufnahme dauert einige Wochen, bis sie in allen Browsern ankommt. Bis dahin laufen die Apps
+   trotzdem; Forges Vorlage setzt ihre Cookies ohnehin nur für die eigene Adresse.
+
+Die Domain muss danach **dauerhaft** bei dir bleiben; ein Eintrag in der Liste lässt sich nur
+langsam wieder entfernen.
+
+### 11.5 Den App-Dienst installieren
+
+Lege das Wheel `forge_hostworker-….whl` aus dem Release auf den Server. Der App-Dienst braucht
+Forges Kern nicht.
+
+```bash
+apt install -y python3.12-venv
+python3.12 -m venv /opt/forge-host
+/opt/forge-host/bin/pip install ./forge_hostworker-*.whl
+mkdir -p /var/lib/forge-host && chmod 700 /var/lib/forge-host
+/opt/forge-host/bin/forge-host-worker keygen --data /var/lib/forge-host
+```
+
+`keygen` legt den Schlüssel des Servers an und zeigt seinen **öffentlichen Schlüssel**. Den trägst
+du gleich in Forge Web ein: Forge verschlüsselt die Geheimnisse jeder App (API-Schlüssel,
+Passwörter) mit ihm, sodass nur dieser Server sie lesen kann.
+
+### 11.6 In Forge anmelden, Firewall und Start
+
+1. In Forge: **Verwaltung → Hosting → Server hinzufügen**, einen Namen eingeben und den
+   öffentlichen Schlüssel aus 11.5 einfügen. Forge zeigt **einmalig** einen Token (er beginnt mit
+   `fhw`). Auf dem App-Server speichern:
+
+   ```bash
+   nano /var/lib/forge-host/token     # Token einfügen, speichern
+   chmod 600 /var/lib/forge-host/token
+   ```
+
+2. Den Dienst einrichten und die drei Adressen eintragen (Forge Web, die Apps-Domain, die
+   Rechtstexte von Forge Web):
+
+   ```bash
+   cp deploy/host/forge-host-worker.service /etc/systemd/system/
+   systemctl edit forge-host-worker
+   ```
+
+   Im Editor:
+
+   ```ini
+   [Service]
+   Environment=FORGE_SERVER=https://forge.example.com
+   Environment=APPS_DOMAIN=meine-apps.de
+   Environment=LEGAL_BASE=https://forge.example.com/legal
+   ```
+
+3. Starten:
+
+   ```bash
+   systemctl daemon-reload
+   systemctl enable --now forge-host-worker
+   journalctl -u forge-host-worker -f
+   ```
+
+Vor dem Start lädt der Dienst jedes Mal die **Firewall** für die Apps
+(`forge-host-worker firewall --apply`; ohne `--apply` zeigt der Befehl die Regeln nur an). Sie
+erlaubt einer App das Internet, aber
+
+- keine privaten Netze und keine Cloud-Metadaten (`169.254.169.254`),
+- keine andere App und nicht den Server selbst (SSH, Caddys Admin-Schnittstelle),
+- keinen Mailversand über Port 25 (Mails gehen nur über Forges Mail-Relay),
+- keine bekannten Mining-Ports und nur eine begrenzte Zahl neuer Verbindungen pro Sekunde.
+
+Die Wegwerf-Container, die eine Version bauen (z. B. `npm install`), bekommen keine Geheimnisse und
+erreichen nur DNS, HTTP und HTTPS (die Paket-Server). Braucht eine App einen Dienst in einem
+privaten Netz (etwa Forges Mail-Relay), gibst du ihn mit `--allow 10.1.2.3` frei
+(`ExecStartPre` in `systemctl edit` anpassen).
+
+### 11.7 Prüfen
+
+```bash
+/opt/forge-host/bin/forge-host-worker doctor --data /var/lib/forge-host
+```
+
+`doctor` prüft gVisor, die User-Namespaces, ob ein abgeschotteter Test-Container startet, die
+Firewall, Caddy, Schlüssel, Token und freien Platz. Fehlt etwas, steht unter der Zeile `FAIL`, was
+zu tun ist. Als root ausführen, sonst kann er die Firewall nicht prüfen.
+
+### 11.8 Wenn etwas nicht geht
+
+| Problem | Lösung |
+| --- | --- |
+| `gVisor (runsc) is not a Docker runtime` | 11.2: `runsc` installieren, `daemon.json` übernehmen, Docker neu starten |
+| `FAIL sandbox` | `journalctl -u docker` ansehen; gVisor zusammen mit den User-Namespaces braucht ein aktuelles `runsc` |
+| `FAIL user namespaces` | `"userns-remap": "default"` in `/etc/docker/daemon.json`, Docker neu starten |
+| `FAIL firewall` | `forge-host-worker firewall --apply` als root (der Dienst tut das bei jedem Start) |
+| `FAIL Caddy` | `systemctl status caddy-api`; nur `caddy-api` darf laufen, nicht `caddy` |
+| App ohne Zertifikat | DNS-Einträge aus 11.4 prüfen; die App muss live sein (`journalctl -u caddy-api`) |
+| `no host token` | Token aus 11.6 nach `/var/lib/forge-host/token` |

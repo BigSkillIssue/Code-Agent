@@ -1,0 +1,12 @@
+{
+  "runtimes": {
+    "runsc": { "path": "/usr/local/bin/runsc" }
+  },
+  "userns-remap": "default",
+  "default-address-pools": [{ "base": "10.88.0.0/16", "size": 24 }],
+  "bip": "10.87.0.1/24",
+  "no-new-privileges": true,
+  "live-restore": true,
+  "log-driver": "local",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}

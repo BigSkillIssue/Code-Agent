@@ -3,6 +3,7 @@ a throwaway gVisor container that gets no secrets and reaches only the build net
 registries; the firewall in `firewall.py` keeps it there).
 """
 
+import os
 import tarfile
 from pathlib import Path
 
@@ -37,6 +38,17 @@ def unpack(archive: Path, target: Path) -> None:
             tar.extractall(target, filter="data")
         except tarfile.FilterError as error:
             raise SourceError(str(error)) from error
+
+
+def hand_over(folder: Path, owner: tuple[int, int]) -> None:
+    """Give a release folder to the host user the containers run as, so builds can write it
+    (under userns-remap that user is a subordinate id, not the worker's)."""
+    if not hasattr(os, "chown"):
+        return
+    os.chown(folder, *owner)
+    for root, folders, files in os.walk(folder):
+        for name in [*folders, *files]:
+            os.chown(os.path.join(root, name), *owner, follow_symlinks=False)
 
 
 def build_args(plan: DeployPlan, service: ServicePlan, release_dir: Path, user: str) -> list[str]:

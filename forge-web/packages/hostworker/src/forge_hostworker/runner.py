@@ -19,12 +19,14 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
-from forge_hostworker.build import SourceError, build_release, unpack
+from forge_hostworker.build import SourceError, build_release, hand_over, unpack
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
+from forge_hostworker.firewall import BUILD_SUBNET
 from forge_hostworker.postgres import ensure_database
 from forge_hostworker.wire import DeployPlan, HostJob, JobResult, ServicePlan, ServiceState
 
 HEALTH_TIMEOUT_S = 120
+BUILD_NETWORK = "forge-build"
 PATH = "/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Health = Callable[[str, float], Awaitable[bool]]
 
@@ -79,12 +81,16 @@ class HostRunner:
         user: str | None = None,
         health: Health = http_health,
         health_timeout_s: float = HEALTH_TIMEOUT_S,
+        on_change: Callable[[], Awaitable[None]] | None = None,
+        owner: tuple[int, int] | None = None,
     ) -> None:
         self.docker = docker
         self.data_dir = data_dir
         self.user = user or default_user()
+        self.owner = owner  # the host uid:gid of `user` (None: the worker's own, nothing to do)
         self.health = health
         self.health_timeout_s = health_timeout_s
+        self.on_change = on_change  # the edge reloads after every change of what runs
 
     def folder(self, app: str, environment: str) -> Path:
         """An app's folder on the host."""
@@ -120,6 +126,8 @@ class HostRunner:
             result = JobResult(ok=False, error=str(error), hint=error.hint)
         except SourceError as error:
             result = JobResult(ok=False, error=f"the source was refused: {error}")
+        if result.ok and self.on_change is not None:
+            await self.on_change()
         return result.model_copy(update={"seconds": round(time.monotonic() - started, 1)})
 
     async def release(
@@ -131,6 +139,9 @@ class HostRunner:
         release_dir = folder / "releases" / str(plan.release)
         await asyncio.to_thread(shutil.rmtree, release_dir, True)
         await asyncio.to_thread(unpack, source, release_dir)
+        if self.owner is not None:
+            await asyncio.to_thread(hand_over, release_dir, self.owner)
+        await self.ensure_build_network()
         net = await self.ensure_network(plan)
         database_url = ""
         if plan.database:
@@ -160,6 +171,18 @@ class HostRunner:
         self.keep_plan(plan)
         await self.switch(plan, state)
         return JobResult(ok=True, release=plan.release, services=started)
+
+    async def ensure_build_network(self) -> None:
+        """The network builds run on, in the subnet the firewall knows."""
+        if (await self.docker("network", "inspect", BUILD_NETWORK)).code != 0:
+            made = await self.docker(
+                "network", "create", "--driver", "bridge", "--subnet", BUILD_SUBNET, BUILD_NETWORK
+            )
+            if made.code != 0:
+                raise HostError(
+                    f"the build network could not be made: {made.tail()[-300:]}",
+                    hint="see the Docker daemon's log",
+                )
 
     async def ensure_network(self, plan: DeployPlan) -> str:
         """The app's network, made once."""

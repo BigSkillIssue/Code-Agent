@@ -34,6 +34,7 @@ jobs:
           uv build --wheel --out-dir dist .
           uv build --wheel --out-dir dist forge-web/packages/sandbox
           uv build --wheel --out-dir dist forge-web/packages/macworker
+          uv build --wheel --out-dir dist forge-web/packages/hostworker
           uv build --wheel --out-dir dist forge-web/packages/server
       - name: The server wheel carries the web UI
         run: |
@@ -49,6 +50,7 @@ jobs:
           python -m venv /tmp/fw
           /tmp/fw/bin/pip install dist/*.whl
           /tmp/fw/bin/forge-web --version
+          /tmp/fw/bin/forge-host-worker --version
           /tmp/fw/bin/forge-web --data-dir /tmp/fw-data doctor || true
       - uses: actions/upload-artifact@v4
         with:

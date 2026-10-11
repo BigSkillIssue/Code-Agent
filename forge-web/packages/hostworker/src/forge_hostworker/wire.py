@@ -29,11 +29,20 @@ ENV_NAME = r"^[A-Z][A-Z0-9_]{0,63}$"
 # A runtime image the admin built or pinned: registry/name:tag, optionally @sha256:digest.
 IMAGE = r"^[a-z0-9][a-z0-9._/-]{0,199}(:[A-Za-z0-9._-]{1,128})?(@sha256:[0-9a-f]{64})?$"
 RESERVED_ENV = frozenset({"PORT", "DATABASE_URL", "PATH", "HOME"})
+# Host names the edge needs: `staging.<apps domain>` is the parent of every staging app.
+RESERVED_APPS = frozenset({"staging", "www"})
 MAX_LOG_CHARS = 20_000
 SEAL_INFO = b"forge-hostworker secrets v1"
 Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
 JobKind = Literal["release", "rollback", "stop"]
+
+
+def app_name(value: str) -> str:
+    """An app's name, which is also its host name."""
+    if value in RESERVED_APPS:
+        raise ValueError(f"{value!r} is reserved for the edge")
+    return value
 
 
 class Limits(BaseModel):
@@ -106,6 +115,8 @@ class DeployPlan(BaseModel):
     limits: Limits = Field(default_factory=Limits)
     build_image_network: str = Field(default="forge-build", pattern=r"^[a-z][a-z0-9-]{0,62}$")
 
+    _app = field_validator("app")(app_name)
+
     @model_validator(mode="after")
     def distinct(self) -> "DeployPlan":
         """Service names and ports are used once."""
@@ -125,6 +136,8 @@ class HostJob(BaseModel):
     environment: Environment
     plan: DeployPlan | None = None  # release jobs only
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
+
+    _app = field_validator("app")(app_name)
 
     @model_validator(mode="after")
     def plan_fits(self) -> "HostJob":
