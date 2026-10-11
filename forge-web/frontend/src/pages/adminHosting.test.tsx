@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AbuseNotice, HostedApp, HostingUser, QueueItem } from "../api/hosting";
+import type { AbuseNotice, HostedApp, HostingUser, Incident, QueueItem } from "../api/hosting";
 import { useStore } from "../state/store";
 import { HostingTab } from "./AdminHosting";
 
@@ -24,6 +24,11 @@ const notice: AbuseNotice = {
   status: "open", decision: "", created_at: 5, decided_at: 0,
 };
 
+const incidents: Incident[] = [
+  { id: "i1", key: "down:p1:production", subject: "shop (production) läuft nicht vollständig", detail: "1 von 2 Containern laufen", opened_at: 9, closed_at: 0 },
+  { id: "i2", key: "silent:h1", subject: "App-Server app-server-1 meldet sich nicht", detail: "", opened_at: 4, closed_at: 6 },
+];
+
 const mocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../api/hosting", () => ({ hostingAdmin: mocks.api }));
 
@@ -42,6 +47,7 @@ beforeEach(() => {
     trust: vi.fn(async () => ({ trusted: true })),
     notices: vi.fn(async () => [notice, { ...notice, id: "n2", status: "dismissed", decision: "a real shop" }]),
     decide: vi.fn(async () => ({ ...notice, status: "actioned" })),
+    incidents: vi.fn(async () => incidents),
   });
   useStore.setState({ error: "" });
 });
@@ -97,6 +103,15 @@ describe("the hosting panel", () => {
     expect(screen.queryByText("Ada")).toBeNull();
     fireEvent.click(box);
     await waitFor(() => expect(mocks.api.trust).toHaveBeenCalledWith("u2", true));
+  });
+
+  it("shows open incidents first and the ended ones as ended", async () => {
+    render(<HostingTab />);
+    await screen.findByTestId("incidents");
+    const [open, ended] = await screen.findAllByTestId("incident");
+    expect(open.textContent).toContain("1 von 2 Containern laufen");
+    expect(open.className).toContain("text-bad");
+    expect(ended.textContent).toMatch(/(ended|beendet)/);
   });
 
   it("decides a report with reasons: suspending the app or no action", async () => {

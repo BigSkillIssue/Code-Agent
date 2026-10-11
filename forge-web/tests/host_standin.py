@@ -14,7 +14,14 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from forge_hostworker.backup import outgoing
 from forge_hostworker.client import HostClient
-from forge_hostworker.wire import CheckState, HostJob, JobResult, ServiceState, public_key
+from forge_hostworker.wire import (
+    CheckState,
+    HostJob,
+    HostUsage,
+    JobResult,
+    ServiceState,
+    public_key,
+)
 
 
 class HostStandIn:
@@ -30,6 +37,7 @@ class HostStandIn:
         self.results: dict[str, JobResult] = {}  # kind -> the answer instead of success
         self.holds: dict[str, asyncio.Event] = {}  # kind -> answered once this is set
         self.data_dir = Path(tempfile.mkdtemp(prefix="host-standin-"))  # where uploads wait
+        self.metered = HostUsage(disk_free_gb=100)  # what it reports its apps use
 
     @property
     def public_key(self) -> str:
@@ -38,6 +46,9 @@ class HostStandIn:
     def kinds(self, environment: str | None = None) -> list[str]:
         """The kinds of the jobs it got, in order (of one environment, if given)."""
         return [j.kind for j in self.jobs if environment in (None, j.environment)]
+
+    async def usage(self) -> HostUsage:
+        return self.metered
 
     def last(self, kind: str) -> HostJob:
         return [job for job in self.jobs if job.kind == kind][-1]

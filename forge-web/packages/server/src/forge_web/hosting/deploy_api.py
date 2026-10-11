@@ -22,7 +22,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import func, select
 
-from forge_hostworker.wire import ENV_NAME, RESERVED_ENV, JobResult, PollAnswer, PollRequest
+from forge_hostworker.wire import (
+    ENV_NAME,
+    RESERVED_ENV,
+    HostUsage,
+    JobResult,
+    PollAnswer,
+    PollRequest,
+)
 from forge_hostworker.wire import SealedSecrets as Sealed
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
@@ -36,6 +43,7 @@ from forge_web.db.hosting_models import (
 )
 from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.files_api import allowed
+from forge_web.hosting.alerts import store_usage
 from forge_web.hosting.deploy import ACTIVE, view
 from forge_web.hosting.hosts import JobGone, host_of, pick_host
 from forge_web.hosting.legal_pages import operator_ready, operator_view
@@ -111,6 +119,10 @@ def host_router() -> APIRouter:
             services.hosts.store_archive(host.id, job_id, request.stream(), target, limit)
         )
         return {"size": size}
+
+    @router.post("/metrics")
+    async def metrics(body: HostUsage, host: Host, request: Request) -> dict[str, int]:
+        return {"kept": await store_usage(services_of(request).db, host, body)}
 
     @router.post("/jobs/{job_id}/result")
     async def result(job_id: str, host: Host, request: Request) -> dict[str, bool]:

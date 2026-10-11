@@ -93,6 +93,7 @@ BODIES: dict[str, dict[str, Any]] = {
     # The Mac and the host workers' polls differ, so the schema names them by their modules.
     "forge_macworker__wire__PollRequest": {"free_slots": 1},
     "forge_hostworker__wire__PollRequest": {"free_slots": 1, "running": []},
+    "HostUsage": {"disk_free_gb": 10, "apps": []},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -280,7 +281,7 @@ async def test_people_are_no_macs(shared: World) -> None:
 async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
-    assert len(routes) == 5
+    assert len(routes) == 6
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

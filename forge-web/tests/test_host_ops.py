@@ -1,12 +1,16 @@
 """Backups of hosted apps (W29a): the host encrypts the database and the files before anything
 leaves it, a changed, cut-off or wrongly keyed backup does not open, and the restore drill reads
 a backup back into a throwaway database. Forge Web backs up every live app on schedule, keeps
-only the encrypted file (the newest few) and drills the newest one."""
+only the encrypted file (the newest few) and drills the newest one.
+
+Metering (W29b): what an app uses adds up over its containers and its own volumes; hosts speak
+only for their own apps; an alert is mailed once per incident and again only after it ended."""
 
 import asyncio
 import base64
 import os
 import tarfile
+import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
@@ -15,10 +19,19 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from docker_standin import FakeDocker, job_of, release_job, runner_for, tarball
+from docker_standin import FakeDocker, job_of, plan, release_job, runner_for, tarball
 from forge_hostworker.backup import CHUNK, BackupError, decrypt_file, encrypt_file, outgoing
-from forge_web.db.hosting_models import AppBackup, AppBackupKey
+from forge_hostworker.wire import AppUsage, HostJob, HostUsage
+from forge_web.db.hosting_models import (
+    AppBackup,
+    AppBackupKey,
+    AppUsageSample,
+    HostedApp,
+    HostServer,
+)
+from forge_web.db.models import User
 from forge_web.hosting import hosts as host_queue
+from forge_web.hosting.alerts import Alerts, store_usage, totals
 from forge_web.hosting.hosts import HostQueue
 from forge_web.hosting.ops import Backups
 from host_standin import HostStandIn, host_online
@@ -214,3 +227,152 @@ async def test_the_schedule_backs_up_drills_and_keeps_the_newest(
     folder = services.settings.data_dir / "hosting" / "backups" / project_id / "staging"
     assert [p.stem for p in folder.iterdir()] == [rows[0].id]
     await asyncio.sleep(0)
+
+
+# Metering and alerts ------------------------------------------------------------------------
+
+
+async def test_metering_adds_up_per_app(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    runner = runner_for(tmp_path, docker)
+    assert (await runner.run(release_job(storage_gb=1), tarball(tmp_path / "s.tgz"), {})).ok
+    blog = HostJob(id="b" * 32, kind="release", app="blog", environment="production",
+                   plan=plan(app="blog", environment="production", database=False))  # fmt: skip
+    assert (await runner.run(blog, tarball(tmp_path / "b.tgz"), {})).ok
+    docker.containers["forge-blog-production-web-r1"]["running"] = False
+    docker.stats = {
+        "forge-shop-staging-api-r1": {"CPUPerc": "12.5%", "MemUsage": "100MiB / 512MiB",
+                                      "NetIO": "1MB / 2MB"},
+        "forge-shop-staging-web-r1": {"CPUPerc": "2.5%", "MemUsage": "20MiB / 256MiB",
+                                      "NetIO": "500kB / 1.5MB"},
+        "forge-shop-staging-db": {"CPUPerc": "5.00%", "MemUsage": "1GiB / 2GiB",
+                                  "NetIO": "0B / 0B"},
+        "forge-blog-production-api-r1": {"CPUPerc": "1%", "MemUsage": "10MB / 512MiB",
+                                         "NetIO": "3kB / 4kB"},
+    }  # fmt: skip
+    docker.volumes |= {"forge-shop-staging-db-data", "forge-shop-staging-x-staging-files"}
+    docker.volume_sizes = {"forge-shop-staging-files": "1.5GB", "forge-shop-staging-db-data":
+                           "200MB", "forge-shop-staging-x-staging-files": "9GB"}  # fmt: skip
+    (runner.folder("shop", "staging") / "upload.bin").write_bytes(bytes(1_000_000))
+    report = await runner.usage()
+    apps = {(a.app, a.environment): a for a in report.apps}
+    assert sorted(apps) == [("blog", "production"), ("shop", "staging")]
+    shop, blog_usage = apps[("shop", "staging")], apps[("blog", "production")]
+    assert (shop.containers, shop.running, blog_usage.containers, blog_usage.running) == (
+        3,
+        3,
+        2,
+        1,
+    )
+    assert shop.cpu_percent == pytest.approx(20.0) and blog_usage.cpu_percent == pytest.approx(1.0)
+    assert shop.memory_mb == pytest.approx(1144 * 1.048576)
+    assert (shop.net_rx_mb, shop.net_tx_mb) == (pytest.approx(1.5), pytest.approx(3.5))
+    assert 1701 <= shop.disk_mb < 1702  # its two volumes and its folder, not the other app's
+    assert blog_usage.disk_mb < 1 and report.disk_free_gb > 0
+    [stats] = [c for c in docker.calls if c[0] == "stats"]
+    assert "forge-blog-production-web-r1" not in stats  # a stopped container uses nothing
+
+
+def sample(at: float, cpu: float, traffic: float, memory: float = 0, disk: float = 0) -> Any:
+    return AppUsageSample(id=f"s{at}", project_id="p", environment="staging", at=at,
+                          containers=1, running=1, cpu_percent=cpu, memory_mb=memory,
+                          net_rx_mb=traffic / 2, net_tx_mb=traffic / 2, disk_mb=disk)  # fmt: skip
+
+
+def test_samples_add_up_to_cpu_hours_traffic_and_peaks() -> None:
+    samples = [sample(3600, 100, 5, 80, 900), sample(0, 50, 10, 100, 700),
+               sample(1800, 50, 30, 50, 800)]  # fmt: skip
+    found = totals(samples)
+    assert found["cpu_hours"] == pytest.approx(0.5)  # half a core for an hour
+    assert found["traffic_mb"] == pytest.approx(25)  # 20, then 5 after a restart
+    assert (found["memory_mb_max"], found["disk_mb_max"], found["samples"]) == (100, 900, 3)
+    assert totals([])["cpu_hours"] == 0
+
+
+async def hosted_on(server: LiveServer, project_id: str) -> tuple[HostedApp, HostServer]:
+    async with server.services.db.session() as session:
+        hosted = await session.get(HostedApp, project_id)
+        assert hosted is not None
+        host = await session.get(HostServer, hosted.host_id)
+        assert host is not None
+        return hosted, host
+
+
+async def test_a_host_reports_only_for_its_own_apps(
+    server: LiveServer, client: httpx.AsyncClient
+) -> None:
+    host = HostStandIn()
+    project_id, _ = await app_project(server, client, server.services.dev_user_id)
+    token = await host_token(server, host)
+    async with host_online(server.url, token, host):
+        deploy_id = await deployed(client, project_id, "staging")
+        await until(lambda: settled(client, project_id, deploy_id))
+    hosted, _ = await hosted_on(server, project_id)
+    report = HostUsage(disk_free_gb=42, apps=[
+        AppUsage(app=hosted.app, environment="staging", containers=3, running=3, cpu_percent=20,
+                 memory_mb=300, net_rx_mb=1, net_tx_mb=2, disk_mb=1500),
+        AppUsage(app="other", environment="staging", containers=1, running=1, memory_mb=9),
+    ])  # fmt: skip
+    as_host = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    for _ in range(2):
+        sent = await client.post("/api/host/metrics", content=report.model_dump_json(),
+                                 headers=as_host)  # fmt: skip
+        assert sent.json() == {"kept": 1}, sent.text
+    used = (await client.get(f"/api/admin/hosting/apps/{project_id}/usage")).json()
+    assert list(used) == ["staging"] and used["staging"]["samples"] == 2
+    assert used["staging"]["disk_mb_max"] == 1500 and used["staging"]["memory_mb_max"] == 300
+    async with server.services.db.session() as session:
+        rows = list(await session.scalars(select(AppUsageSample)))
+    assert {r.project_id for r in rows} == {project_id}  # nothing kept for the other app
+    assert (await hosted_on(server, project_id))[1].disk_free_gb == 42
+    forged = as_host | {"Authorization": "Bearer fhw_forged"}
+    refused = await client.post("/api/host/metrics", content=report.model_dump_json(),
+                                headers=forged)  # fmt: skip
+    assert refused.status_code == 401
+
+
+async def test_an_alert_goes_out_once_per_incident(
+    server: LiveServer, client: httpx.AsyncClient
+) -> None:
+    host = HostStandIn()
+    project_id, _ = await app_project(server, client, server.services.dev_user_id)
+    mails: list[tuple[str, str, str]] = []
+
+    async def mailer(to: str, subject: str, text: str) -> None:
+        mails.append((to, subject, text))
+
+    services = server.services
+    alerts = Alerts(services.db, services.settings, mailer)
+    async with host_online(server.url, await host_token(server, host), host):
+        deploy_id = await deployed(client, project_id, "staging")
+        await until(lambda: settled(client, project_id, deploy_id))
+        hosted, host_row = await hosted_on(server, project_id)
+        async with services.db.session() as session:
+            admins = sorted(await session.scalars(select(User.email).where(User.role == "admin")))
+        where, broken = f"{project_id}:staging", HostUsage(disk_free_gb=3, apps=[
+            AppUsage(app=hosted.app, environment="staging", containers=3, running=2,
+                     memory_mb=1e6)])  # fmt: skip
+        await store_usage(services.db, host_row, broken)
+        first = await alerts.check()
+        assert sorted(first) == [f"disk:{host_row.id}", f"down:{where}", f"memory:{where}"]
+        assert await alerts.check() == []  # the same incidents: nothing new is mailed
+        assert len(mails) == 3 * len(admins) and sorted({m[0] for m in mails}) == admins
+        assert any("2 von 3 Containern" in text for _, _, text in mails)
+        healed = HostUsage(disk_free_gb=80, apps=[
+            AppUsage(app=hosted.app, environment="staging", containers=3, running=3,
+                     memory_mb=10)])  # fmt: skip
+        await store_usage(services.db, host_row, healed)
+        assert await alerts.check() == []
+        shown = (await client.get("/api/admin/hosting/incidents")).json()
+        assert len(shown) == 3 and all(row["closed_at"] > 0 for row in shown)  # they ended
+        await store_usage(services.db, host_row, broken)
+        assert sorted(await alerts.check()) == first  # back again: new incidents, new mails
+        assert len(mails) == 6 * len(admins)
+        await store_usage(services.db, host_row, healed)
+        every = services.settings.hosting.backup_every_h * 3600
+        async with services.db.session() as session, session.begin():
+            session.add(AppBackup(id="old", project_id=project_id, environment="staging", size=1,
+                                  created_at=time.time() - 3 * every, drill_at=time.time(),
+                                  drill_ok=False, drill_detail="pg_restore: error"))  # fmt: skip
+        assert sorted(await alerts.check()) == [f"backup:{where}", f"drill:{where}"]
+    assert any("pg_restore: error" in text for _, _, text in mails[-len(admins) * 2 :])

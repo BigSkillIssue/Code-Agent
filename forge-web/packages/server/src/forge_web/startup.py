@@ -28,6 +28,7 @@ from forge_web.fake import fake_script
 from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.gateway.tokens import TOKEN_ENV
 from forge_web.gateway.upstreams import worker_providers
+from forge_web.hosting.alerts import Alerts
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
 from forge_web.hosting.ops import Backups
@@ -138,12 +139,13 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     hosts = HostQueue(db, settings.data_dir, settings.hosting.job_grace_s)
     deploys = Deploys(db, vault, settings, hosts, runs.call)
     backups = Backups(db, vault, settings, hosts)
+    alerts = Alerts(db, settings)
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
-        submissions=submissions, hosts=hosts, deploys=deploys, backups=backups,
+        submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
@@ -151,6 +153,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     await deploys.start()
     if settings.hosting.enabled:
         backups.start()
+        alerts.start()
     return services
 
 
@@ -238,6 +241,7 @@ async def stop_services(services: Services) -> None:
     """Close everything in reverse order (containers keep running)."""
     for task in services.tasks:
         task.cancel()
+    await services.alerts.close()
     await services.backups.close()
     await services.deploys.close()
     await services.submissions.close()

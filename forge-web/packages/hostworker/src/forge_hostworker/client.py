@@ -31,6 +31,7 @@ from forge_hostworker.wire import (
 )
 
 log = logging.getLogger(__name__)
+USAGE_EVERY_S = 300.0
 
 
 class HostClient:
@@ -58,10 +59,12 @@ class HostClient:
         self.slots = slots
         self.tasks: set[asyncio.Task[None]] = set()
         self.running: set[str] = set()  # the ids of the jobs in `tasks`
+        self.usage_every_s = USAGE_EVERY_S
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down."""
         backoff = 1.0
+        metering = asyncio.create_task(self.report_usage(stop))
         try:
             while not stop.is_set():
                 if len(self.tasks) >= self.slots:
@@ -78,10 +81,25 @@ class HostClient:
                 if job is not None:
                     self.start(job)
         finally:
+            metering.cancel()
             for task in list(self.tasks):
                 task.cancel()
-            await asyncio.gather(*self.tasks, return_exceptions=True)
+            await asyncio.gather(metering, *self.tasks, return_exceptions=True)
             await self.http.aclose()
+
+    async def report_usage(self, stop: asyncio.Event) -> None:
+        """Tell the server what the apps use, every few minutes (trouble is only logged)."""
+        while not stop.is_set():
+            try:
+                found = await self.runner.usage()
+                reply = await self.http.post(
+                    "/api/host/metrics", content=found.model_dump_json(),
+                    headers={"Content-Type": "application/json"},
+                )  # fmt: skip
+                reply.raise_for_status()
+            except (httpx.HTTPError, OSError, ValueError) as err:
+                log.warning("reporting what the apps use failed: %s", err)
+            await wait_or_stop(stop, self.usage_every_s)
 
     async def poll_unless(self, stop: asyncio.Event) -> HostJob | None:
         """One long poll, given up as soon as `stop` is set."""

@@ -753,6 +753,14 @@ neueste Sicherung probeweise in eine Wegwerf-Datenbank zurück; das Ergebnis ste
 Verwaltung unter **Hosting → Gehostete Apps**. Den Datenordner von Forge Web sicherst du wie in
 Abschnitt 7 – der Schlüssel der Sicherungen liegt verschlüsselt in Forge Webs Datenbank.
 
+Alle fünf Minuten meldet jeder App-Server, was seine Apps **verbrauchen** (Rechenzeit, Speicher,
+Datenverkehr, Platz). Forge Web hebt das 31 Tage auf und prüft dabei, ob etwas nicht stimmt: ein
+App-Server, der sich nicht meldet oder wenig Platz hat, eine App, die nicht vollständig läuft oder
+ihren Speicher oder Platz ausreizt, eine überfällige Sicherung, eine fehlgeschlagene
+Probe-Wiederherstellung. Jede solche **Störung** geht einmal per Mail an alle Admins (dafür braucht
+es den SMTP-Zugang oben) und steht unter **Hosting → Störungen**; kommt sie nach ihrem Ende wieder,
+gibt es eine neue Mail.
+
 ### 11.8 Prüfen
 
 ```bash

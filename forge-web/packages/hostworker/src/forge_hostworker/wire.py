@@ -208,6 +208,27 @@ class CheckState(BaseModel):
     detail: str = Field(default="", max_length=2_000)
 
 
+class AppUsage(BaseModel):
+    """What one app uses in one environment on a host, summed over its containers."""
+
+    app: str = Field(pattern=SLUG)
+    environment: Environment
+    containers: int = Field(default=0, ge=0)
+    running: int = Field(default=0, ge=0)
+    cpu_percent: float = Field(default=0, ge=0)  # of one core
+    memory_mb: float = Field(default=0, ge=0)
+    net_rx_mb: float = Field(default=0, ge=0)  # since its containers started
+    net_tx_mb: float = Field(default=0, ge=0)
+    disk_mb: float = Field(default=0, ge=0)
+
+
+class HostUsage(BaseModel):
+    """A host's report of what its apps use (`POST /api/host/metrics`)."""
+
+    apps: list[AppUsage] = Field(default_factory=list, max_length=1000)
+    disk_free_gb: float = Field(default=0, ge=0)
+
+
 class JobResult(BaseModel):
     """How a job ended. `ok` is False when the release is not live: it could not be built, did
     not get healthy (then the previous release keeps running: `rolled_back`), or the job could

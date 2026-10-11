@@ -19,6 +19,7 @@ from forge_web.db.engine import Database
 from forge_web.db.writer import EventWriter
 from forge_web.egress import Egress
 from forge_web.gateway.proxy import Gateway, PrivateServer
+from forge_web.hosting.alerts import Alerts
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
 from forge_web.hosting.ops import Backups
@@ -52,6 +53,7 @@ class Services:
     hosts: HostQueue
     deploys: Deploys
     backups: Backups
+    alerts: Alerts
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

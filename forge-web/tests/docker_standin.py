@@ -29,6 +29,8 @@ class FakeDocker:
         self.containers: dict[str, dict[str, Any]] = {}
         self.networks: set[str] = set()
         self.fail: set[str] = set()  # images whose `run` fails (a broken build)
+        self.stats: dict[str, dict[str, str]] = {}  # container -> its `docker stats` columns
+        self.volume_sizes: dict[str, str] = {}  # volume -> its size as `system df` prints it
 
     async def __call__(
         self, *args: str, timeout: float = 600, out: Path | None = None
@@ -124,18 +126,38 @@ class FakeDocker:
         return DockerResult(0, "", "")
 
     def do_ps(self, args: list[str]) -> DockerResult:
-        wanted = dict(
-            a.removeprefix("label=").split("=", 1)
+        wanted = [
+            a.removeprefix("label=").partition("=")
             for i, a in enumerate(args)
             if args[i - 1] == "--filter"
-        )
-        names = [
-            n
-            for n, c in self.containers.items()
-            if all(c["labels"].get(k) == v for k, v in wanted.items())
-            and ("-a" in args or c["running"])
         ]
-        return DockerResult(0, "\n".join(names), "")
+        found = {
+            n: c
+            for n, c in self.containers.items()
+            if all(k in c["labels"] and (not eq or c["labels"][k] == v) for k, eq, v in wanted)
+            and ("-a" in args or c["running"])
+        }
+        if not any("\t" in a for a in args):
+            return DockerResult(0, "\n".join(found), "")
+        columns = ("forge.app", "forge.env", "forge.role")
+        lines = [
+            "\t".join([n, *(c["labels"].get(k, "") for k in columns),
+                       "running" if c["running"] else "exited"])
+            for n, c in found.items()
+        ]  # fmt: skip
+        return DockerResult(0, "\n".join(lines), "")
+
+    def do_stats(self, args: list[str]) -> DockerResult:
+        lines = [
+            json.dumps({"Name": n} | self.stats.get(n, {})) for n in args if n in self.containers
+        ]
+        return DockerResult(0, "\n".join(lines), "")
+
+    def do_system(self, args: list[str]) -> DockerResult:
+        volumes = [
+            {"Name": v, "Size": self.volume_sizes.get(v, "0B")} for v in sorted(self.volumes)
+        ]
+        return DockerResult(0, json.dumps(volumes), "")
 
     def runs(self) -> list[list[str]]:
         """The `docker run` calls."""

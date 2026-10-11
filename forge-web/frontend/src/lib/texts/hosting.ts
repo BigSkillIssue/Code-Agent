@@ -109,6 +109,10 @@ export const hostingEn = {
   categoryCopyright: "copyright or trademark",
   categoryPrivacy: "personal rights, privacy",
   categoryOther: "other illegal content",
+  incidentsTitle: "Incidents",
+  incidentsHint: "Checked every five minutes: silent servers, apps that do not run completely or exceed their limits, overdue backups and failed restore drills. Each incident is mailed to the admins once.",
+  incidentsNone: "No incidents.",
+  incidentEnded: "ended {date}",
 };
 
 export const hostingDe: typeof hostingEn = {
@@ -219,4 +223,8 @@ export const hostingDe: typeof hostingEn = {
   categoryCopyright: "Urheber- oder Markenrecht",
   categoryPrivacy: "Persönlichkeitsrecht, Datenschutz",
   categoryOther: "anderer rechtswidriger Inhalt",
+  incidentsTitle: "Störungen",
+  incidentsHint: "Alle fünf Minuten geprüft: stumme Server, Apps, die nicht vollständig laufen oder ihre Grenzen überschreiten, überfällige Sicherungen und fehlgeschlagene Probe-Wiederherstellungen. Jede Störung geht einmal per Mail an die Admins.",
+  incidentsNone: "Keine Störungen.",
+  incidentEnded: "beendet {date}",
 };

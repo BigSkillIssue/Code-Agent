@@ -156,6 +156,16 @@ export interface AbuseNotice {
   decided_at: number;
 }
 
+/** Something wrong in hosting that the admins were mailed about once; closed_at is 0 while it lasts. */
+export interface Incident {
+  id: string;
+  key: string;
+  subject: string;
+  detail: string;
+  opened_at: number;
+  closed_at: number;
+}
+
 const admin = "/api/admin/hosting";
 
 export const hostingAdmin = {
@@ -174,6 +184,7 @@ export const hostingAdmin = {
   notices: () => api.get<AbuseNotice[]>(`${admin}/notices`),
   decide: (noticeId: string, action: "dismiss" | "suspend", reason: string) =>
     api.post<AbuseNotice>(`${admin}/notices/${id(noticeId)}/decide`, { action, reason }),
+  incidents: () => api.get<Incident[]>(`${admin}/incidents`),
   users: () => api.get<HostingUser[]>(`${admin}/users`),
   trust: (userId: string, trusted: boolean) => api.put<{ trusted: boolean }>(`${admin}/users/${id(userId)}`, { trusted }),
 };

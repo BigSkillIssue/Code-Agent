@@ -1,7 +1,7 @@
 // Administration of hosting: the app servers (with the one-time token a new one connects with),
 // the production deploys waiting for an admin (exactly the commit the server checked, with its
-// checks), the hosted apps (suspend, resume, logs), who is trusted, and reports of illegal
-// content (in AdminNotices).
+// checks), the hosted apps (suspend, resume, logs), who is trusted, reports of illegal content
+// (in AdminNotices) and the incidents the admins were mailed about.
 
 import { type FormEvent, useCallback, useState } from "react";
 import { type HostedApp, hostingAdmin, type QueueItem } from "../api/hosting";
@@ -12,12 +12,34 @@ import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts"
 export function HostingTab() {
   return (
     <div className="space-y-4" data-testid="admin-hosting">
+      <IncidentsSection />
       <NoticesSection />
       <QueueSection />
       <AppsSection />
       <HostsSection />
       <TrustSection />
     </div>
+  );
+}
+
+function IncidentsSection() {
+  const [incidents] = useLoaded(useCallback(() => hostingAdmin.incidents(), []));
+  return (
+    <Section title={t("incidentsTitle")} hint={t("incidentsHint")}>
+      {incidents?.length === 0 && <p className="text-muted">{t("incidentsNone")}</p>}
+      <ul className="space-y-1" data-testid="incidents">
+        {(incidents ?? []).map((incident) => (
+          <li key={incident.id} className={incident.closed_at ? "text-muted" : "text-bad"} data-testid="incident">
+            <span className="font-medium">{incident.subject}</span>
+            {incident.detail && <span> · {incident.detail}</span>}
+            <span className="ml-2 text-xs">
+              {date(incident.opened_at)}
+              {incident.closed_at ? ` · ${t("incidentEnded", { date: date(incident.closed_at) })}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 

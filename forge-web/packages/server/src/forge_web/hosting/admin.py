@@ -19,8 +19,18 @@ from sqlalchemy import select
 from forge_hostworker.wire import HostJob
 from forge_web.audit import audit
 from forge_web.auth.sessions import AdminUser, client_ip
-from forge_web.db.hosting_models import AppBackup, Deploy, GoLiveApproval, HostedApp, HostServer
+from forge_web.db.hosting_models import (
+    AppBackup,
+    AppUsageSample,
+    Deploy,
+    GoLiveApproval,
+    HostedApp,
+    HostServer,
+    Incident,
+)
 from forge_web.db.models import Project, User
+from forge_web.gateway.meter import month_start
+from forge_web.hosting.alerts import incident_view, totals
 from forge_web.hosting.deploy import view
 from forge_web.hosting.hosts import ONLINE_S, create_host
 from forge_web.services import Services, services_of
@@ -87,6 +97,7 @@ def hosting_admin_router() -> APIRouter:
     host_routes(router)
     queue_routes(router)
     app_routes(router)
+    operations_routes(router)
     user_routes(router)
     return router
 
@@ -322,6 +333,29 @@ async def send(services: Services, hosted: HostedApp, environment: str, kind: st
                   environment=environment, timeout_s=ADMIN_JOB_TIMEOUT_S)  # fmt: skip
     await services.hosts.send(hosted.host_id, "", job)
     return job.id
+
+
+def operations_routes(router: APIRouter) -> None:
+    """Incidents, and what an app used this month."""
+
+    @router.get("/incidents")
+    async def incidents(request: Request, admin: AdminUser) -> list[dict[str, Any]]:
+        services = services_of(request)
+        async with services.db.session() as session:
+            rows = await session.scalars(
+                select(Incident).order_by((Incident.closed_at != 0), Incident.opened_at.desc())
+                .limit(100))  # fmt: skip
+            return [incident_view(row) for row in rows]
+
+    @router.get("/apps/{project_id}/usage")
+    async def app_usage(project_id: str, request: Request, admin: AdminUser) -> dict[str, Any]:
+        services = services_of(request)
+        since = month_start(time.time())
+        async with services.db.session() as session:
+            rows = list(await session.scalars(select(AppUsageSample).where(
+                AppUsageSample.project_id == project_id, AppUsageSample.at >= since)))  # fmt: skip
+        return {env: totals([r for r in rows if r.environment == env])
+                for env in sorted({r.environment for r in rows})}  # fmt: skip
 
 
 def user_routes(router: APIRouter) -> None:

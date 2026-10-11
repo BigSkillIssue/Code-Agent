@@ -20,6 +20,7 @@ class HostServer(Base):
     created_at: Mapped[float] = mapped_column(Float)
     last_seen: Mapped[float] = mapped_column(Float, default=0.0)
     version: Mapped[str] = mapped_column(String(40), default="")
+    disk_free_gb: Mapped[float] = mapped_column(Float, default=0.0)  # its last report
 
 
 class HostedApp(Base):
@@ -217,3 +218,36 @@ class AppBackup(Base):
     drill_at: Mapped[float] = mapped_column(Float, default=0.0)
     drill_ok: Mapped[bool] = mapped_column(Boolean, default=False)
     drill_detail: Mapped[str] = mapped_column(Text, default="")
+
+
+class AppUsageSample(Base):
+    """What an app used in one environment at one moment, as its host reported it (W29b)."""
+
+    __tablename__ = "app_usage"
+    __table_args__ = (Index("app_usage_by_app", "project_id", "environment", "at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    environment: Mapped[str] = mapped_column(String(16))
+    at: Mapped[float] = mapped_column(Float)
+    containers: Mapped[int] = mapped_column(Integer)
+    running: Mapped[int] = mapped_column(Integer)
+    cpu_percent: Mapped[float] = mapped_column(Float)
+    memory_mb: Mapped[float] = mapped_column(Float)
+    net_rx_mb: Mapped[float] = mapped_column(Float)  # counters since the containers started
+    net_tx_mb: Mapped[float] = mapped_column(Float)
+    disk_mb: Mapped[float] = mapped_column(Float)
+
+
+class Incident(Base):
+    """Something wrong in hosting that the admins heard about once (W29b)."""
+
+    __tablename__ = "hosting_incidents"
+    __table_args__ = (Index("incidents_open", "key", "closed_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(120))  # e.g. "down:<project>:<environment>"
+    subject: Mapped[str] = mapped_column(String(300))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    opened_at: Mapped[float] = mapped_column(Float)
+    closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: still open

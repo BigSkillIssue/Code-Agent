@@ -251,8 +251,8 @@ Security principles (the apps' code is foreign code):
     - Build: every live app and environment is backed up on schedule: the host packs the database (`pg_dump -Fc`) and the files and encrypts them with the app's own key (made and kept by Forge Web, sealed to the host for each job) in authenticated chunks; only the encrypted file is uploaded and kept on Forge Web (the newest few); the newest backup is drilled regularly by restoring it into a throwaway database on the host; admins can start both.
     - Tests: a backup is encrypted before it leaves the host; a changed, cut-off, reordered or wrongly keyed backup does not open; the drill restores it; the schedule backs up, drills and keeps the newest.
     - Verify: `uv run pytest -q tests/test_host_ops.py`
-- [ ] **W29b — Operations: metering and alerts**
-    - Files: `forge_hostworker/metrics.py`, `forge_web/hosting/{ops,admin}.py`, migration, `tests/test_host_ops.py`
+- [x] **W29b — Operations: metering and alerts**
+    - Files: `forge_hostworker/{metrics,client,runner,wire}.py`, `forge_web/hosting/{alerts,admin,deploy_api}.py`, `forge_web/db/{hosting_models.py,migrations/versions/0017_metering.py}`, `forge_web/{services,startup}.py`, `frontend/src/pages/AdminHosting.tsx` (+ test), `tests/{test_host_ops,docker_standin,host_standin,test_access}.py`
     - Build: metering per app (CPU, memory, disk, traffic) reported by the hosts; mail alerts to the admins (a host offline, an app down or over its limits, a failed backup or drill), once per incident.
     - Tests: metering adds up per app; an alert goes out once per incident and again only after it ended.
     - Verify: `uv run pytest -q tests/test_host_ops.py`

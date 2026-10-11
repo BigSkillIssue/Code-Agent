@@ -25,6 +25,7 @@ from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
 from forge_hostworker.firewall import BUILD_SUBNET
 from forge_hostworker.lifecycle import live_logs, start_live
+from forge_hostworker.metrics import usage
 from forge_hostworker.migrate import migrate_release
 from forge_hostworker.postgres import dump_database, ensure_database
 from forge_hostworker.storage import ensure_files, files_mount
@@ -33,6 +34,7 @@ from forge_hostworker.wire import (
     WITH_SOURCE,
     DeployPlan,
     HostJob,
+    HostUsage,
     JobResult,
     ServicePlan,
     ServiceState,
@@ -168,6 +170,10 @@ class HostRunner:
         if job.kind == "logs":
             return await live_logs(self, job.app, job.environment)
         return await self.stop(job.app, job.environment)
+
+    async def usage(self) -> HostUsage:
+        """What the apps on this host use now (reported to Forge Web every few minutes)."""
+        return await usage(self.docker, self.data_dir)
 
     async def prepare(self, plan: DeployPlan, source: Path) -> tuple[Path, JobResult | None]:
         """The release unpacked and built, once per release and source (a migrate job builds it,
