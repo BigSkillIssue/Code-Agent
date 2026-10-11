@@ -111,14 +111,17 @@ async def test_forge_reaches_the_model_only_through_the_gateway(
             chat = (await api.post(f"/api/projects/{project['id']}/chats", json=model)).json()
             await api.post(f"/api/chats/{chat['id']}/messages", json={"text": "say hi"})
             environments: list[dict[str, str]] = []
+            turns: list[dict[str, object]] = []
+            # Wait for the finished turn itself: right after the message the chat can still
+            # read "idle", because the sandbox reports that it runs only a moment later.
             for _ in range(600):
                 if sys.platform.startswith("linux") and not environments:
                     environments = worker_environments()
-                if (await api.get(f"/api/chats/{chat['id']}")).json()["state"] == "idle":
+                events = (await api.get(f"/api/chats/{chat['id']}/events")).json()["items"]
+                turns = [e["item"] for e in events if e["item"]["type"] == "turn"]
+                if turns:
                     break
                 await asyncio.sleep(0.1)
-            events = (await api.get(f"/api/chats/{chat['id']}/events")).json()["items"]
-            turns = [e["item"] for e in events if e["item"]["type"] == "turn"]
             assert turns and turns[-1]["ok"], events[-3:]
             usage = (await api.get("/api/usage")).json()
     assert upstream.seen and all(s["headers"]["x-api-key"] == REAL_KEY for s in upstream.seen)
