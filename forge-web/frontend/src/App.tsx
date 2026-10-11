@@ -8,6 +8,7 @@ import { Sidebar } from "./components/Sidebar";
 import { t } from "./lib/i18n";
 import { AdminPage } from "./pages/Admin";
 import { AppleListingPage } from "./pages/AppleListing";
+import { GoLivePage } from "./pages/GoLive";
 import { AppleReleasePage } from "./pages/AppleRelease";
 import { AppleReviewPage } from "./pages/AppleReview";
 import { AuthPages, type AuthConfig } from "./pages/Auth";
@@ -123,6 +124,7 @@ export function App() {
           <Route path="p/:projectId/apple" element={<AppleReviewPage />} />
           <Route path="p/:projectId/apple/release" element={<AppleReleasePage />} />
           <Route path="p/:projectId/apple/listing" element={<AppleListingPage />} />
+          <Route path="p/:projectId/live" element={<GoLivePage />} />
           <Route path="c/:chatId" element={<ChatPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />

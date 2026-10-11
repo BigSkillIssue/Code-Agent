@@ -13,7 +13,7 @@ Dockerfile or compose file.
 One deploy is several jobs, so the server knows after each step where it stands: `check` (the
 host's own tests and migrations on a throwaway database), `backup` (the app's database dumped
 on the host), `migrate` (the release's migrations on the app's database) and `release` (start,
-health, switch). `rollback` and `stop` act on what runs.
+health, switch). `rollback`, `stop`, `start` and `logs` act on what runs.
 """
 
 import base64
@@ -40,7 +40,7 @@ MAX_LOG_CHARS = 20_000
 SEAL_INFO = b"forge-hostworker secrets v1"
 Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
-JobKind = Literal["check", "backup", "migrate", "release", "rollback", "stop"]
+JobKind = Literal["check", "backup", "migrate", "release", "rollback", "stop", "start", "logs"]
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
 WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release")  # and the packed source
 

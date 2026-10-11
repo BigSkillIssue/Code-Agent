@@ -1,6 +1,6 @@
-import { Loader2, PanelRight, Trash2 } from "lucide-react";
+import { Globe, Loader2, PanelRight, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Chat, ChatMode, StoredItem } from "../api/types";
 import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
 import { t } from "../lib/i18n";
@@ -132,6 +132,11 @@ export function ChatView({ chat }: { chat: Chat }) {
             ))}
           </select>
           <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />
+          {project?.kind === "app" && (
+            <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded p-1 text-muted hover:text-accent">
+              <Globe className="size-4" />
+            </Link>
+          )}
           <button
             type="button"
             title={t("showPanel")}

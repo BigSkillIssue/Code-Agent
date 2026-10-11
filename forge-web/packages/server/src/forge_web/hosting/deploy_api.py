@@ -6,7 +6,9 @@
   "Ready to go live"; production takes the same commit once it is live in staging, and starting
   it is the creator's "Live schalten". `/api/projects/{id}/hosting/secrets`: the app's secrets
   (values go in, only names come out).
-- `/api/admin/hosting/deploys/{id}/approve`: an admin's approval of a production deploy.
+- `/api/projects/{id}/hosting`: everything the go-live page shows (W27).
+
+An admin approves production deploys in `admin.py`.
 """
 
 import json
@@ -23,9 +25,9 @@ from sqlalchemy import func, select
 from forge_hostworker.wire import ENV_NAME, RESERVED_ENV, JobResult, PollAnswer, PollRequest
 from forge_hostworker.wire import SealedSecrets as Sealed
 from forge_web.audit import audit
-from forge_web.auth.sessions import AdminUser, CurrentUser, client_ip
+from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.hosting_models import AppSecret, Deploy, GoLiveApproval, HostedApp, HostServer
-from forge_web.db.models import Project, User
+from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.files_api import allowed
 from forge_web.hosting.deploy import ACTIVE, view
 from forge_web.hosting.hosts import JobGone, host_of, pick_host
@@ -34,6 +36,7 @@ from forge_web.services import Services, services_of
 POLL_WAIT_S = 25.0
 MAX_RESULT_BYTES = 1024 * 1024
 SHOWN = 20
+REVIEW_STAGES = ("prompt", "plan", "product")
 Environment = Literal["staging", "production"]
 
 
@@ -148,6 +151,11 @@ def deploy_router() -> APIRouter:
         services.deploys.launch(deploy_id)
         return view(row)
 
+    @router.get("/hosting")
+    async def overview(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
+        services = await allowed(request, user, project_id)
+        return await hosting_overview(services, project_id)
+
     secret_routes(router)
     return router
 
@@ -185,29 +193,6 @@ def secret_routes(router: APIRouter) -> None:
         return {"ok": True}
 
 
-def admin_deploy_router() -> APIRouter:
-    """An admin's approval of a production deploy."""
-    router = APIRouter(prefix="/api/admin/hosting")
-
-    @router.post("/deploys/{deploy_id}/approve")
-    async def approve(deploy_id: str, request: Request, admin: AdminUser) -> dict[str, Any]:
-        services = services_of(request)
-        async with services.db.session() as session, session.begin():
-            row = await session.get(Deploy, deploy_id)
-            if row is None:
-                raise HTTPException(404, "no such deploy")
-            if (row.status, row.step) != ("waiting", "admin"):
-                raise HTTPException(409, "this deploy does not wait for an admin")
-            row.admin_id, row.admin_approved_at = admin.id, time.time()
-            row.status, row.updated_at = "running", time.time()
-        await audit(services.db, "hosting.deploy_approved", user_id=admin.id, target=row.project_id,
-                    ip=client_ip(request), deploy=deploy_id, commit=row.commit)  # fmt: skip
-        services.deploys.launch(deploy_id)
-        return view(row)
-
-    return router
-
-
 async def new_deploy(services: Services, user: User, project_id: str, body: DeployIn) -> Deploy:
     """A deploy of an approved commit, once everything it needs is there (else 403/409)."""
     if not services.settings.hosting.enabled:
@@ -226,6 +211,8 @@ async def new_deploy(services: Services, user: User, project_id: str, body: Depl
         if busy is not None:
             raise HTTPException(409, f"a deploy to {body.environment} is under way")
         hosted = await session.get(HostedApp, project_id)
+        if hosted is not None and hosted.suspended:
+            raise HTTPException(409, f"an admin suspended this app: {hosted.suspended_reason}")
         last = await session.scalar(select(func.max(Deploy.release)).where(
             Deploy.project_id == project_id, Deploy.environment == body.environment))  # fmt: skip
     picked = None if hosted else await pick_host(services.db)
@@ -282,3 +269,44 @@ async def restarted(services: Services, user: User, project_id: str, deploy_id: 
         row.data, row.status, row.error, row.hint = json.dumps(data), "running", "", ""
         row.updated_at = time.time()
     return row
+
+
+async def hosting_overview(services: Services, project_id: str) -> dict[str, Any]:
+    """The go-live page's data: reviews, approvals, deploys, what is live, the secrets' names."""
+    async with services.db.session() as session:
+        hosted = await session.get(HostedApp, project_id)
+        deploys = [view(row) for row in await session.scalars(
+            select(Deploy).where(Deploy.project_id == project_id)
+            .order_by(Deploy.created_at.desc()).limit(SHOWN))]  # fmt: skip
+        approvals = [{"commit": a.commit, "at": a.created_at, "summary": a.summary,
+                      "chat_id": a.chat_id} for a in await session.scalars(
+            select(GoLiveApproval).where(GoLiveApproval.project_id == project_id,
+                                         GoLiveApproval.commit != "")
+            .order_by(GoLiveApproval.created_at.desc()).limit(SHOWN))]  # fmt: skip
+        reviews = await release_reviews(session, project_id)
+        names = [{"environment": s.environment, "name": s.name} for s in await session.scalars(
+            select(AppSecret).where(AppSecret.project_id == project_id))]  # fmt: skip
+    live = {d["environment"]: d for d in deploys if d["status"] == "live"}
+    return {"enabled": services.settings.hosting.enabled, "app": hosted.app if hosted else "",
+            "suspended": bool(hosted and hosted.suspended),
+            "suspended_reason": hosted.suspended_reason if hosted else "",
+            "reviews": reviews, "approvals": approvals, "deploys": deploys,
+            "staging": live.get("staging"), "production": live.get("production"),
+            "secrets": names}  # fmt: skip
+
+
+async def release_reviews(session: Any, project_id: str) -> list[dict[str, Any]]:
+    """The newest release review of each stage (request, plan, product) from the chats."""
+    query = (
+        select(ChatEvent.chat_id, ChatEvent.data)
+        .join(Chat, Chat.id == ChatEvent.chat_id)
+        .where(Chat.project_id == project_id, ChatEvent.kind == "release_review")
+        .order_by(ChatEvent.ts.desc()).limit(200)
+    )  # fmt: skip
+    latest: dict[str, dict[str, Any]] = {}
+    for chat_id, data in await session.execute(query):
+        event = json.loads(data).get("event", {})
+        stage = event.get("stage")
+        if stage in REVIEW_STAGES and stage not in latest:
+            latest[stage] = {**event, "chat_id": chat_id}
+    return [latest[stage] for stage in REVIEW_STAGES if stage in latest]

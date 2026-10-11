@@ -23,6 +23,7 @@ from forge_hostworker.build import SourceError, build_release, file_digest, hand
 from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
 from forge_hostworker.firewall import BUILD_SUBNET
+from forge_hostworker.lifecycle import live_logs, start_live
 from forge_hostworker.migrate import migrate_release
 from forge_hostworker.postgres import dump_database, ensure_database
 from forge_hostworker.storage import ensure_files, files_mount
@@ -36,6 +37,7 @@ from forge_hostworker.wire import (
 )
 
 HEALTH_TIMEOUT_S = 120
+CHANGES_WHAT_RUNS = ("release", "rollback", "stop", "start")  # the edge reloads after these
 BUILD_NETWORK = "forge-build"
 PATH = "/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Health = Callable[[str, float], Awaitable[bool]]
@@ -131,7 +133,7 @@ class HostRunner:
             result = JobResult(ok=False, error=str(error), hint=error.hint)
         except SourceError as error:
             result = JobResult(ok=False, error=f"the source was refused: {error}")
-        if result.ok and self.on_change is not None:
+        if result.ok and job.kind in CHANGES_WHAT_RUNS and self.on_change is not None:
             await self.on_change()
         return result.model_copy(update={"seconds": round(time.monotonic() - started, 1)})
 
@@ -155,6 +157,10 @@ class HostRunner:
             return await self.backup(job.app, job.environment)
         if job.kind == "rollback":
             return await self.rollback(job.app, job.environment)
+        if job.kind == "start":
+            return await start_live(self, job.app, job.environment)
+        if job.kind == "logs":
+            return await live_logs(self, job.app, job.environment)
         return await self.stop(job.app, job.environment)
 
     async def prepare(self, plan: DeployPlan, source: Path) -> tuple[Path, JobResult | None]:

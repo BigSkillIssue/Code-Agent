@@ -33,6 +33,9 @@ class HostedApp(Base):
     app: Mapped[str] = mapped_column(String(40), unique=True)
     host_id: Mapped[str] = mapped_column(ForeignKey("host_servers.id"))
     created_at: Mapped[float] = mapped_column(Float)
+    suspended: Mapped[bool] = mapped_column(Boolean, default=False)  # stopped by an admin
+    suspended_reason: Mapped[str] = mapped_column(Text, default="")
+    suspended_at: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class GoLiveApproval(Base):

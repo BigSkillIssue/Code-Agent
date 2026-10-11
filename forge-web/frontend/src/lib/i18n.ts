@@ -3,11 +3,12 @@
 import { adminDe, adminEn } from "./texts/admin";
 import { appleDe, appleEn } from "./texts/apple";
 import { appsDe, appsEn } from "./texts/apps";
+import { hostingDe, hostingEn } from "./texts/hosting";
 import { listingDe, listingEn } from "./texts/listing";
 import { releaseDe, releaseEn } from "./texts/release";
 import { submitDe, submitEn } from "./texts/submit";
 
-const coreEn = {
+export const coreEn = {
   appName: "Forge",
   newChat: "New chat",
   newProject: "New project",
@@ -222,7 +223,7 @@ const coreEn = {
   total: "Total",
 };
 
-const en = { ...coreEn, ...adminEn, ...appleEn, ...appsEn, ...releaseEn, ...listingEn, ...submitEn };
+const en = { ...coreEn, ...adminEn, ...appleEn, ...appsEn, ...releaseEn, ...listingEn, ...submitEn, ...hostingEn };
 
 type Texts = typeof en;
 
@@ -442,7 +443,7 @@ const coreDe: typeof coreEn = {
   total: "Gesamt",
 };
 
-const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...appsDe, ...releaseDe, ...listingDe, ...submitDe };
+const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...appsDe, ...releaseDe, ...listingDe, ...submitDe, ...hostingDe };
 
 export type TextKey = keyof Texts;
 

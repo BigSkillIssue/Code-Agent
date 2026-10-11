@@ -106,6 +106,12 @@ BODIES: dict[str, dict[str, Any]] = {
     "ConfirmIn": {"confirm": True, "version": "1.0"},
     "DeployIn": {"environment": "staging"},
     "SecretIn": {"environment": "staging", "name": "MAPS_KEY", "value": "not-a-real-key"},
+    "NewHost": {"name": "Sneaky host", "public_key": "A" * 43 + "="},
+    "HostChange": {"enabled": True},
+    "Refusal": {"reason": "no"},
+    "Suspension": {"suspended": True, "reason": "taken over"},
+    "LogsIn": {"environment": "production"},
+    "TrustIn": {"trusted": True},
 }
 
 
@@ -213,6 +219,7 @@ def filled(path: str, world: World) -> str:
         "credential_id": "0" * 16, "terminal_id": "t0123abcd", "port": "3000",
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
+        "host_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
