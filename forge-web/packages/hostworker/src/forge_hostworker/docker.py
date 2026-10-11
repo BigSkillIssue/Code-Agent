@@ -5,6 +5,7 @@ privileges and an unprivileged user. The worker refuses to start where runsc is 
 """
 
 import asyncio
+import contextlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,9 +29,11 @@ class DockerResult:
 
 
 class Docker(Protocol):
-    """Runs `docker <args>`."""
+    """Runs `docker <args>`; with `out`, what it prints goes into that file instead."""
 
-    async def __call__(self, *args: str, timeout: float = 600) -> DockerResult: ...
+    async def __call__(
+        self, *args: str, timeout: float = 600, out: Path | None = None
+    ) -> DockerResult: ...
 
 
 class DockerCli:
@@ -39,23 +42,28 @@ class DockerCli:
     def __init__(self, binary: str = "docker") -> None:
         self.binary = binary
 
-    async def __call__(self, *args: str, timeout: float = 600) -> DockerResult:
+    async def __call__(
+        self, *args: str, timeout: float = 600, out: Path | None = None
+    ) -> DockerResult:
         """Run docker; a timeout kills it and is exit 124."""
-        proc = await asyncio.create_subprocess_exec(
-            self.binary,
-            *args,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            out, err = await asyncio.wait_for(proc.communicate(), timeout)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return DockerResult(124, "", f"docker {args[0]} took longer than {timeout:.0f}s")
+        with contextlib.ExitStack() as files:
+            target = files.enter_context(out.open("wb")) if out else asyncio.subprocess.PIPE
+            proc = await asyncio.create_subprocess_exec(
+                self.binary,
+                *args,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=target,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                printed, err = await asyncio.wait_for(proc.communicate(), timeout)
+            except TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return DockerResult(124, "", f"docker {args[0]} took longer than {timeout:.0f}s")
         code = proc.returncode if proc.returncode is not None else 1
-        return DockerResult(code, out.decode(errors="replace"), err.decode(errors="replace"))
+        text = printed.decode(errors="replace") if printed else ""
+        return DockerResult(code, text, err.decode(errors="replace"))
 
 
 class HostError(Exception):

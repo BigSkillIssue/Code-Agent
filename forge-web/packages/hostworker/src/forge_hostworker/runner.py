@@ -19,11 +19,21 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
-from forge_hostworker.build import SourceError, build_release, hand_over, unpack
+from forge_hostworker.build import SourceError, build_release, file_digest, hand_over, unpack
+from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
 from forge_hostworker.firewall import BUILD_SUBNET
-from forge_hostworker.postgres import ensure_database
-from forge_hostworker.wire import DeployPlan, HostJob, JobResult, ServicePlan, ServiceState
+from forge_hostworker.migrate import migrate_release
+from forge_hostworker.postgres import dump_database, ensure_database
+from forge_hostworker.storage import ensure_files, files_mount
+from forge_hostworker.wire import (
+    WITH_SOURCE,
+    DeployPlan,
+    HostJob,
+    JobResult,
+    ServicePlan,
+    ServiceState,
+)
 
 HEALTH_TIMEOUT_S = 120
 BUILD_NETWORK = "forge-build"
@@ -116,18 +126,7 @@ class HostRunner:
         started = time.monotonic()
         try:
             await require_runsc(self.docker)
-            if job.kind == "release" and job.plan is not None and source is not None:
-                result = await self.release(job.plan, source, secret_values)
-            elif job.kind == "rollback":
-                result = await self.rollback(job.app, job.environment)
-            elif job.kind == "stop":
-                result = await self.stop(job.app, job.environment)
-            else:
-                result = JobResult(
-                    ok=False,
-                    error=f"this host worker cannot run {job.kind} jobs",
-                    hint="update forge-host-worker on this host",
-                )
+            result = await self.dispatch(job, source, secret_values)
         except HostError as error:
             result = JobResult(ok=False, error=str(error), hint=error.hint)
         except SourceError as error:
@@ -136,33 +135,80 @@ class HostRunner:
             await self.on_change()
         return result.model_copy(update={"seconds": round(time.monotonic() - started, 1)})
 
-    async def release(
-        self, plan: DeployPlan, source: Path, secret_values: dict[str, str]
+    async def dispatch(
+        self, job: HostJob, source: Path | None, secret_values: dict[str, str]
     ) -> JobResult:
-        """Build and start a release; switch to it only when every service is healthy."""
-        state = self.state(plan.app, plan.environment)
+        """The job's own work."""
+        plan = job.plan
+        if job.kind in WITH_SOURCE and (plan is None or source is None):
+            return JobResult(ok=False, error=f"the {job.kind} job came without its plan or source")
+        if plan is not None and source is not None:
+            if job.kind == "check":
+                await self.ensure_build_network()
+                return await Check(self.docker, self.data_dir, self.user, self.owner).run(
+                    plan, source
+                )
+            if job.kind == "migrate":
+                return await migrate_release(self, plan, source)
+            return await self.release(plan, source, secret_values)
+        if job.kind == "backup":
+            return await self.backup(job.app, job.environment)
+        if job.kind == "rollback":
+            return await self.rollback(job.app, job.environment)
+        return await self.stop(job.app, job.environment)
+
+    async def prepare(self, plan: DeployPlan, source: Path) -> tuple[Path, JobResult | None]:
+        """The release unpacked and built, once per release and source (a migrate job builds it,
+        the release job after it uses that build); a failed build is the second value."""
         folder = self.folder(plan.app, plan.environment)
         release_dir = folder / "releases" / str(plan.release)
+        marker = folder / "plans" / f"{plan.release}.built"
+        digest = await asyncio.to_thread(file_digest, source)
+        if marker.is_file() and marker.read_text(encoding="utf-8") == digest:
+            return release_dir, None
+        marker.unlink(missing_ok=True)
         await asyncio.to_thread(shutil.rmtree, release_dir, True)
         await asyncio.to_thread(unpack, source, release_dir)
         if self.owner is not None:
             await asyncio.to_thread(hand_over, release_dir, self.owner)
         await self.ensure_build_network()
-        net = await self.ensure_network(plan)
-        database_url = ""
-        if plan.database:
-            database_url = await ensure_database(
-                self.docker, plan.app, plan.environment, net, folder, plan.limits.memory_mb
-            )
         failed = await build_release(self.docker, plan, release_dir, self.user)
         if failed is not None:
             service, output = failed
-            return JobResult(
-                ok=False,
-                release=state.live or 0,
-                log_tail=output.tail(),
-                error=f"the build of {service.name} failed",
-            )
+            live = self.state(plan.app, plan.environment).live or 0
+            return release_dir, JobResult(ok=False, release=live, log_tail=output.tail(),
+                                          error=f"the build of {service.name} failed")  # fmt: skip
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(digest, encoding="utf-8")
+        return release_dir, None
+
+    async def database_url(self, plan: DeployPlan) -> str:
+        """The app's network made and its database started; the database's URL ("" without)."""
+        net = await self.ensure_network(plan)
+        if not plan.database:
+            return ""
+        folder = self.folder(plan.app, plan.environment)
+        return await ensure_database(
+            self.docker, plan.app, plan.environment, net, folder, plan.limits.memory_mb
+        )
+
+    async def backup(self, app: str, environment: str) -> JobResult:
+        """The app's database dumped on the host before a migration."""
+        live = self.state(app, environment).live or 0
+        await dump_database(self.docker, app, environment, self.folder(app, environment),
+                            f"r{live}")  # fmt: skip
+        return JobResult(ok=True, release=live)
+
+    async def release(
+        self, plan: DeployPlan, source: Path, secret_values: dict[str, str]
+    ) -> JobResult:
+        """Build and start a release; switch to it only when every service is healthy."""
+        state = self.state(plan.app, plan.environment)
+        release_dir, failed = await self.prepare(plan, source)
+        if failed is not None:
+            return failed
+        database_url = await self.database_url(plan)
+        await ensure_files(self.docker, plan, self.user, plan.services[0].image)
         started = await self.start_release(plan, release_dir, database_url, secret_values)
         unhealthy = [s.name for s in started if not s.healthy]
         if unhealthy:
@@ -351,6 +397,7 @@ class HostRunner:
         folder = self.folder(app, environment)
         await asyncio.to_thread(shutil.rmtree, folder / "releases" / str(release), True)
         (folder / "plans" / f"{release}.json").unlink(missing_ok=True)
+        (folder / "plans" / f"{release}.built").unlink(missing_ok=True)
 
     async def remove(self, names: list[str]) -> None:
         """Remove containers."""
@@ -412,6 +459,7 @@ def run_args(
         "--env-file",
         str(env_file),
         *mount,
+        *files_mount(plan, service.runtime),
         *labels,
         service.image,
         *service.command,

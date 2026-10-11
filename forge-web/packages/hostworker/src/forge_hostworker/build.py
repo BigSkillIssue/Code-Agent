@@ -3,6 +3,7 @@ a throwaway gVisor container that gets no secrets and reaches only the build net
 registries; the firewall in `firewall.py` keeps it there).
 """
 
+import hashlib
 import os
 import tarfile
 from pathlib import Path
@@ -38,6 +39,12 @@ def unpack(archive: Path, target: Path) -> None:
             tar.extractall(target, filter="data")
         except tarfile.FilterError as error:
             raise SourceError(str(error)) from error
+
+
+def file_digest(path: Path) -> str:
+    """The SHA-256 of a file (which source a build was made from)."""
+    with path.open("rb") as packed:
+        return hashlib.file_digest(packed, "sha256").hexdigest()
 
 
 def hand_over(folder: Path, owner: tuple[int, int]) -> None:

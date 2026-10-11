@@ -17,7 +17,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import ValidationError
 
-from docker_standin import JOB_ID, FakeDocker, plan, release_job, runner_for, tarball
+from docker_standin import JOB_ID, FakeDocker, job_of, plan, release_job, runner_for, tarball
 from forge_hostworker.cli import main
 from forge_hostworker.client import HostClient
 from forge_hostworker.wire import (
@@ -299,3 +299,118 @@ def test_the_command_line_needs_a_token_a_key_and_gvisor(
         fake.chmod(0o755)
         assert main([*run, "--docker", str(fake)]) == 2
         assert "gVisor (runsc) is not a Docker runtime" in capsys.readouterr().err
+
+
+# The host's side of a deploy (W26b) ---------------------------------------------------------
+
+
+async def test_a_check_runs_migrations_and_tests_on_a_throwaway_database(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    runner = runner_for(tmp_path, docker)
+    result = await runner.run(job_of("check"), tarball(tmp_path / "s.tgz"), {})
+    assert result.ok, result
+    assert [(c.name, c.ok) for c in result.checks] == [
+        ("api: migrations", True), ("api: tests", True), ("web: tests", True)]  # fmt: skip
+    builds = [c for c in docker.runs() if "forge.role=build" in c]
+    assert builds[0][-3:] == ["uv", "sync", "--locked"]  # with the dev dependencies
+    assert all(c[c.index("--network") + 1] == "forge-build" for c in builds)
+    [created] = [c for c in docker.calls if c[:3] == ["network", "create", "--internal"]]
+    network = created[-1]
+    assert network.startswith("forge-check-")
+    [database] = [c for c in docker.runs() if "forge.role=database" in c]
+    assert database[database.index("/var/lib/postgresql/data") - 1] == "--tmpfs"  # in memory
+    steps = [c for c in docker.runs() if "forge.role=check" in c]
+    assert [c[-2:] for c in steps] == [["upgrade", "head"], ["pytest", "-q"], ["npm", "test"]]
+    for call in steps:
+        assert call[call.index("--network") + 1] == network and "--runtime=runsc" in call
+        assert "MAPS_KEY" not in " ".join(call)  # no secrets in a check
+    for call, name in ((steps[0], "DATABASE_URL"), (steps[1], "TEST_DATABASE_URL")):
+        assert any(a.startswith(f"{name}=postgresql://app:") and f"@{network}-db:" in a
+                   for a in call)  # fmt: skip
+    assert ["network", "rm", network] in docker.calls  # nothing stays
+    assert ["rm", "-f", f"{network}-db"] in docker.calls
+    assert list((tmp_path / "host" / "checks").iterdir()) == []
+    assert "forge-shop-staging" not in docker.networks  # the app's own things are not touched
+    assert not any("forge-shop-staging-db" in c for c in docker.runs())
+
+
+async def test_failing_tests_are_a_failed_check_with_their_log(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    docker.failing.add("pytest")
+    result = await runner_for(tmp_path, docker).run(
+        job_of("check"), tarball(tmp_path / "s.tgz"), {}
+    )
+    assert not result.ok and result.error == "failed: api: tests"
+    failed = next(c for c in result.checks if not c.ok)
+    assert "test_sign_in" in failed.detail and "test_sign_in" in result.log_tail
+    docker.fail.add("runtime/python:3.12")  # a broken build is a failed check too
+    broken = await runner_for(tmp_path, docker).run(
+        job_of("check"), tarball(tmp_path / "t.tgz"), {}
+    )
+    assert not broken.ok and [c.name for c in broken.checks] == ["api: build"]
+
+
+async def test_a_backup_dumps_the_database(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    runner = runner_for(tmp_path, docker)
+    nothing = await runner.run(job_of("backup"), None, {})
+    assert not nothing.ok and "no database" in nothing.error
+    assert (await runner.run(release_job(), tarball(tmp_path / "s.tgz"), {})).ok
+    backed = await runner.run(job_of("backup"), None, {})
+    assert backed.ok and backed.release == 1
+    [dump] = (tmp_path / "host" / "apps" / "shop-staging" / "backups").iterdir()
+    assert dump.read_bytes().startswith(b"PGDMP") and dump.name.endswith("-r1.dump")
+    if sys.platform != "win32":
+        assert dump.stat().st_mode & 0o777 == 0o600
+    assert ["exec", "forge-shop-staging-db", "pg_dump", "-U", "app", "-d", "app", "-Fc"] in (
+        docker.calls)  # fmt: skip
+
+
+async def test_migrations_run_once_and_the_release_uses_their_build(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    runner = runner_for(tmp_path, docker)
+    source = tarball(tmp_path / "s.tgz")
+    migrated = await runner.run(job_of("migrate"), source, {"MAPS_KEY": "s3cr3t"})
+    assert migrated.ok, migrated
+    [migration] = [c for c in docker.runs() if "forge.role=migrate" in c]
+    assert migration[-3:] == ["alembic", "upgrade", "head"]
+    assert migration[migration.index("--network") + 1] == "forge-shop-staging"
+    assert "--read-only" in migration and any(a.endswith(":/app:ro") for a in migration)
+    [env] = docker.once_env_files
+    assert "DATABASE_URL=postgresql://app:" in env and "@forge-shop-staging-db:5432" in env
+    assert "s3cr3t" not in env  # migrations get no secrets
+    builds = len([c for c in docker.runs() if "forge.role=build" in c])
+    assert (await runner.run(release_job(), source, {"MAPS_KEY": "s3cr3t"})).ok
+    assert len([c for c in docker.runs() if "forge.role=build" in c]) == builds  # not again
+    assert len([c for c in docker.runs() if "forge.role=migrate" in c]) == 1
+    other = tarball(tmp_path / "o.tgz", {"server/app/extra.py": b"x = 1\n"})
+    assert (await runner.run(release_job(), other, {})).ok  # another source: built anew
+    assert len([c for c in docker.runs() if "forge.role=build" in c]) > builds
+
+
+async def test_the_apps_files_are_mounted_only_where_they_belong(tmp_path: Path) -> None:
+    docker = FakeDocker()
+    runner = runner_for(tmp_path, docker)
+    assert (await runner.run(release_job(storage_gb=1), tarball(tmp_path / "s.tgz"), {})).ok
+    assert docker.volumes == {"forge-shop-staging-files"}
+    [given] = [c for c in docker.runs() if c[-3:] == ["chown", "1500:1500", "/data"]]
+    assert given[given.index("--cap-add") + 1] == "CHOWN" and "--runtime=runsc" in given
+    services = {c[c.index("--name") + 1]: c for c in docker.runs() if "--name" in c}
+    assert "forge-shop-staging-files:/data" in services["forge-shop-staging-api-r1"]
+    assert "forge-shop-staging-files:/data" not in services["forge-shop-staging-web-r1"]
+    assert (await runner.run(release_job(2, storage_gb=1), tarball(tmp_path / "t.tgz"), {})).ok
+    assert len([c for c in docker.runs() if c[-1] == "/data"]) == 1  # set up once
+
+
+def test_the_runtime_images_pin_their_versions() -> None:
+    docker_dir = Path(__file__).parent.parent / "docker"
+    images = {name: (docker_dir / f"runtime-{name}.Dockerfile").read_text()
+              for name in ("python", "node", "static")}  # fmt: skip
+    assert "ARG PYTHON_IMAGE=python:3.12-slim-bookworm" in images["python"]
+    assert "COPY --from=ghcr.io/astral-sh/uv:0.11.32" in images["python"]
+    for text in (images["node"], images["static"]):
+        assert "ARG NODE_IMAGE=node:22.22.0-bookworm-slim" in text
+    assert "ARG CADDY_IMAGE=caddy:2.10.2" in images["static"]
+    assert "try_files {path} /index.html" in images["static"]  # the client routes itself
+    assert "cp /tmp/caddy /usr/local/bin/caddy" in images["static"]  # no file capability
+    assert all(":latest" not in text for text in images.values())

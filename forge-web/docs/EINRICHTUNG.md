@@ -675,6 +675,12 @@ mkdir -p /var/lib/forge-host && chmod 700 /var/lib/forge-host
 du gleich in Forge Web ein: Forge verschlüsselt die Geheimnisse jeder App (API-Schlüssel,
 Passwörter) mit ihm, sodass nur dieser Server sie lesen kann.
 
+Die Apps laufen auf festen **Laufzeit-Images** (Python mit uv, Node, und eines für statische
+Web-Seiten), die jedes Release mitbringt (`ghcr.io/bigskillissue/forge-runtime-python:3.12`,
+`…-node:22`, `…-static:1`). Der App-Server lädt sie beim ersten Deploy selbst. Wer eigene baut
+(`docker/runtime-*.Dockerfile`), trägt sie in Forge Webs Einstellungen unter `[hosting.images]`
+ein.
+
 ### 11.6 In Forge anmelden, Firewall und Start
 
 1. In Forge: **Verwaltung → Hosting → Server hinzufügen**, einen Namen eingeben und den

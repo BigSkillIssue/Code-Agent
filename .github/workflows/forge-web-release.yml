@@ -72,6 +72,7 @@ jobs:
           version="${GITHUB_REF_NAME#forge-web-v}"
           echo "server=ghcr.io/${owner}/forge-web" >> "$GITHUB_OUTPUT"
           echo "sandbox=ghcr.io/${owner}/forge-web-sandbox" >> "$GITHUB_OUTPUT"
+          echo "runtime=ghcr.io/${owner}/forge-runtime" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -89,6 +90,14 @@ jobs:
           tags: |
             ${{ steps.names.outputs.sandbox }}:${{ steps.names.outputs.version }}
             ${{ steps.names.outputs.sandbox }}:latest
+      - name: Runtime images for hosted apps (their tags are what [hosting.images] names)
+        run: |
+          for spec in python:3.12 node:22 static:1; do
+            name="${spec%%:*}"
+            tag="${{ steps.names.outputs.runtime }}-${name}:${spec#*:}"
+            docker build -f "forge-web/docker/runtime-${name}.Dockerfile" -t "$tag" .
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then docker push "$tag"; fi
+          done
       - name: Server image
         uses: docker/build-push-action@v6
         with:
