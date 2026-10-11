@@ -831,6 +831,13 @@ du beim Webhook in Stripe mindestens diese Ereignisse: `checkout.session.complet
 `customer.subscription.deleted`. Die Grenzen des gekauften Tarifs gelten, sobald Stripe das Abo
 meldet.
 
+Kündigen geht ohne Anmeldung unter `https://<deine Forge-Web-Adresse>/kuendigen` (der Link
+„Verträge hier kündigen“ steht auch auf der Anmeldeseite) und für Angemeldete auf der Seite Tarif
+und Abrechnung; jede Kündigung wird sofort per Mail bestätigt, mit Eingangszeit und dem Tag, an dem
+sie wirkt. Was Forge Web nicht selbst zuordnen kann, landet per Mail bei den Admins. Für
+„Zahlungsart und Rechnungen“ schaltest du in Stripe unter **Einstellungen → Billing →
+Kundenportal** das Portal ein.
+
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.

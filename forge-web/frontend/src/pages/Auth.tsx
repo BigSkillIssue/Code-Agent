@@ -179,6 +179,9 @@ function LoginPage({ config }: { config: AuthConfig }) {
           {t("needAccount")}
         </Link>
       )}
+      <a className="block text-xs text-muted underline" href="/kuendigen">
+        {t("cancelContracts")}
+      </a>
       {config.dev && (
         <form
           className="space-y-2 border-t border-line pt-3"

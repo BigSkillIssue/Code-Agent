@@ -121,4 +121,10 @@ export const billing = {
   me: () => api.get<MyBilling>("/api/billing/me"),
   checkout: (itemId: string, interval: Interval, waiver: boolean) =>
     api.post<{ url: string }>("/api/billing/checkout", { item_id: itemId, interval, waiver }),
+  cancel: (contract: string) =>
+    api.post<{ id: string; status: "done" | "manual"; received_at: number; effective_at: number }>(
+      "/api/billing/cancel",
+      { contract },
+    ),
+  portal: () => api.post<{ url: string }>("/api/billing/portal", {}),
 };

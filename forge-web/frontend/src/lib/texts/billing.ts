@@ -70,6 +70,14 @@ export const billingEn = {
   orderPaid: "Thank you! Your order is being confirmed; your new limits follow in a moment.",
   orderCancelled: "The order was cancelled; nothing was charged.",
   subscriptionLine: "{item}: {status}",
+  cancelContracts: "Cancel contracts here",
+  cancelTitle: "Cancel",
+  cancelWhich: "Which contract",
+  cancelAll: "all contracts",
+  cancelNow: "Cancel now",
+  cancelReceived: "Your cancellation came in on {received}. It takes effect on {effective}; a confirmation is on its way by mail.",
+  cancelChecked: "Your cancellation came in on {received}. We check when it takes effect and write to you; a confirmation is on its way by mail.",
+  managePayment: "Payment method and invoices",
 };
 
 export const billingDe: typeof billingEn = {
@@ -142,4 +150,12 @@ export const billingDe: typeof billingEn = {
   orderPaid: "Danke! Deine Bestellung wird bestätigt; die neuen Grenzen folgen gleich.",
   orderCancelled: "Die Bestellung wurde abgebrochen; es wurde nichts berechnet.",
   subscriptionLine: "{item}: {status}",
+  cancelContracts: "Verträge hier kündigen",
+  cancelTitle: "Kündigen",
+  cancelWhich: "Welcher Vertrag",
+  cancelAll: "alle Verträge",
+  cancelNow: "Jetzt kündigen",
+  cancelReceived: "Deine Kündigung ist am {received} eingegangen. Sie wird zum {effective} wirksam; die Bestätigung kommt per Mail.",
+  cancelChecked: "Deine Kündigung ist am {received} eingegangen. Wann sie wirksam wird, prüfen wir und schreiben dir; die Bestätigung kommt per Mail.",
+  managePayment: "Zahlungsart und Rechnungen",
 };

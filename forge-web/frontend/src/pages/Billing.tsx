@@ -5,9 +5,9 @@
 
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { billing, type Entitlements, type Interval, type Offer } from "../api/billing";
+import { billing, type Entitlements, type Interval, type MyBilling, type Offer } from "../api/billing";
 import { t, type TextKey } from "../lib/i18n";
-import { Button, Section, useAction, useLoaded } from "./parts";
+import { Button, date, Section, useAction, useLoaded } from "./parts";
 
 const money = (cents: number, currency: string) => `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
 const PRICE_TEXT: Record<Interval, TextKey> = { month: "perMonth", year: "perYear", once: "once" };
@@ -56,6 +56,7 @@ export function BillingPage() {
             ))}
           </Section>
         )}
+        {mine?.enabled && mine.subscriptions.length > 0 && <CancelSection mine={mine} />}
         {mine?.enabled && offers && offers.length > 0 && (
           <Section title={t("offersTitle")}>
             <ul className="space-y-3">
@@ -109,6 +110,56 @@ function OfferCard({ offer }: { offer: Offer }) {
         </Button>
       </div>
     </li>
+  );
+}
+
+/** The cancellation button (§312k BGB) in two steps, and Stripe's portal for payments. */
+function CancelSection({ mine }: { mine: MyBilling }) {
+  const [asked, setAsked] = useState(false);
+  const [contract, setContract] = useState("");
+  const [done, setDone] = useState("");
+  const act = useAction();
+  const contracts = [...new Set(mine.subscriptions.filter((s) => s.status !== "canceled").map((s) => s.item_id))];
+  const cancelNow = () =>
+    act(async () => {
+      const row = await billing.cancel(contract);
+      const received = date(row.received_at);
+      setDone(row.effective_at ? t("cancelReceived", { received, effective: date(row.effective_at) }) : t("cancelChecked", { received }));
+    });
+  const portal = async () => {
+    const stripe = { url: "" };
+    if (await act(async () => void (stripe.url = (await billing.portal()).url))) window.location.assign(stripe.url);
+  };
+  return (
+    <Section title={t("cancelTitle")}>
+      <Button onClick={() => void portal()}>{t("managePayment")}</Button>
+      {done ? (
+        <p data-testid="cancelled">{done}</p>
+      ) : !asked ? (
+        <div>
+          <Button kind="danger" onClick={() => setAsked(true)}>
+            {t("cancelContracts")}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t("cancelWhich")}</span>
+            <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={contract} onChange={(e) => setContract(e.target.value)}>
+              <option value="">{t("cancelAll")}</option>
+              {contracts.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button kind="danger" onClick={() => void cancelNow()}>
+            {t("cancelNow")}
+          </Button>
+        </div>
+      )}
+    </Section>
   );
 }
 

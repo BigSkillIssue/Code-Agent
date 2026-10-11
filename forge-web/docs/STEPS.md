@@ -291,11 +291,16 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: Stripe Checkout (no card data on the server); the order button's text per §312j BGB; the waiver of the right of withdrawal for digital content (a box and a confirmation mail); Stripe Tax; Stripe's events turn into subscriptions, which the entitlements read.
     - Tests: a paid checkout grants its entitlements, a cancelled one grants nothing; checkout is refused without the waiver box.
     - Verify: `uv run pytest -q tests/test_checkout.py tests/test_access.py`
-- [ ] **W33b — Cancellation and dunning**
-    - Files: `forge_web/billing/{cancel,dunning}.py`, frontend pages, `tests/{test_cancel,test_dunning}.py`
-    - Build: the §312k cancellation button (two steps and a confirmation mail), Stripe's Customer Portal; unpaid → grace period → suspended → deleted after notice and an export.
-    - Tests: cancelling takes two steps without signing in again and sends the mail; every dunning stage at its date; nothing is deleted before the notice and the export.
-    - Verify: `uv run pytest -q tests/test_cancel.py tests/test_dunning.py`
+- [x] **W33b1 — Cancellation button and customer portal** (W33b split in two)
+    - Files: `forge_web/billing/cancel.py`, `forge_web/db/{billing_models.py,migrations/versions/0024_cancellations.py}`, `forge_web/app.py`, `frontend/src/{api/billing.ts,lib/texts/billing.ts,pages/Billing.tsx,pages/Auth.tsx}` (+ test), `tests/{test_cancel,stripe_standin,test_access}.py`
+    - Build: the §312k cancellation button (two steps, without signing in at `/kuendigen`, and without signing in again on the billing page) and its confirmation mail; Stripe's Customer Portal.
+    - Tests: cancelling takes two steps without signing in again and sends the mail; an unmatched cancellation goes to the admins; the portal opens.
+    - Verify: `uv run pytest -q tests/test_cancel.py tests/test_access.py`
+- [ ] **W33b2 — Dunning**
+    - Files: `forge_web/billing/dunning.py`, `tests/test_dunning.py`
+    - Build: unpaid → grace period → suspended → deleted after notice and an export.
+    - Tests: every dunning stage at its date; nothing is deleted before the notice and the export.
+    - Verify: `uv run pytest -q tests/test_dunning.py`
 - [ ] **W34 — Legal setup**
     - Files: `forge_web/legal.py`, `forge_web/db/{models.py,migrations/versions/0015_legal.py}`, frontend pages, `tests/{test_legal,test_access}.py`
     - Build: versioned AGB, privacy policy, data processing agreement (with TOMs and subprocessors) and AUP; every acceptance stored; a new version must be accepted again; the EU VAT ID checked (VIES). The texts come from the admin; Forge supplies only the mechanics.

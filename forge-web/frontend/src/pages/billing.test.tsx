@@ -25,6 +25,8 @@ beforeEach(() => {
     me: vi.fn(async () => mine),
     offers: vi.fn(async () => [pro]),
     checkout: vi.fn(async () => ({ url: "https://checkout.stripe.com/c/pay/cs_1" })),
+    cancel: vi.fn(async () => ({ id: "x1", status: "done", received_at: 1_760_000_000, effective_at: 1_900_000_000 })),
+    portal: vi.fn(async () => ({ url: "https://billing.stripe.com/p/session/bps_1" })),
   });
   useStore.setState({ error: "" });
   vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
@@ -65,5 +67,18 @@ describe("the billing page", () => {
     expect(await screen.findByText(/(not set up|nicht eingerichtet)/)).toBeTruthy();
     expect(screen.getByText(/(cancelled|abgebrochen)/)).toBeTruthy();
     expect(screen.queryByTestId("offer")).toBeNull();
+  });
+
+  it("cancels in two steps without signing in again, and opens Stripe's portal", async () => {
+    const subscriptions = [{ item_id: "pro", status: "active", interval: "month", quantity: 1, current_period_end: 1_900_000_000 }];
+    mocks.api.me.mockResolvedValue({ ...mine, subscriptions });
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: /^(Cancel contracts here|Verträge hier kündigen)$/ }));
+    expect(mocks.api.cancel).not.toHaveBeenCalled(); // the first step only shows the second
+    fireEvent.click(screen.getByRole("button", { name: /^(Cancel now|Jetzt kündigen)$/ }));
+    await waitFor(() => expect(mocks.api.cancel).toHaveBeenCalledWith(""));
+    expect((await screen.findByTestId("cancelled")).textContent).toMatch(/(takes effect|wird zum)/);
+    fireEvent.click(screen.getByRole("button", { name: /^(Payment method and invoices|Zahlungsart und Rechnungen)$/ }));
+    await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://billing.stripe.com/p/session/bps_1"));
   });
 });

@@ -132,3 +132,22 @@ class Checkout(Base):
     status: Mapped[str] = mapped_column(String(16), default="open")  # open, complete, expired
     created_at: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Cancellation(Base):
+    """A cancellation as it came in through the cancellation button (§312k BGB, W33b1)."""
+
+    __tablename__ = "billing_cancellations"
+    __table_args__ = (Index("billing_cancellations_by_sender", "sender", "received_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    received_at: Mapped[float] = mapped_column(Float)
+    name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(320))
+    contract: Mapped[str] = mapped_column(String(200), default="")  # "": every contract
+    extraordinary: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[str] = mapped_column(String(32), default="")  # "" when no account fits
+    status: Mapped[str] = mapped_column(String(16))  # done, or manual (an admin looks at it)
+    effective_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: an admin confirms it
+    sender: Mapped[str] = mapped_column(String(64), default="")  # a hash of the address, for limits

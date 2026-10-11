@@ -20,7 +20,8 @@ LIVE_KEY = "_".join(("sk", "live", "standin0standin0standin0"))
 WEBHOOK_SECRET = "_".join(("whsec", "standin0standin0standin0standin0"))
 MADE = {"/v1/customers": "cus", "/v1/products": "prod", "/v1/prices": "price",
         "/v1/coupons": "coupon", "/v1/promotion_codes": "promo",
-        "/v1/checkout/sessions": "cs"}  # fmt: skip
+        "/v1/checkout/sessions": "cs", "/v1/subscriptions": "sub",
+        "/v1/billing_portal/sessions": "bps"}  # fmt: skip
 
 
 class StripeStandIn:
@@ -84,6 +85,8 @@ class StripeStandIn:
                 "active": params.get("active", "true") != "false"}  # fmt: skip
         if path == "/v1/checkout/sessions":  # where Stripe's own page takes the card
             made["url"] = f"https://checkout.stripe.com/c/pay/{object_id}"
+        if path == "/v1/billing_portal/sessions":
+            made["url"] = f"https://billing.stripe.com/p/session/{object_id}"
         self.objects[object_id] = made
         self.effects.append(("POST", path, params))
         return httpx.Response(200, json=made)
