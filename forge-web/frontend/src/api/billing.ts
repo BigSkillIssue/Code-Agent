@@ -1,5 +1,5 @@
-// Billing (W31–W32): the admin's Stripe keys and the catalog (plans, an app's one-time price,
-// hosting, add-ons, coupons) that is synced to Stripe.
+// Billing (W31–W33): the admin's Stripe keys and the catalog (plans, an app's one-time price,
+// hosting, add-ons, coupons) that is synced to Stripe; a customer's offers, plan, limits and order.
 
 import { api } from "./client";
 
@@ -82,4 +82,43 @@ export const billingAdmin = {
   putCoupon: (couponId: string, coupon: CouponInput) => api.put<Coupon>(`${base}/catalog/coupons/${id(couponId)}`, coupon),
   removeCoupon: (couponId: string) => api.delete(`${base}/catalog/coupons/${id(couponId)}`),
   sync: () => api.post<SyncReport>(`${base}/catalog/sync`, {}),
+};
+
+/** An offer as customers see it. */
+export interface Offer {
+  id: string;
+  kind: ItemKind;
+  name: string;
+  description: string;
+  currency: string;
+  amounts: Partial<Record<Interval, number>>;
+  trial_days: number;
+  limits: Limits;
+}
+
+/** Every limit of the signed-in user (null: no limit), and where it comes from. */
+export interface Entitlements {
+  source: string; // "server", "admin" or "plan:<offer>"
+  projects: number | null;
+  ai_month_usd: number | null;
+  ai_product_usd: number | null;
+  server_keys: boolean;
+  mac_minutes: number | null;
+  hosted_apps: number | null;
+  storage_mb: number | null;
+  custom_domains: number | null;
+  store_publishing: boolean;
+}
+
+export interface MyBilling {
+  enabled: boolean;
+  entitlements: Entitlements;
+  subscriptions: { item_id: string; status: string; interval: string; quantity: number; current_period_end: number }[];
+}
+
+export const billing = {
+  offers: () => api.get<Offer[]>("/api/billing/catalog"),
+  me: () => api.get<MyBilling>("/api/billing/me"),
+  checkout: (itemId: string, interval: Interval, waiver: boolean) =>
+    api.post<{ url: string }>("/api/billing/checkout", { item_id: itemId, interval, waiver }),
 };

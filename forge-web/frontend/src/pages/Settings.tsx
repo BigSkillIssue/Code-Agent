@@ -7,6 +7,7 @@ import { api } from "../api/client";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
 import type { AuthConfig } from "./Auth";
+import { BillingLink } from "./Billing";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 import { GitSection, KeysSection, SessionsSection, UsageSection } from "./SettingsAccess";
 import { AppStoreSection } from "./SettingsAppStore";
@@ -33,6 +34,7 @@ export function SettingsPage() {
         {me.apple_apps && <AppStoreSection />}
         <SessionsSection />
         <UsageSection />
+        <BillingLink />
       </div>
     </div>
   );

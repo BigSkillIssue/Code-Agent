@@ -16,6 +16,7 @@ from forge_web.apple.sandbox_api import apple_routes
 from forge_web.apple.submission import Submissions
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
+from forge_web.billing.checkout import StripeEvents
 from forge_web.billing.entitlements import EntitlementEngine
 from forge_web.billing.setup import Billing
 from forge_web.chats.runs import RunManager
@@ -147,6 +148,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
     billing = Billing(db, vault, settings)
+    StripeEvents(db, settings).register(billing.events)
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,

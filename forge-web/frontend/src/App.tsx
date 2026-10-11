@@ -12,6 +12,7 @@ import { GoLivePage } from "./pages/GoLive";
 import { AppleReleasePage } from "./pages/AppleRelease";
 import { AppleReviewPage } from "./pages/AppleReview";
 import { AuthPages, type AuthConfig } from "./pages/Auth";
+import { BillingPage } from "./pages/Billing";
 import { SettingsPage } from "./pages/Settings";
 import { useStore } from "./state/store";
 
@@ -127,6 +128,7 @@ export function App() {
           <Route path="p/:projectId/live" element={<GoLivePage />} />
           <Route path="c/:chatId" element={<ChatPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="billing" element={<BillingPage />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="*" element={<Empty />} />
         </Route>

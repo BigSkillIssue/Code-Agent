@@ -48,6 +48,7 @@ OWN = {
     "POST /api/me/password", "POST /api/me/totp/setup", "POST /api/me/totp/enable",
     "POST /api/me/totp/disable", "GET /api/me/appstore-key", "PUT /api/me/appstore-key",
     "POST /api/me/appstore-key/check", "DELETE /api/me/appstore-key",
+    "GET /api/billing/catalog", "GET /api/billing/me", "POST /api/billing/checkout",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -107,6 +108,7 @@ BODIES: dict[str, dict[str, Any]] = {
     },
     "ItemIn": {"kind": "plan", "name": "Pro", "amounts": {"month": 2900}},
     "CouponIn": {"code": "LAUNCH", "name": "Launch", "percent_off": 10},
+    "CheckoutIn": {"item_id": "pro", "waiver": True},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",

@@ -822,6 +822,15 @@ Steuerberater kommen, bleibt alles im **Testmodus**: Forge Web nimmt nur Testsch
    bei Stripe an; ein geänderter Betrag wird dort ein neuer Preis, Entferntes wird archiviert, nie
    gelöscht, damit laufende Abos weiter funktionieren.
 
+Kunden bestellen unter **Einstellungen → Tarif und Abrechnung**: Sie wählen einen Tarif, setzen
+das Häkchen für den sofortigen Beginn (damit erlischt ihr Widerrufsrecht) und klicken
+„Zahlungspflichtig bestellen“; die Karte geben sie auf Stripes eigener Seite ein, die Steuer
+rechnet Stripe Tax (in Stripe unter **Steuern** einrichten). Damit die Bestellung ankommt, wählst
+du beim Webhook in Stripe mindestens diese Ereignisse: `checkout.session.completed`,
+`checkout.session.expired`, `customer.subscription.created`, `customer.subscription.updated`,
+`customer.subscription.deleted`. Die Grenzen des gekauften Tarifs gelten, sobald Stripe das Abo
+meldet.
+
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.

@@ -103,3 +103,32 @@ class Subscription(Base):
     current_period_end: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
+
+
+class BillingCustomer(Base):
+    """A user as Stripe knows them (W33a2)."""
+
+    __tablename__ = "billing_customers"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    stripe_customer: Mapped[str] = mapped_column(String(255), unique=True)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class Checkout(Base):
+    """One order through Stripe Checkout (W33a2), with the moment the customer waived the right of
+    withdrawal; a completed one-time order is the record of that purchase."""
+
+    __tablename__ = "billing_checkouts"
+    __table_args__ = (Index("billing_checkouts_by_user", "user_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)  # Stripe's cs_...
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    item_id: Mapped[str] = mapped_column(String(40))
+    interval: Mapped[str] = mapped_column(String(8))
+    waiver_at: Mapped[float] = mapped_column(Float)  # when the box was ticked
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open, complete, expired
+    created_at: Mapped[float] = mapped_column(Float)
+    completed_at: Mapped[float] = mapped_column(Float, default=0.0)

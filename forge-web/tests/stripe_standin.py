@@ -19,7 +19,8 @@ TEST_KEY = "_".join(("sk", "test", "standin0standin0standin0"))
 LIVE_KEY = "_".join(("sk", "live", "standin0standin0standin0"))
 WEBHOOK_SECRET = "_".join(("whsec", "standin0standin0standin0standin0"))
 MADE = {"/v1/customers": "cus", "/v1/products": "prod", "/v1/prices": "price",
-        "/v1/coupons": "coupon", "/v1/promotion_codes": "promo"}  # fmt: skip
+        "/v1/coupons": "coupon", "/v1/promotion_codes": "promo",
+        "/v1/checkout/sessions": "cs"}  # fmt: skip
 
 
 class StripeStandIn:
@@ -81,6 +82,8 @@ class StripeStandIn:
             return error(400, f"{object_id} already exists", "resource_already_exists")
         made = {"object": MADE[path], **params, "id": object_id,
                 "active": params.get("active", "true") != "false"}  # fmt: skip
+        if path == "/v1/checkout/sessions":  # where Stripe's own page takes the card
+            made["url"] = f"https://checkout.stripe.com/c/pay/{object_id}"
         self.objects[object_id] = made
         self.effects.append(("POST", path, params))
         return httpx.Response(200, json=made)

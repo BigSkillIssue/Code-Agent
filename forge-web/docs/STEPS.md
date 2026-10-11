@@ -286,8 +286,8 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: one entitlement engine sets every limit: projects, AI budget per month **and per product**, Mac minutes, hosted apps, storage, custom domains, store publishing; from the customer's plan and add-ons (subscriptions), else the server's own settings.
     - Tests: every limit comes from the engine; a plan and its add-ons set the limits, a cancelled plan gives nothing; the gateway stops a product at its own budget.
     - Verify: `uv run pytest -q tests/test_entitlements.py tests/test_gateway.py`
-- [ ] **W33a2 — Checkout**
-    - Files: `forge_web/billing/checkout.py`, `frontend/src/pages/Billing.tsx` (+ test), `tests/{test_checkout,test_access}.py`
+- [x] **W33a2 — Checkout**
+    - Files: `forge_web/billing/checkout.py`, `forge_web/db/{billing_models.py,migrations/versions/0023_checkout.py}`, `forge_web/{startup,app}.py`, `frontend/src/{api/billing.ts,lib/texts/billing.ts,App.tsx,pages/Billing.tsx,pages/Settings.tsx}` (+ test), `tests/{test_checkout,stripe_standin,test_access}.py`
     - Build: Stripe Checkout (no card data on the server); the order button's text per §312j BGB; the waiver of the right of withdrawal for digital content (a box and a confirmation mail); Stripe Tax; Stripe's events turn into subscriptions, which the entitlements read.
     - Tests: a paid checkout grants its entitlements, a cancelled one grants nothing; checkout is refused without the waiver box.
     - Verify: `uv run pytest -q tests/test_checkout.py tests/test_access.py`
