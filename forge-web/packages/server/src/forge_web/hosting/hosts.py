@@ -28,6 +28,7 @@ SEEN_EVERY_S = 30  # last_seen is written at most this often
 ONLINE_S = 120  # a host seen this recently counts as connected
 SOURCE = "source.tar.gz"
 RECHECK_S = 5.0  # waiting for a result also looks at the database this often
+REOFFER_AFTER_S = 30.0  # a job its host does not name as running this long after is offered again
 
 
 class JobGone(Exception):
@@ -129,8 +130,14 @@ class HostQueue:
         async with self.db.session() as session:
             return await session.get(HostJobRow, job_id) is not None
 
-    async def claim(self, host_id: str, wait_s: float) -> HostJob | None:
-        """The host's oldest queued job of an app with nothing running; waits up to `wait_s`."""
+    async def claim(
+        self, host_id: str, wait_s: float, running: list[str] | None = None
+    ) -> HostJob | None:
+        """The host's oldest queued job of an app with nothing running; waits up to `wait_s`.
+        Jobs the host does not name as running, taken a while ago, are offered again: the answer
+        that carried them never reached it (a poll it gave up, a lost connection)."""
+        if running is not None:
+            await self._offer_again(host_id, set(running))
         deadline = time.monotonic() + wait_s
         while True:
             found = await self._take(host_id)
@@ -140,6 +147,18 @@ class HostQueue:
             async with self.changed:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self.changed.wait(), left)
+
+    async def _offer_again(self, host_id: str, running: set[str]) -> None:
+        before = time.time() - REOFFER_AFTER_S
+        async with self.db.session() as session, session.begin():
+            rows = await session.scalars(
+                select(HostJobRow).where(HostJobRow.host_id == host_id,
+                                         HostJobRow.status == "running",
+                                         HostJobRow.claimed_at < before)
+            )  # fmt: skip
+            for row in rows:
+                if row.id not in running:
+                    row.status, row.claimed_at = "queued", 0.0
 
     async def _take(self, host_id: str) -> HostJob | None:
         async with self.db.session() as session, session.begin():

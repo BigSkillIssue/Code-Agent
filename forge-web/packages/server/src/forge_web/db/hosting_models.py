@@ -164,3 +164,28 @@ class AppMailLog(Base):
     environment: Mapped[str] = mapped_column(String(16))
     domain: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AbuseNotice(Base):
+    """A notice of illegal content in a hosted app (DSA Art. 16) and the admin's decision."""
+
+    __tablename__ = "abuse_notices"
+    __table_args__ = (
+        Index("abuse_notices_by_status", "status", "created_at"),
+        Index("abuse_notices_by_sender", "sender", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    app: Mapped[str] = mapped_column(String(40))
+    location: Mapped[str] = mapped_column(Text)  # where the content is
+    category: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(Text)  # why the notifier holds it illegal
+    name: Mapped[str] = mapped_column(String(200), default="")
+    email: Mapped[str] = mapped_column(String(320), default="")
+    sender: Mapped[str] = mapped_column(String(64))  # a hash of address and app, for the rate
+    status: Mapped[str] = mapped_column(String(16))  # open | dismissed | actioned
+    decision: Mapped[str] = mapped_column(Text, default="")  # the admin's reasons
+    decided_by: Mapped[str] = mapped_column(String(32), default="")
+    decided_at: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[float] = mapped_column(Float)

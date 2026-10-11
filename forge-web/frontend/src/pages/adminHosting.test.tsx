@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HostedApp, HostingUser, QueueItem } from "../api/hosting";
+import type { AbuseNotice, HostedApp, HostingUser, QueueItem } from "../api/hosting";
 import { useStore } from "../state/store";
 import { HostingTab } from "./AdminHosting";
 
@@ -18,6 +18,12 @@ const app: HostedApp = {
 const maria: HostingUser = { id: "u2", email: "maria@example.com", name: "Maria", role: "member", trusted: false };
 const ada: HostingUser = { id: "u1", email: "ada@example.com", name: "Ada", role: "admin", trusted: false };
 
+const notice: AbuseNotice = {
+  id: "n1", project_id: "p1", app: "shop", project: "Shop", location: "https://shop.apps.example/offers/7",
+  category: "fraud", reason: "Payment is taken for goods that are never sent.", name: "Kim", email: "kim@example.org",
+  status: "open", decision: "", created_at: 5, decided_at: 0,
+};
+
 const mocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../api/hosting", () => ({ hostingAdmin: mocks.api }));
 
@@ -34,6 +40,8 @@ beforeEach(() => {
     logs: vi.fn(async () => ({ ok: true, log_tail: "--- api\nGET /api/healthz 200", error: "" })),
     users: vi.fn(async () => [ada, maria]),
     trust: vi.fn(async () => ({ trusted: true })),
+    notices: vi.fn(async () => [notice, { ...notice, id: "n2", status: "dismissed", decision: "a real shop" }]),
+    decide: vi.fn(async () => ({ ...notice, status: "actioned" })),
   });
   useStore.setState({ error: "" });
 });
@@ -89,5 +97,18 @@ describe("the hosting panel", () => {
     expect(screen.queryByText("Ada")).toBeNull();
     fireEvent.click(box);
     await waitFor(() => expect(mocks.api.trust).toHaveBeenCalledWith("u2", true));
+  });
+
+  it("decides a report with reasons: suspending the app or no action", async () => {
+    render(<HostingTab />);
+    const [open, done] = await screen.findAllByTestId("notice");
+    expect(open.textContent).toContain("https://shop.apps.example/offers/7");
+    expect(open.textContent).toContain("Kim <kim@example.org>");
+    expect(within(done).getByTestId("notice-decision").textContent).toContain("a real shop");
+    const suspend = within(open).getByRole("button", { name: /^(Suspend the app|App sperren)$/ }) as HTMLButtonElement;
+    expect(suspend.disabled).toBe(true); // reasons first
+    fireEvent.change(within(open).getByLabelText(/(Your reasons|Deine Begründung)/), { target: { value: "fraudulent offers" } });
+    fireEvent.click(suspend);
+    await waitFor(() => expect(mocks.api.decide).toHaveBeenCalledWith("n1", "suspend", "fraudulent offers"));
   });
 });

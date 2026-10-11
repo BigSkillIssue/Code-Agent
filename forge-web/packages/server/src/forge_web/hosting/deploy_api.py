@@ -87,7 +87,8 @@ def host_router() -> APIRouter:
 
     @router.post("/poll")
     async def poll(body: PollRequest, host: Host, request: Request) -> PollAnswer:
-        return PollAnswer(job=await services_of(request).hosts.claim(host.id, POLL_WAIT_S))
+        hosts = services_of(request).hosts
+        return PollAnswer(job=await hosts.claim(host.id, POLL_WAIT_S, body.running))
 
     @router.get("/jobs/{job_id}/source")
     async def source(job_id: str, host: Host, request: Request) -> FileResponse:

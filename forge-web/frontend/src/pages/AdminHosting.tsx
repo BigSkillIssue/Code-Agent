@@ -1,15 +1,18 @@
 // Administration of hosting: the app servers (with the one-time token a new one connects with),
 // the production deploys waiting for an admin (exactly the commit the server checked, with its
-// checks), the hosted apps (suspend, resume, logs) and who is trusted.
+// checks), the hosted apps (suspend, resume, logs), who is trusted, and reports of illegal
+// content (in AdminNotices).
 
 import { type FormEvent, useCallback, useState } from "react";
 import { type HostedApp, hostingAdmin, type QueueItem } from "../api/hosting";
 import { t } from "../lib/i18n";
+import { NoticesSection } from "./AdminNotices";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
 
 export function HostingTab() {
   return (
     <div className="space-y-4" data-testid="admin-hosting">
+      <NoticesSection />
       <QueueSection />
       <AppsSection />
       <HostsSection />

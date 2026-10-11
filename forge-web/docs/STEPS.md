@@ -241,7 +241,7 @@ Security principles (the apps' code is foreign code):
     - Build: a mail relay per app and environment with a daily quota and a token of its own (sealed into each release as `MAIL_RELAY_TOKEN`, with `MAIL_RELAY_URL` in its settings); mail leaves from the server's address under the app's name, replies go to the operator; the operator's data (Impressum, privacy contact) required before going live and rendered for the edge at `/legal/<app>/{impressum,datenschutz}`.
     - Tests: an app's token sends only within its quota and only as its own app; forged tokens and smuggled headers are refused; going live is refused without operator data; the legal pages show the creator's data, escaped.
     - Verify: `uv run pytest -q tests/test_mail_relay.py tests/test_legal_pages.py tests/test_access.py`
-- [ ] **W28b — App services: reports of illegal content**
+- [x] **W28b — App services: reports of illegal content**
     - Files: `forge_web/hosting/abuse.py`, `forge_web/db/{hosting_models.py,migrations/versions/0015_abuse.py}`, `frontend/src/pages/AdminHosting.tsx` (+ test), `tests/{test_abuse,test_access}.py`
     - Build: a DSA notice form at the edge's `/melden` (DSA Art. 16: the place, the reasons, name and email, good faith; a confirmation), each notice to the admins; the admin's review: dismiss (the notifier hears so) or suspend the app with a statement of reasons (DSA Art. 17) recorded and sent to the creator.
     - Tests: a notice reaches the admin and its notifier gets a confirmation; incomplete notices are shown the form again; a suspension records and sends its reasons and stops the app; a dismissal tells the notifier.

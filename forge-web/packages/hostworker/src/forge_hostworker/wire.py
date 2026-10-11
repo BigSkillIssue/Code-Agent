@@ -172,10 +172,12 @@ class HostJob(BaseModel):
 
 
 class PollRequest(BaseModel):
-    """The worker has room for more jobs."""
+    """The worker has room for more jobs; `running` names the jobs it works on, so the server can
+    offer again a job whose answer never reached the worker (None: a worker too old to say)."""
 
     free_slots: int = Field(ge=1, le=8)
     version: str = Field(default="", max_length=40)
+    running: list[str] | None = Field(default=None, max_length=16)
 
 
 class PollAnswer(BaseModel):

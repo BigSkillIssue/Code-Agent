@@ -139,6 +139,23 @@ export interface HostingUser {
   trusted: boolean;
 }
 
+/** A notice of illegal content in a hosted app (DSA Art. 16), and what an admin decided. */
+export interface AbuseNotice {
+  id: string;
+  project_id: string;
+  app: string;
+  project: string;
+  location: string;
+  category: "hate" | "child_abuse" | "terror" | "fraud" | "copyright" | "privacy" | "other";
+  reason: string;
+  name: string;
+  email: string;
+  status: "open" | "dismissed" | "actioned";
+  decision: string;
+  created_at: number;
+  decided_at: number;
+}
+
 const admin = "/api/admin/hosting";
 
 export const hostingAdmin = {
@@ -154,6 +171,9 @@ export const hostingAdmin = {
     api.post<{ suspended: boolean; environments: Environment[] }>(`${admin}/apps/${id(projectId)}/suspend`, { suspended, reason }),
   logs: (projectId: string, environment: Environment) =>
     api.post<{ ok: boolean; log_tail: string; error: string }>(`${admin}/apps/${id(projectId)}/logs`, { environment }),
+  notices: () => api.get<AbuseNotice[]>(`${admin}/notices`),
+  decide: (noticeId: string, action: "dismiss" | "suspend", reason: string) =>
+    api.post<AbuseNotice>(`${admin}/notices/${id(noticeId)}/decide`, { action, reason }),
   users: () => api.get<HostingUser[]>(`${admin}/users`),
   trust: (userId: string, trusted: boolean) => api.put<{ trusted: boolean }>(`${admin}/users/${id(userId)}`, { trusted }),
 };

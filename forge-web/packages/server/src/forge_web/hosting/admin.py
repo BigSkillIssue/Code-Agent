@@ -203,16 +203,7 @@ def app_routes(router: APIRouter) -> None:
         project_id: str, body: Suspension, request: Request, admin: AdminUser
     ) -> dict[str, Any]:
         services = services_of(request)
-        async with services.db.session() as session, session.begin():
-            hosted = await session.get(HostedApp, project_id)
-            if hosted is None:
-                raise HTTPException(404, "no such app")
-            hosted.suspended, hosted.suspended_at = body.suspended, time.time()
-            hosted.suspended_reason = body.reason.strip() if body.suspended else ""
-        sent = []
-        for environment in await live_environments(services, project_id):
-            await send(services, hosted, environment, "stop" if body.suspended else "start")
-            sent.append(environment)
+        sent = await suspend_app(services, project_id, body.reason, suspended=body.suspended)
         action = "hosting.app_suspended" if body.suspended else "hosting.app_resumed"
         await audit(services.db, action, user_id=admin.id, target=project_id, ip=client_ip(request),
                     reason=body.reason[:500], environments=",".join(sent))  # fmt: skip
@@ -233,6 +224,24 @@ def app_routes(router: APIRouter) -> None:
         except TimeoutError:
             raise HTTPException(504, "the host did not answer in time; is it running?") from None
         return {"ok": result.ok, "log_tail": result.log_tail, "error": result.error}
+
+
+async def suspend_app(
+    services: Services, project_id: str, reason: str, *, suspended: bool = True
+) -> list[str]:
+    """Suspend an app (stop it where it is live, so the edge drops it) or let it run again; the
+    environments it was stopped or started in. Also used when a notice is upheld (`abuse.py`)."""
+    async with services.db.session() as session, session.begin():
+        hosted = await session.get(HostedApp, project_id)
+        if hosted is None:
+            raise HTTPException(404, "no such app")
+        hosted.suspended, hosted.suspended_at = suspended, time.time()
+        hosted.suspended_reason = reason.strip() if suspended else ""
+    sent = []
+    for environment in await live_environments(services, project_id):
+        await send(services, hosted, environment, "stop" if suspended else "start")
+        sent.append(environment)
+    return sent
 
 
 def app_view(hosted: HostedApp, project: str, host: str, live: list[Deploy]) -> dict[str, Any]:

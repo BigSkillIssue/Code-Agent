@@ -17,10 +17,10 @@ import pytest
 from forge.app_flow import GO_LIVE, NOT_YET, SEND_BACK
 from sqlalchemy import select
 
-from forge_hostworker.wire import JobResult
+from forge_hostworker.wire import HostJob, JobResult
 from forge_web.db.hosting_models import AppSecret, GoLiveApproval, HostJobRow
 from forge_web.db.models import AuditEntry, User
-from forge_web.hosting import deploy_api
+from forge_web.hosting import deploy_api, hosts
 from forge_web.hosting.hosts import create_host
 from forge_web.hosting.questions import is_go_live
 from host_standin import HostStandIn, host_online
@@ -39,6 +39,7 @@ def settings_for(data: Path) -> Any:
 def short_polls(monkeypatch: pytest.MonkeyPatch) -> None:
     """Hosts ask again every second, so a server stops without waiting for a long poll."""
     monkeypatch.setattr(deploy_api, "POLL_WAIT_S", 1.0)
+    monkeypatch.setattr(hosts, "REOFFER_AFTER_S", 2.0)
 
 
 @pytest.fixture
@@ -362,3 +363,30 @@ async def test_ready_to_go_live_in_the_chat_approves_the_commit(tmp_path: Path) 
             actions = await audits(live)
     assert approval.commit == head and approval.chat_id == ready and approval.clean
     assert [a for a in actions if a.startswith("hosting.")] == ["hosting.go_live"]
+
+
+async def test_a_job_whose_answer_was_lost_is_offered_again(
+    server: LiveServer, client: httpx.AsyncClient
+) -> None:
+    token = await host_token(server, HostStandIn())
+    job = HostJob(id="b" * 32, kind="stop", app="shop", environment="staging")
+    async with server.services.db.session() as session, session.begin():
+        session.add(HostJobRow(id=job.id, host_id=token.split("_")[1], app="shop", kind="stop",
+                               job=job.model_dump_json(), status="queued",
+                               created_at=time.time()))  # fmt: skip
+    auth = {"Authorization": f"Bearer {token}"}
+
+    async def poll(running: list[str] | None) -> str | None:
+        body: dict[str, Any] = {"free_slots": 1} | (
+            {"running": running} if running is not None else {}
+        )
+        async with httpx.AsyncClient(base_url=server.url, timeout=30) as host:
+            answer = (await host.post("/api/host/poll", json=body, headers=auth)).json()
+        return answer["job"]["id"] if answer["job"] else None
+
+    assert await poll([]) == job.id  # this answer is "lost": the host never runs it
+    assert await poll([]) is None  # just taken: the answer may still be on its way
+    await asyncio.sleep(2.2)
+    assert await poll([job.id]) is None  # the host says it works on it
+    assert await poll(None) is None  # an older worker cannot say: nothing is offered again
+    assert await poll([]) == job.id  # not named, taken a while ago: offered again

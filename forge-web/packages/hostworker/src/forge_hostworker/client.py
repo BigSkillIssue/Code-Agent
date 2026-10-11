@@ -53,6 +53,7 @@ class HostClient:
         self.key = key
         self.slots = slots
         self.tasks: set[asyncio.Task[None]] = set()
+        self.running: set[str] = set()  # the ids of the jobs in `tasks`
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down."""
@@ -95,7 +96,8 @@ class HostClient:
 
     async def poll(self) -> HostJob | None:
         """One long poll; a job or None."""
-        body = PollRequest(free_slots=max(self.slots - len(self.tasks), 1), version=__version__)
+        free = max(self.slots - len(self.tasks), 1)
+        body = PollRequest(free_slots=free, version=__version__, running=sorted(self.running))
         reply = await self.http.post(
             "/api/host/poll",
             content=body.model_dump_json(),
@@ -108,7 +110,9 @@ class HostClient:
         """Run a job in a task of its own."""
         task = asyncio.create_task(self.handle(job))
         self.tasks.add(task)
+        self.running.add(job.id)
         task.add_done_callback(self.tasks.discard)
+        task.add_done_callback(lambda _: self.running.discard(job.id))
 
     async def handle(self, job: HostJob) -> None:
         """Fetch what the job needs, run it, report how it went."""

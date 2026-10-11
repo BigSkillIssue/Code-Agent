@@ -32,7 +32,8 @@ PUBLIC = {
     "GET /api/auth/oauth/{name}/callback", "POST /api/auth/totp/verify",
     "GET /api/preview/allowed-host",
     # The legal pages of hosted apps, which every visitor of an app sees through its edge.
-    "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz",
+    "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz", "GET /legal/{app}/melden",
+    "POST /legal/{app}/melden",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -89,6 +90,9 @@ BODIES: dict[str, dict[str, Any]] = {
     "MacChange": {"enabled": True},
     "Grant": {"allowed": True},
     "PollRequest": {"free_slots": 1},
+    # The Mac and the host workers' polls differ, so the schema names them by their modules.
+    "forge_macworker__wire__PollRequest": {"free_slots": 1},
+    "forge_hostworker__wire__PollRequest": {"free_slots": 1, "running": []},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -116,6 +120,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "TrustIn": {"trusted": True},
     "OperatorIn": {"name": "Mallory", "address": "Somewhere 1", "email": "m@example.com"},
     "MailIn": {"to": "victim@example.com", "subject": "Hi", "text": "spam"},
+    "Decision": {"action": "suspend", "reason": "taken over"},
 }
 
 
@@ -226,6 +231,7 @@ def filled(path: str, world: World) -> str:
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
+        "notice_id": "0" * 12,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
