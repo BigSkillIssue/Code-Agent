@@ -9,14 +9,18 @@ import contextlib
 import json
 import logging
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import BinaryIO
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from forge_hostworker import __version__
+from forge_hostworker.backup import outgoing
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
+    WITH_SECRETS,
     WITH_SOURCE,
     HostJob,
     JobResult,
@@ -122,9 +126,11 @@ class HostClient:
                 if job.kind in WITH_SOURCE:
                     source = Path(scratch) / "source.tar.gz"
                     await self.download(job.id, source)
-                if job.kind == "release":
+                if job.kind in WITH_SECRETS:
                     values = await self.secrets(job.id)
                 result = await asyncio.wait_for(self.runner.run(job, source, values), job.timeout_s)
+                if job.kind == "archive" and result.ok:
+                    await self.upload(job.id)
             except TimeoutError:
                 result = JobResult(ok=False, error="the job took longer than its time limit")
             except Exception as err:  # the server must hear about every job it handed out
@@ -142,6 +148,20 @@ class HostClient:
             with target.open("wb") as out:
                 async for chunk in reply.aiter_bytes():
                     out.write(chunk)
+
+    async def upload(self, job_id: str) -> None:
+        """Send an archive job's encrypted backup to Forge Web (it never stays on the host)."""
+        path = outgoing(self.runner.data_dir, job_id)
+        try:
+            with path.open("rb") as sealed:
+                reply = await self.http.post(
+                    f"/api/host/jobs/{job_id}/archive", content=chunks(sealed),
+                    headers={"Content-Type": "application/octet-stream"},
+                    timeout=httpx.Timeout(3600, connect=30),
+                )  # fmt: skip
+            reply.raise_for_status()
+        finally:
+            path.unlink(missing_ok=True)
 
     async def secrets(self, job_id: str) -> dict[str, str]:
         """The release's secrets, sealed to this host's key (the server hands them out once)."""
@@ -170,3 +190,9 @@ async def wait_or_stop(stop: asyncio.Event, seconds: float) -> None:
     """Sleep, unless stop is set first."""
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(stop.wait(), seconds)
+
+
+async def chunks(file: BinaryIO) -> AsyncIterator[bytes]:
+    """A file's bytes in parts, for an upload that does not fit in memory."""
+    while part := file.read(1024 * 1024):
+        yield part

@@ -1,6 +1,6 @@
 """Tables of hosting (W26): the hosts, the apps on them, approvals, secrets, deploys, jobs."""
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from forge_web.db.models import Base
@@ -189,3 +189,31 @@ class AbuseNotice(Base):
     decided_by: Mapped[str] = mapped_column(String(32), default="")
     decided_at: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppBackupKey(Base):
+    """The key an app's backups are encrypted with (on its host; kept here encrypted)."""
+
+    __tablename__ = "app_backup_keys"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    key: Mapped[str] = mapped_column(Text)  # 32 bytes, base64, encrypted with the vault
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppBackup(Base):
+    """One encrypted backup of an app's database and files, and its restore drill."""
+
+    __tablename__ = "app_backups"
+    __table_args__ = (Index("app_backups_by_app", "project_id", "environment", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # the archive job's id
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    environment: Mapped[str] = mapped_column(String(16))
+    size: Mapped[int] = mapped_column(BigInteger)  # bytes
+    created_at: Mapped[float] = mapped_column(Float)
+    drill_at: Mapped[float] = mapped_column(Float, default=0.0)
+    drill_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    drill_detail: Mapped[str] = mapped_column(Text, default="")

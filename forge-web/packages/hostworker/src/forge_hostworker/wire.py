@@ -13,7 +13,9 @@ Dockerfile or compose file.
 One deploy is several jobs, so the server knows after each step where it stands: `check` (the
 host's own tests and migrations on a throwaway database), `backup` (the app's database dumped
 on the host), `migrate` (the release's migrations on the app's database) and `release` (start,
-health, switch). `rollback`, `stop`, `start` and `logs` act on what runs.
+health, switch). `rollback`, `stop`, `start` and `logs` act on what runs. `archive` packs and
+encrypts the app's database and files for Forge Web (uploaded to `.../archive`), and
+`restore_drill` restores such a backup (its source) into a throwaway database.
 """
 
 import base64
@@ -40,9 +42,13 @@ MAX_LOG_CHARS = 20_000
 SEAL_INFO = b"forge-hostworker secrets v1"
 Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
-JobKind = Literal["check", "backup", "migrate", "release", "rollback", "stop", "start", "logs"]
+JobKind = Literal[
+    "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
+    "restore_drill",
+]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
-WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release")  # and the packed source
+WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill")  # a file to fetch
+WITH_SECRETS: tuple[str, ...] = ("release", "archive", "restore_drill")  # sealed values to fetch
 
 
 def app_host(app: str, environment: str, apps_domain: str) -> str:

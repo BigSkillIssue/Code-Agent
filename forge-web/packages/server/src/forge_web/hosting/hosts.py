@@ -13,9 +13,11 @@ import binascii
 import contextlib
 import hashlib
 import hmac
+import os
 import secrets
 import shutil
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from sqlalchemy import select
@@ -29,6 +31,15 @@ ONLINE_S = 120  # a host seen this recently counts as connected
 SOURCE = "source.tar.gz"
 RECHECK_S = 5.0  # waiting for a result also looks at the database this often
 REOFFER_AFTER_S = 30.0  # a job its host does not name as running this long after is offered again
+
+
+def link_or_copy(source: Path, target: Path) -> None:
+    """The file at a second place: a hard link where possible (a backup can be large)."""
+    target.unlink(missing_ok=True)
+    try:
+        os.link(source, target)
+    except OSError:
+        shutil.copyfile(source, target)
 
 
 class JobGone(Exception):
@@ -116,7 +127,7 @@ class HostQueue:
         if source is not None:
             folder = self.root / job.id
             folder.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(shutil.copyfile, source, folder / SOURCE)
+            await asyncio.to_thread(link_or_copy, source, folder / SOURCE)
         row = HostJobRow(id=job.id, host_id=host_id, deploy_id=deploy_id, app=job.app,
                          kind=job.kind, job=job.model_dump_json(), status="queued",
                          sealed=sealed.model_dump_json() if sealed else "",
@@ -198,6 +209,26 @@ class HostQueue:
                 raise JobGone("this job has no secrets (any more)")
             sealed, row.sealed = row.sealed, ""
         return SealedSecrets.model_validate_json(sealed)
+
+    async def store_archive(
+        self, host_id: str, job_id: str, parts: AsyncIterator[bytes], target: Path, limit: int
+    ) -> int:
+        """Keep an archive job's encrypted backup (it arrives before the job's report); bytes."""
+        row = await self.running(host_id, job_id)
+        if row.kind != "archive":
+            raise JobGone("only an archive job sends a backup")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_suffix(".part")
+        size = 0
+        with partial.open("wb") as out:
+            async for part in parts:
+                size += len(part)
+                if size > limit:
+                    partial.unlink(missing_ok=True)
+                    raise JobGone("the backup is larger than this server keeps")
+                await asyncio.to_thread(out.write, part)
+        partial.replace(target)
+        return size
 
     async def finish(self, host_id: str, job_id: str, result: JobResult) -> None:
         """Keep the host's report and wake the deploy that waits for it."""

@@ -99,6 +99,19 @@ def host_router() -> APIRouter:
     async def sealed(job_id: str, host: Host, request: Request) -> Sealed:
         return await refused_unless(services_of(request).hosts.secrets_of(host.id, job_id))
 
+    @router.post("/jobs/{job_id}/archive")
+    async def archive(job_id: str, host: Host, request: Request) -> dict[str, int]:
+        services = services_of(request)
+        try:
+            target = await services.backups.target_of(job_id)
+        except LookupError:
+            raise HTTPException(409, "this is not one of this host's archive jobs") from None
+        limit = services.settings.hosting.max_backup_mb * 1024 * 1024
+        size = await refused_unless(
+            services.hosts.store_archive(host.id, job_id, request.stream(), target, limit)
+        )
+        return {"size": size}
+
     @router.post("/jobs/{job_id}/result")
     async def result(job_id: str, host: Host, request: Request) -> dict[str, bool]:
         raw = bytearray()

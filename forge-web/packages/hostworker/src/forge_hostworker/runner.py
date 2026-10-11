@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
+from forge_hostworker.backup import archive_job, drill_job
 from forge_hostworker.build import SourceError, build_release, file_digest, hand_over, unpack
 from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
@@ -28,6 +29,7 @@ from forge_hostworker.migrate import migrate_release
 from forge_hostworker.postgres import dump_database, ensure_database
 from forge_hostworker.storage import ensure_files, files_mount
 from forge_hostworker.wire import (
+    PLANNED,
     WITH_SOURCE,
     DeployPlan,
     HostJob,
@@ -142,8 +144,12 @@ class HostRunner:
     ) -> JobResult:
         """The job's own work."""
         plan = job.plan
-        if job.kind in WITH_SOURCE and (plan is None or source is None):
+        if (job.kind in PLANNED and plan is None) or (job.kind in WITH_SOURCE and source is None):
             return JobResult(ok=False, error=f"the {job.kind} job came without its plan or source")
+        if job.kind == "archive":
+            return await archive_job(self, job, secret_values)
+        if job.kind == "restore_drill" and source is not None:
+            return await drill_job(self, job, source, secret_values)
         if plan is not None and source is not None:
             if job.kind == "check":
                 await self.ensure_build_network()

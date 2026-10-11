@@ -746,6 +746,13 @@ und `from_address`, das Passwort in der Umgebungsvariablen `FORGE_WEB_SMTP_PASSW
 sendet unter ihrem Namen von dieser Absenderadresse, Antworten gehen an den Ersteller, und pro Tag
 höchstens so viele Mails, wie ihre Vorlage angibt (und `mail_daily_max` erlaubt).
 
+Jede live geschaltete App wird **täglich gesichert**: Der App-Server verschlüsselt Datenbank und
+Dateien, bevor sie ihn verlassen, und Forge Web bewahrt die verschlüsselten Sicherungen auf
+(`<Datenordner>/hosting/backups/`, die neuesten 14). Einmal pro Woche spielt der App-Server die
+neueste Sicherung probeweise in eine Wegwerf-Datenbank zurück; das Ergebnis steht in der
+Verwaltung unter **Hosting → Gehostete Apps**. Den Datenordner von Forge Web sicherst du wie in
+Abschnitt 7 – der Schlüssel der Sicherungen liegt verschlüsselt in Forge Webs Datenbank.
+
 ### 11.8 Prüfen
 
 ```bash

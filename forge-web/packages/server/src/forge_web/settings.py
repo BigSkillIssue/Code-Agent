@@ -228,6 +228,11 @@ class HostingSettings(_Strict):
     provider_name: str = Field(default="", max_length=200)
     provider_address: str = Field(default="", max_length=500)
     contact_email: str = Field(default="", max_length=320)
+    # Backups that leave the app servers (W29a): encrypted on the host, kept on this server.
+    backup_every_h: float = Field(default=24, gt=0)  # each live app and environment
+    keep_backups: int = Field(default=14, ge=1)
+    drill_every_days: float = Field(default=7, gt=0)  # restore the newest one to prove it works
+    max_backup_mb: int = Field(default=10_000, ge=1)
 
 
 class WebSettings(_Strict):

@@ -4,12 +4,15 @@ pretends to build and run and remembers what it was given."""
 
 import asyncio
 import contextlib
+import os
 import tarfile
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
+from forge_hostworker.backup import outgoing
 from forge_hostworker.client import HostClient
 from forge_hostworker.wire import CheckState, HostJob, JobResult, ServiceState, public_key
 
@@ -22,8 +25,11 @@ class HostStandIn:
         self.jobs: list[HostJob] = []
         self.sources: dict[str, set[str]] = {}  # job id -> the files of its packed source
         self.secrets: dict[str, dict[str, str]] = {}  # job id -> the secrets it opened
+        self.archives: dict[str, bytes] = {}  # archive job id -> the backup it uploaded
+        self.drilled: dict[str, bytes] = {}  # drill job id -> the backup it was given
         self.results: dict[str, JobResult] = {}  # kind -> the answer instead of success
         self.holds: dict[str, asyncio.Event] = {}  # kind -> answered once this is set
+        self.data_dir = Path(tempfile.mkdtemp(prefix="host-standin-"))  # where uploads wait
 
     @property
     def public_key(self) -> str:
@@ -38,13 +44,20 @@ class HostStandIn:
 
     async def run(self, job: HostJob, source: Path | None, values: dict[str, str]) -> JobResult:
         self.jobs.append(job)
-        if source is not None:
+        if source is not None and job.kind != "restore_drill":
             with tarfile.open(source, "r:gz") as tar:
                 self.sources[job.id] = {m.name for m in tar.getmembers() if m.isfile()}
-        if job.kind == "release":
+        if job.kind in ("release", "archive", "restore_drill"):
             self.secrets[job.id] = values
+        if source is not None and job.kind == "restore_drill":
+            self.drilled[job.id] = source.read_bytes()
         if job.kind in self.holds:
             await self.holds[job.kind].wait()
+        if job.kind == "archive" and job.kind not in self.results:
+            sealed = outgoing(self.data_dir, job.id)
+            sealed.parent.mkdir(parents=True, exist_ok=True)
+            sealed.write_bytes(b"FBK1 encrypted " + job.id.encode() + os.urandom(64))
+            self.archives[job.id] = sealed.read_bytes()
         return self.results.get(job.kind) or healthy(job)
 
 
@@ -56,6 +69,9 @@ def healthy(job: HostJob) -> JobResult:
         checks += [CheckState(name=f"{s.name}: migrations", ok=True)
                    for s in plan.services if s.migrate]  # fmt: skip
         return JobResult(ok=True, checks=checks)
+    if job.kind == "restore_drill":
+        restored = CheckState(name="restore", ok=True, detail="3 tables, 1 entries of files")
+        return JobResult(ok=True, checks=[restored])
     if job.kind == "release" and plan is not None:
         services = [
             ServiceState(name=s.name, healthy=True,

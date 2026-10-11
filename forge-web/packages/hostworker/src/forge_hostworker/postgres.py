@@ -37,9 +37,16 @@ def password(folder: Path) -> str:
 
 
 def run_args(
-    name: str, network: str, env_file: Path, memory_mb: int, app: str, data: str = ""
+    name: str,
+    network: str,
+    env_file: Path,
+    memory_mb: int,
+    app: str,
+    data: str = "",
+    mounts: tuple[str, ...] = (),
 ) -> list[str]:
-    """`docker run` for the database; its data in the volume `data` (empty: its own volume)."""
+    """`docker run` for the database; its data in the volume `data` (empty: its own volume,
+    "memory": none at all), with `mounts` (host:container:ro) besides."""
     caps = [arg for cap in CAPABILITIES for arg in ("--cap-add", cap)]
     return [
         "run",
@@ -70,6 +77,7 @@ def run_args(
             if data == "memory"
             else ["-v", f"{data or name + '-data'}:/var/lib/postgresql/data"]
         ),
+        *[arg for mount in mounts for arg in ("-v", mount)],
         "--env-file",
         str(env_file),
         "--label",
@@ -120,16 +128,17 @@ async def wait_ready(docker: Docker, name: str, timeout_s: float = READY_TIMEOUT
 
 
 async def throwaway_database(
-    docker: Docker, name: str, network: str, app: str, folder: Path
+    docker: Docker, name: str, network: str, app: str, folder: Path, mounts: tuple[str, ...] = ()
 ) -> str:
-    """A database for the host's checks, its data in memory (remove the container afterwards)."""
+    """A database for the host's checks and restore drills, its data in memory (remove the
+    container afterwards)."""
     chosen = secrets.token_urlsafe(16)
     folder.mkdir(parents=True, exist_ok=True)
     env_file = folder / f"db-{secrets.token_hex(4)}.env"
     env_file.touch(mode=0o600)
     env_file.write_text(f"POSTGRES_USER=app\nPOSTGRES_DB=app\nPOSTGRES_PASSWORD={chosen}\n")
     try:
-        started = await docker(*run_args(name, network, env_file, 512, app, data="memory"))
+        started = await docker(*run_args(name, network, env_file, 512, app, "memory", mounts))
     finally:
         env_file.unlink(missing_ok=True)
     if started.code != 0:

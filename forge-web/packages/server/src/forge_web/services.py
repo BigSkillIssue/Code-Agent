@@ -21,6 +21,7 @@ from forge_web.egress import Egress
 from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
+from forge_web.hosting.ops import Backups
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
@@ -50,6 +51,7 @@ class Services:
     submissions: Submissions
     hosts: HostQueue
     deploys: Deploys
+    backups: Backups
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

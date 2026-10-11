@@ -6,8 +6,10 @@ production deploys need no admin). Every change is in the audit log.
 
 import asyncio
 import json
+import logging
 import secrets
 import time
+from collections.abc import Awaitable
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,12 +19,13 @@ from sqlalchemy import select
 from forge_hostworker.wire import HostJob
 from forge_web.audit import audit
 from forge_web.auth.sessions import AdminUser, client_ip
-from forge_web.db.hosting_models import Deploy, GoLiveApproval, HostedApp, HostServer
+from forge_web.db.hosting_models import AppBackup, Deploy, GoLiveApproval, HostedApp, HostServer
 from forge_web.db.models import Project, User
 from forge_web.hosting.deploy import view
 from forge_web.hosting.hosts import ONLINE_S, create_host
 from forge_web.services import Services, services_of
 
+log = logging.getLogger(__name__)
 LOGS_WAIT_S = 60.0
 ADMIN_JOB_TIMEOUT_S = 300.0
 
@@ -196,7 +199,31 @@ def app_routes(router: APIRouter) -> None:
                 .join(HostServer, HostServer.id == HostedApp.host_id)
                 .order_by(HostedApp.app)))  # fmt: skip
             live = list(await session.scalars(select(Deploy).where(Deploy.status == "live")))
-        return [app_view(hosted, project, host, live) for hosted, project, host in rows]
+            backups = list(await session.scalars(
+                select(AppBackup).order_by(AppBackup.created_at.desc())))  # fmt: skip
+        return [app_view(hosted, project, host, live, backups) for hosted, project, host in rows]
+
+    @router.post("/apps/{project_id}/backup")
+    async def backup_now(
+        project_id: str, body: LogsIn, request: Request, admin: AdminUser
+    ) -> dict[str, bool]:
+        services = services_of(request)
+        await hosted_or_404(services, project_id)
+        services.background(said(services.backups.backup(project_id, body.environment)))
+        await audit(services.db, "hosting.backup_started", user_id=admin.id, target=project_id,
+                    ip=client_ip(request), environment=body.environment)  # fmt: skip
+        return {"started": True}
+
+    @router.post("/apps/{project_id}/drill")
+    async def drill_now(
+        project_id: str, body: LogsIn, request: Request, admin: AdminUser
+    ) -> dict[str, bool]:
+        services = services_of(request)
+        await hosted_or_404(services, project_id)
+        services.background(said(services.backups.drill(project_id, body.environment)))
+        await audit(services.db, "hosting.drill_started", user_id=admin.id, target=project_id,
+                    ip=client_ip(request), environment=body.environment)  # fmt: skip
+        return {"started": True}
 
     @router.post("/apps/{project_id}/suspend")
     async def suspend(
@@ -244,16 +271,41 @@ async def suspend_app(
     return sent
 
 
-def app_view(hosted: HostedApp, project: str, host: str, live: list[Deploy]) -> dict[str, Any]:
-    """A hosted app as the panel shows it: where it runs and what is live."""
+def app_view(
+    hosted: HostedApp, project: str, host: str, live: list[Deploy], backups: list[AppBackup]
+) -> dict[str, Any]:
+    """A hosted app as the panel shows it: where it runs, what is live, its newest backups."""
     environments = {
         row.environment: {"release": row.release, "commit": row.commit,
                           "url": json.loads(row.data or "{}").get("url", "")}
         for row in live if row.project_id == hosted.project_id
     }  # fmt: skip
+    newest: dict[str, dict[str, Any]] = {}
+    for row in backups:  # newest first
+        if row.project_id == hosted.project_id and row.environment not in newest:
+            newest[row.environment] = {"at": row.created_at, "size": row.size,
+                                       "drill_at": row.drill_at, "drill_ok": row.drill_ok,
+                                       "drill_detail": row.drill_detail}  # fmt: skip
     return {"project_id": hosted.project_id, "app": hosted.app, "project": project, "host": host,
             "suspended": hosted.suspended, "suspended_reason": hosted.suspended_reason,
-            "suspended_at": hosted.suspended_at, "live": environments}  # fmt: skip
+            "suspended_at": hosted.suspended_at, "live": environments,
+            "backups": newest}  # fmt: skip
+
+
+async def hosted_or_404(services: Services, project_id: str) -> HostedApp:
+    """The hosted app of a project."""
+    async with services.db.session() as session:
+        hosted = await session.get(HostedApp, project_id)
+    if hosted is None:
+        raise HTTPException(404, "no such app")
+    return hosted
+
+
+async def said(work: Awaitable[str]) -> None:
+    """Run a backup or drill on the side; what went wrong goes to the log."""
+    problem = await work
+    if problem:
+        log.warning("hosting: %s", problem)
 
 
 async def live_environments(services: Services, project_id: str) -> list[str]:

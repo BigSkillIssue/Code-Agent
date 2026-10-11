@@ -246,11 +246,21 @@ Security principles (the apps' code is foreign code):
     - Build: a DSA notice form at the edge's `/melden` (DSA Art. 16: the place, the reasons, name and email, good faith; a confirmation), each notice to the admins; the admin's review: dismiss (the notifier hears so) or suspend the app with a statement of reasons (DSA Art. 17) recorded and sent to the creator.
     - Tests: a notice reaches the admin and its notifier gets a confirmation; incomplete notices are shown the form again; a suspension records and sends its reasons and stops the app; a dismissal tells the notifier.
     - Verify: `uv run pytest -q tests/test_abuse.py tests/test_access.py`
-- [ ] **W29 — Operations**
-    - Files: `forge_hostworker/{backup,metrics}.py`, `forge_web/hosting/{ops,gdpr}.py`, `tests/{test_host_ops,test_hosting_gdpr}.py`
-    - Build: nightly encrypted backups off the host and a restore drill; metering per app (CPU, RAM, disk, traffic); mail alerts; export and full deletion of an app (containers, database, backups, certificates).
-    - Tests: a backup is encrypted before it leaves the host and the drill restores it; metering adds up per app; an alert goes out once per incident; deletion leaves nothing behind and the export holds the database and the files.
-    - Verify: `uv run pytest -q tests/test_host_ops.py tests/test_hosting_gdpr.py`
+- [x] **W29a — Operations: backups off the host and restore drills**
+    - Files: `forge_hostworker/{backup,runner,client,postgres,wire}.py`, `forge_web/hosting/{ops,hosts,admin,deploy_api}.py`, `forge_web/db/{hosting_models.py,migrations/versions/0016_backups.py}`, `forge_web/{settings,services,startup}.py`, `tests/test_host_ops.py`
+    - Build: every live app and environment is backed up on schedule: the host packs the database (`pg_dump -Fc`) and the files and encrypts them with the app's own key (made and kept by Forge Web, sealed to the host for each job) in authenticated chunks; only the encrypted file is uploaded and kept on Forge Web (the newest few); the newest backup is drilled regularly by restoring it into a throwaway database on the host; admins can start both.
+    - Tests: a backup is encrypted before it leaves the host; a changed, cut-off, reordered or wrongly keyed backup does not open; the drill restores it; the schedule backs up, drills and keeps the newest.
+    - Verify: `uv run pytest -q tests/test_host_ops.py`
+- [ ] **W29b — Operations: metering and alerts**
+    - Files: `forge_hostworker/metrics.py`, `forge_web/hosting/{ops,admin}.py`, migration, `tests/test_host_ops.py`
+    - Build: metering per app (CPU, memory, disk, traffic) reported by the hosts; mail alerts to the admins (a host offline, an app down or over its limits, a failed backup or drill), once per incident.
+    - Tests: metering adds up per app; an alert goes out once per incident and again only after it ended.
+    - Verify: `uv run pytest -q tests/test_host_ops.py`
+- [ ] **W29c — Operations: export and full deletion of an app**
+    - Files: `forge_web/hosting/gdpr.py`, `forge_hostworker/{runner,backup}.py`, `tests/test_hosting_gdpr.py`
+    - Build: the creator's export of an app (its database and files); the full deletion of an app (containers, networks, volumes, database, backups on both sides, its edge entry and certificate, its rows).
+    - Tests: deletion leaves nothing behind; the export holds the database and the files.
+    - Verify: `uv run pytest -q tests/test_hosting_gdpr.py`
 - [ ] **W30 — Custom domains**
     - Files: `forge_web/hosting/domains.py`, `forge_hostworker/edge.py`, `tests/test_domains.py`
     - Build: a customer's own domain for an app, checked by a DNS TXT record before the edge asks for a certificate.

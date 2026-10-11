@@ -37,7 +37,13 @@ class FakeDocker:
         handler = getattr(self, f"do_{args[0]}", None)
         result = handler(list(args[1:])) if handler else DockerResult(0, "", "")
         if out is not None and result.code == 0:
-            out.write_bytes(b"PGDMP a dump of " + args[1].encode())
+            if "tar" in args and "-cf" in args:  # an app's files, packed
+                with tarfile.open(out, "w") as tar:
+                    photo = tarfile.TarInfo("./photo.jpg")
+                    photo.size = 4
+                    tar.addfile(photo, io.BytesIO(b"JPEG"))
+            else:
+                out.write_bytes(b"PGDMP a dump of " + args[1].encode())
         return result
 
     def do_exec(self, args: list[str]) -> DockerResult:
