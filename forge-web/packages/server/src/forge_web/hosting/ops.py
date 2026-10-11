@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import time
+from collections.abc import Awaitable
 from pathlib import Path
 
 from sqlalchemy import select
@@ -81,12 +82,13 @@ class Backups:
         return started
 
     async def live(self) -> list[tuple[str, str]]:
-        """The apps and environments with a live release (and not suspended)."""
+        """The apps and environments with a live release (not suspended or being deleted)."""
         async with self.db.session() as session:
             rows = await session.execute(
                 select(Deploy.project_id, Deploy.environment)
                 .join(HostedApp, HostedApp.project_id == Deploy.project_id)
-                .where(Deploy.status == "live", HostedApp.suspended.is_(False))
+                .where(Deploy.status == "live", HostedApp.suspended.is_(False),
+                       HostedApp.deleting_at == 0)
             )  # fmt: skip
             return sorted({(project, environment) for project, environment in rows})
 
@@ -190,3 +192,10 @@ class Backups:
             row = await session.get(AppBackup, backup_id)
             if row is not None:
                 row.drill_at, row.drill_ok, row.drill_detail = time.time(), result.ok, detail[:2000]
+
+
+async def said(work: Awaitable[str]) -> None:
+    """Run a backup or drill on the side; what went wrong goes to the log."""
+    problem = await work
+    if problem:
+        log.warning("hosting: %s", problem)

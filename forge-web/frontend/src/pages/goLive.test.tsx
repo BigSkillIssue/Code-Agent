@@ -19,18 +19,22 @@ const OPERATOR = {
   phone: "", trade_register: "", vat_id: "", privacy_email: "", privacy_extra: "",
 };
 const overview = (changes: Partial<HostingOverview>): HostingOverview => ({
-  enabled: true, app: "shop", suspended: false, suspended_reason: "",
+  enabled: true, app: "shop", suspended: false, suspended_reason: "", deleting: false, deleting_error: "", backups: [],
   reviews: [{ stage: "product", verdict: "ok", summary: "Impressum, privacy page and reporting are there.", findings: [] }],
   approvals: [{ commit: APPROVED, at: 1, summary: "", chat_id: "c1" }],
   deploys: [], staging: null, production: null, secrets: [], operator: { ...OPERATOR, updated_at: 1 },
   ...changes,
 });
 
-const mocks = vi.hoisted(() => ({ overview: vi.fn(), start: vi.fn(), retry: vi.fn(), setSecret: vi.fn(), setOperator: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  overview: vi.fn(), start: vi.fn(), retry: vi.fn(), setSecret: vi.fn(), setOperator: vi.fn(), exportData: vi.fn(),
+  deleteApp: vi.fn(),
+}));
 vi.mock("../api/hosting", () => ({
   hosting: () => ({
     overview: mocks.overview, start: mocks.start, retry: mocks.retry, setSecret: mocks.setSecret,
-    setOperator: mocks.setOperator,
+    setOperator: mocks.setOperator, exportData: mocks.exportData, deleteApp: mocks.deleteApp,
+    exportUrl: (backupId: string) => `/api/projects/p1/hosting/backups/${backupId}`,
   }),
 }));
 
@@ -40,6 +44,8 @@ beforeEach(() => {
   mocks.retry.mockReset().mockResolvedValue(deploy({}));
   mocks.setSecret.mockReset().mockResolvedValue({ ok: true });
   mocks.setOperator.mockReset().mockResolvedValue(OPERATOR);
+  mocks.exportData.mockReset().mockResolvedValue({ started: true });
+  mocks.deleteApp.mockReset().mockResolvedValue(undefined);
   useStore.setState({ error: "", projects: [{ id: "p1", name: "Shop", role: "owner", source: "app", kind: "app", created_at: 0, updated_at: 0 }] });
 });
 
@@ -134,5 +140,35 @@ describe("the go-live page", () => {
     fireEvent.change(value, { target: { value: "sk_live_x" } });
     fireEvent.click(screen.getByRole("button", { name: /^(Save|Speichern)$/ }));
     await waitFor(() => expect(mocks.setSecret).toHaveBeenCalledWith("staging", "STRIPE_KEY", "sk_live_x"));
+  });
+
+  it("lets the owner export each live environment and delete the app after typing its name", async () => {
+    const staged = deploy({});
+    const backups = [{ id: "b1", environment: "staging" as const, created_at: 5, size: 2_500_000 }];
+    mocks.overview.mockResolvedValue(overview({ staging: staged, deploys: [staged], backups }));
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: /^(Export staging|Staging exportieren)$/ }));
+    await waitFor(() => expect(mocks.exportData).toHaveBeenCalledWith("staging"));
+    expect(screen.queryByRole("button", { name: /^(Export live|Live-Version exportieren)$/ })).toBeNull();
+    const link = screen.getByTestId("exports").querySelector("a");
+    expect(link?.getAttribute("href")).toBe("/api/projects/p1/hosting/backups/b1");
+    expect(link?.textContent).toContain("2.5 MB");
+    const remove = button(/^(Delete the app|App löschen)$/);
+    expect(remove.disabled).toBe(true); // the app's name first
+    fireEvent.change(screen.getByLabelText(/(type its name|Namen der App eintippen): shop/), { target: { value: "shop" } });
+    fireEvent.click(remove);
+    await waitFor(() => expect(mocks.deleteApp).toHaveBeenCalled());
+  });
+
+  it("shows a deletion under way, and offers no data section to members who are not owners", async () => {
+    mocks.overview.mockResolvedValue(overview({ deleting: true, deleting_error: "the host did not report the job in time" }));
+    open();
+    expect((await screen.findByTestId("deleting")).textContent).toContain("did not report");
+    cleanup();
+    useStore.setState({ projects: [{ id: "p1", name: "Shop", role: "editor", source: "app", kind: "app", created_at: 0, updated_at: 0 }] });
+    mocks.overview.mockResolvedValue(overview({}));
+    open();
+    await screen.findByText(/0123456789/);
+    expect(screen.queryByRole("button", { name: /^(Delete the app|App löschen)$/ })).toBeNull();
   });
 });

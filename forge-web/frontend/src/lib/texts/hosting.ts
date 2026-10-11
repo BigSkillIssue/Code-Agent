@@ -113,6 +113,16 @@ export const hostingEn = {
   incidentsHint: "Checked every five minutes: silent servers, apps that do not run completely or exceed their limits, overdue backups and failed restore drills. Each incident is mailed to the admins once.",
   incidentsNone: "No incidents.",
   incidentEnded: "ended {date}",
+  appDataTitle: "The app's data",
+  appDataHint: "An export is a fresh backup of one environment: its database (db.dump, for pg_restore) and its files (files.tar). Deleting the app removes it from its server with its database, files, backups and settings; the project stays.",
+  exportStaging: "Export staging",
+  exportProduction: "Export live",
+  exportStarted: "The export is being made; it appears below in a minute or two.",
+  deleteAppConfirm: "To delete the app, type its name: {app}",
+  deleteApp: "Delete the app",
+  deleteAppAgain: "Try deleting again",
+  appDeleting: "The app is being deleted.",
+  appDeletingFailed: "Not done yet: {error}",
 };
 
 export const hostingDe: typeof hostingEn = {
@@ -227,4 +237,14 @@ export const hostingDe: typeof hostingEn = {
   incidentsHint: "Alle fünf Minuten geprüft: stumme Server, Apps, die nicht vollständig laufen oder ihre Grenzen überschreiten, überfällige Sicherungen und fehlgeschlagene Probe-Wiederherstellungen. Jede Störung geht einmal per Mail an die Admins.",
   incidentsNone: "Keine Störungen.",
   incidentEnded: "beendet {date}",
+  appDataTitle: "Die Daten der App",
+  appDataHint: "Ein Export ist eine frische Sicherung einer Umgebung: ihre Datenbank (db.dump, für pg_restore) und ihre Dateien (files.tar). Löschen entfernt die App von ihrem Server mit Datenbank, Dateien, Sicherungen und Einstellungen; das Projekt bleibt.",
+  exportStaging: "Staging exportieren",
+  exportProduction: "Live-Version exportieren",
+  exportStarted: "Der Export wird erstellt; er erscheint in ein, zwei Minuten unten.",
+  deleteAppConfirm: "Zum Löschen den Namen der App eintippen: {app}",
+  deleteApp: "App löschen",
+  deleteAppAgain: "Erneut löschen",
+  appDeleting: "Die App wird gelöscht.",
+  appDeletingFailed: "Noch nicht fertig: {error}",
 };

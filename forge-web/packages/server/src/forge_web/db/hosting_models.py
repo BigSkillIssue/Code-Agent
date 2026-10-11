@@ -37,6 +37,8 @@ class HostedApp(Base):
     suspended: Mapped[bool] = mapped_column(Boolean, default=False)  # stopped by an admin
     suspended_reason: Mapped[str] = mapped_column(Text, default="")
     suspended_at: Mapped[float] = mapped_column(Float, default=0.0)
+    deleting_at: Mapped[float] = mapped_column(Float, default=0.0)  # its deletion began (W29c)
+    deleting_error: Mapped[str] = mapped_column(Text, default="")  # why it is not done yet
 
 
 class GoLiveApproval(Base):

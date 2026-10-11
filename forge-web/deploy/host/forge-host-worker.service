@@ -28,7 +28,8 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/forge-host /run
+# Caddy's storage too: a deleted app's certificate and key are removed from it.
+ReadWritePaths=/var/lib/forge-host /run -/var/lib/caddy
 PrivateTmp=true
 LockPersonality=true
 

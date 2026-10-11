@@ -151,7 +151,8 @@ class Alerts:
         async with self.db.session() as session:
             live = list(await session.execute(
                 select(Deploy, HostedApp).join(HostedApp, HostedApp.project_id == Deploy.project_id)
-                .where(Deploy.status == "live", HostedApp.suspended.is_(False))))  # fmt: skip
+                .where(Deploy.status == "live", HostedApp.suspended.is_(False),
+                       HostedApp.deleting_at == 0)))  # fmt: skip
             for deploy, hosted in live:
                 sample = await session.scalar(
                     select(AppUsageSample).where(AppUsageSample.project_id == deploy.project_id,

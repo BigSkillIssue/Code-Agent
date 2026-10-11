@@ -55,7 +55,7 @@ class FakeDocker:
         if args[0] == "inspect":
             return DockerResult(0 if args[1] in self.volumes else 1, "", "")
         if args[0] == "rm":
-            self.volumes.discard(args[-1])
+            self.volumes -= {name for name in args[1:] if not name.startswith("-")}
         else:
             self.volumes.add(args[-1])
         return DockerResult(0, "", "")

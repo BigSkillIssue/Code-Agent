@@ -202,7 +202,7 @@ async def test_hosts_get_a_token_once_and_a_disabled_host_is_refused(
     assert refused.status_code == 401
     async with server.services.db.session() as session:
         stored = await session.get(HostServer, made["id"])
-    assert stored is not None and made["token"].split("_")[2] not in stored.token_hash
+    assert stored is not None and made["token"].split("_", 2)[2] not in stored.token_hash
 
 
 async def test_only_admins_reach_the_panel(server: LiveServer) -> None:

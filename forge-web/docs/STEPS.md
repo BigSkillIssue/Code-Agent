@@ -256,8 +256,8 @@ Security principles (the apps' code is foreign code):
     - Build: metering per app (CPU, memory, disk, traffic) reported by the hosts; mail alerts to the admins (a host offline, an app down or over its limits, a failed backup or drill), once per incident.
     - Tests: metering adds up per app; an alert goes out once per incident and again only after it ended.
     - Verify: `uv run pytest -q tests/test_host_ops.py`
-- [ ] **W29c — Operations: export and full deletion of an app**
-    - Files: `forge_web/hosting/gdpr.py`, `forge_hostworker/{runner,backup}.py`, `tests/test_hosting_gdpr.py`
+- [x] **W29c — Operations: export and full deletion of an app**
+    - Files: `forge_web/hosting/{gdpr,removal,ops,admin,deploy_api,alerts,mail_relay}.py`, `forge_web/{projects,services,startup,app}.py`, `forge_web/db/{hosting_models.py,migrations/versions/0018_app_deletion.py}`, `forge_hostworker/{runner,lifecycle,edge,cli,wire}.py`, `deploy/host/forge-host-worker.service`, `frontend/src/pages/{GoLive,AppData}.tsx` (+ test), `tests/{test_hosting_gdpr,test_access,host_standin,docker_standin}.py`
     - Build: the creator's export of an app (its database and files); the full deletion of an app (containers, networks, volumes, database, backups on both sides, its edge entry and certificate, its rows).
     - Tests: deletion leaves nothing behind; the export holds the database and the files.
     - Verify: `uv run pytest -q tests/test_hosting_gdpr.py`

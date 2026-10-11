@@ -761,6 +761,15 @@ Probe-Wiederherstellung. Jede solche **Störung** geht einmal per Mail an alle A
 es den SMTP-Zugang oben) und steht unter **Hosting → Störungen**; kommt sie nach ihrem Ende wieder,
 gibt es eine neue Mail.
 
+Auf der Seite **Live schalten** kann der Eigentümer eines Projekts die Daten seiner App
+**exportieren** (eine frische Sicherung je Umgebung: `db.dump` für `pg_restore` und `files.tar`,
+beim Herunterladen entschlüsselt) und die App **löschen**: Dann entfernt der App-Server Container,
+Netz, Datenbank, Dateien und den Ordner der App und das Zertifikat aus Caddys Speicher
+(`/var/lib/caddy/.local/share/caddy`, anders mit `--caddy-data`), und Forge Web löscht
+Sicherungen und Einstellungen der App. Das Projekt bleibt; ein Projekt mit gehosteter App lässt
+sich erst nach der App löschen. Ist der App-Server nicht erreichbar, steht der Grund auf der Seite;
+schaltet ein Admin den Server ab, wird die App ohne ihn gelöscht.
+
 ### 11.8 Prüfen
 
 ```bash

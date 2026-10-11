@@ -3,95 +3,35 @@ and encrypted on the host before they go to Forge Web, and the restore drill tha
 backup can be read back.
 
 The key is the app's own (32 bytes), made and kept by Forge Web and sealed to this host for each
-job. The file is encrypted in chunks (ChaCha20-Poly1305, the "STREAM" construction): a header
-with a random nonce prefix, then chunks whose nonce counts up and whose last one is marked, so a
-cut-off or reordered file does not open.
+job. The file format (`encrypt_file`, `decrypt_chunks`) is in `wire`, since Forge Web reads it too.
 """
 
 import asyncio
 import base64
 import binascii
-import os
 import secrets
 import shutil
-import struct
 import tarfile
-from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 from forge_hostworker.docker import Docker, HostError
 from forge_hostworker.postgres import container, throwaway_database, wait_ready
 from forge_hostworker.storage import files_volume
-from forge_hostworker.wire import CheckState, HostJob, JobResult
+from forge_hostworker.wire import (
+    BackupError,
+    CheckState,
+    HostJob,
+    JobResult,
+    decrypt_file,
+    encrypt_file,
+)
 
 if TYPE_CHECKING:  # the runner imports this module
     from forge_hostworker.runner import HostRunner
 
 KEY_SECRET = "BACKUP_KEY"  # the app's backup key (base64), sealed to the host like a secret
-MAGIC = b"FBK1"
-CHUNK = 1024 * 1024
-TAG = 16
 DUMP_TIMEOUT_S = 3600
-
-
-class BackupError(Exception):
-    """A backup file does not open (wrong key, changed or cut off)."""
-
-
-def _nonce(prefix: bytes, counter: int) -> bytes:
-    return prefix + struct.pack(">I", counter)
-
-
-def encrypt_file(key: bytes, source: Path, target: Path) -> None:
-    """Encrypt a file in chunks; only the key opens it again."""
-    box, prefix = ChaCha20Poly1305(key), os.urandom(8)
-    size = source.stat().st_size
-    with source.open("rb") as plain, target.open("wb") as out:
-        out.write(MAGIC + prefix)
-        counter, done = 0, 0
-        while True:
-            chunk = plain.read(CHUNK)
-            done += len(chunk)
-            last = done >= size
-            out.write(box.encrypt(_nonce(prefix, counter), chunk, b"last" if last else b"more"))
-            counter += 1
-            if last:
-                return
-
-
-def decrypt_chunks(key: bytes, source: Path) -> Iterator[bytes]:
-    """The plain chunks of an encrypted file; raises BackupError when it does not open."""
-    box = ChaCha20Poly1305(key)
-    with source.open("rb") as sealed:
-        head = sealed.read(len(MAGIC) + 8)
-        if head[: len(MAGIC)] != MAGIC:
-            raise BackupError("not a Forge backup")
-        prefix, counter, ended = head[len(MAGIC) :], 0, False
-        while chunk := sealed.read(CHUNK + TAG):
-            if ended:
-                raise BackupError("there is more after the last chunk")
-            try:
-                plain = box.decrypt(_nonce(prefix, counter), chunk, b"more")
-            except Exception:
-                try:
-                    plain = box.decrypt(_nonce(prefix, counter), chunk, b"last")
-                except Exception as err:
-                    raise BackupError("the backup does not open (wrong key, or changed)") from err
-                ended = True
-            counter += 1
-            yield plain
-        if not ended:
-            raise BackupError("the backup is cut off")
-
-
-def decrypt_file(key: bytes, source: Path, target: Path) -> None:
-    """Decrypt a whole backup file."""
-    with target.open("wb") as out:
-        for chunk in decrypt_chunks(key, source):
-            out.write(chunk)
 
 
 async def make_archive(docker: Docker, app: str, environment: str, folder: Path, work: Path,

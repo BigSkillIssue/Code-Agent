@@ -15,6 +15,7 @@ from forge_web.apple.template import app_name, checked_bundle_id, write_template
 from forge_web.apps import template as app_template
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.db.hosting_models import HostedApp
 from forge_web.db.models import Project, ProjectMember, User
 from forge_web.gitsync import check_remote, clone
 from forge_web.quotas import MB, check_project_count, disk_limit, disk_use
@@ -136,6 +137,8 @@ def projects_router() -> APIRouter:
     async def remove_project(project_id: str, request: Request, user: CurrentUser) -> None:
         async with services_of(request).db.session() as session:
             project, _ = await require_project(session, user, project_id, "owner")
+            if await session.get(HostedApp, project_id) is not None:
+                raise HTTPException(409, "delete the project's hosted app first (Go live page)")
         await delete_project(request, project)
 
     return router

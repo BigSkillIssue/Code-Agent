@@ -57,6 +57,9 @@ SANDBOX_PATHS = (
 )  # fmt: skip
 # Changing calls that viewers may make too (they change nothing in the project).
 VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}
+# Reads of a hosted app's data that only the project's owner may make (the world has no backup,
+# so the owner hears 404).
+OWNER_READS = {"GET /api/projects/{project_id}/hosting/backups/{backup_id}"}
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -94,6 +97,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "forge_macworker__wire__PollRequest": {"free_slots": 1},
     "forge_hostworker__wire__PollRequest": {"free_slots": 1, "running": []},
     "HostUsage": {"disk_free_gb": 10, "apps": []},
+    "ExportIn": {"environment": "staging"},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -232,7 +236,7 @@ def filled(path: str, world: World) -> str:
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
-        "notice_id": "0" * 12,
+        "notice_id": "0" * 12, "backup_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -323,6 +327,8 @@ async def test_viewers_only_read(shared: World) -> None:
             assert status == 403, f"{method} {path} answered {status}"
         elif f"{method} {path}" in VIEWER_ACTIONS:
             assert status == 200, f"{method} {path} answered {status}"
+        elif f"{method} {path}" in OWNER_READS:
+            assert status == 403, f"{method} {path} answered {status}"
         elif kind == "project" and method in UNSAFE:
             assert status in (403, 404), f"{method} {path} answered {status}"
         elif kind == "project":
@@ -335,7 +341,8 @@ async def test_the_owner_reads_every_project_route(shared: World) -> None:
     for method, path, model in api_routes(world.server.app):
         if rule(method, path) == "project" and method == "GET":
             status = await call(world.owner, method, filled(path, world), model)
-            assert status == granted(method, path), f"{method} {path} answered {status}"
+            expected = 404 if f"{method} {path}" in OWNER_READS else granted(method, path)
+            assert status == expected, f"{method} {path} answered {status}"
 
 
 def granted(method: str, path: str) -> int:

@@ -114,7 +114,7 @@ def relay_router() -> APIRouter:
                 AppMailLog.project_id == relay.project_id,
                 AppMailLog.environment == relay.environment,
                 AppMailLog.created_at >= day_start()))  # fmt: skip
-        if hosted is None or hosted.suspended:
+        if hosted is None or hosted.suspended or hosted.deleting_at:
             raise HTTPException(403, "this app may not send mail")
         if (sent or 0) >= relay.daily_limit:
             raise HTTPException(429, f"the app's {relay.daily_limit} mails for today are sent")

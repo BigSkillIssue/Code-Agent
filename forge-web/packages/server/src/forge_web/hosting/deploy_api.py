@@ -34,6 +34,7 @@ from forge_hostworker.wire import SealedSecrets as Sealed
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.hosting_models import (
+    AppBackup,
     AppOperator,
     AppSecret,
     Deploy,
@@ -250,6 +251,8 @@ async def new_deploy(services: Services, user: User, project_id: str, body: Depl
         hosted = await session.get(HostedApp, project_id)
         if hosted is not None and hosted.suspended:
             raise HTTPException(409, f"an admin suspended this app: {hosted.suspended_reason}")
+        if hosted is not None and hosted.deleting_at:
+            raise HTTPException(409, "this app is being deleted")
         last = await session.scalar(select(func.max(Deploy.release)).where(
             Deploy.project_id == project_id, Deploy.environment == body.environment))  # fmt: skip
     picked = None if hosted else await pick_host(services.db)
@@ -324,10 +327,16 @@ async def hosting_overview(services: Services, project_id: str) -> dict[str, Any
         names = [{"environment": s.environment, "name": s.name} for s in await session.scalars(
             select(AppSecret).where(AppSecret.project_id == project_id))]  # fmt: skip
         operator = operator_view(await session.get(AppOperator, project_id))
+        backups = [{"id": b.id, "environment": b.environment, "created_at": b.created_at,
+                    "size": b.size} for b in await session.scalars(
+            select(AppBackup).where(AppBackup.project_id == project_id)
+            .order_by(AppBackup.created_at.desc()))]  # fmt: skip
     live = {d["environment"]: d for d in deploys if d["status"] == "live"}
     return {"enabled": services.settings.hosting.enabled, "app": hosted.app if hosted else "",
             "suspended": bool(hosted and hosted.suspended),
             "suspended_reason": hosted.suspended_reason if hosted else "",
+            "deleting": bool(hosted and hosted.deleting_at),
+            "deleting_error": hosted.deleting_error if hosted else "", "backups": backups,
             "reviews": reviews, "approvals": approvals, "deploys": deploys,
             "staging": live.get("staging"), "production": live.get("production"),
             "secrets": names, "operator": operator}  # fmt: skip

@@ -4,7 +4,7 @@ pretends to build and run and remembers what it was given."""
 
 import asyncio
 import contextlib
-import os
+import io
 import tarfile
 import tempfile
 from collections.abc import AsyncIterator
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
-from forge_hostworker.backup import outgoing
+from forge_hostworker.backup import backup_key, outgoing
 from forge_hostworker.client import HostClient
 from forge_hostworker.wire import (
     CheckState,
@@ -20,8 +20,24 @@ from forge_hostworker.wire import (
     HostUsage,
     JobResult,
     ServiceState,
+    encrypt_file,
     public_key,
 )
+
+
+def packed(files: dict[str, bytes]) -> bytes:
+    """A tar of these files."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+# What the stand-in's backups hold, as a host's `archive` job packs it.
+ARCHIVE = {"db.dump": b"PGDMP a stand-in dump", "files.tar": packed({"./photo.jpg": b"JPEG"})}
 
 
 class HostStandIn:
@@ -67,7 +83,10 @@ class HostStandIn:
         if job.kind == "archive" and job.kind not in self.results:
             sealed = outgoing(self.data_dir, job.id)
             sealed.parent.mkdir(parents=True, exist_ok=True)
-            sealed.write_bytes(b"FBK1 encrypted " + job.id.encode() + os.urandom(64))
+            plain = sealed.with_suffix(".tar")
+            plain.write_bytes(packed(ARCHIVE))
+            encrypt_file(backup_key(values), plain, sealed)  # with the key it was sent
+            plain.unlink()
             self.archives[job.id] = sealed.read_bytes()
         return self.results.get(job.kind) or healthy(job)
 

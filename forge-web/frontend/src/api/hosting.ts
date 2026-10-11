@@ -79,6 +79,11 @@ export interface HostingOverview {
   app: string;
   suspended: boolean;
   suspended_reason: string;
+  /** The app's deletion began (W29c); deleting_error says why it is not done yet. */
+  deleting: boolean;
+  deleting_error: string;
+  /** The kept backups, newest first: each is an export of its environment to download. */
+  backups: { id: string; environment: Environment; created_at: number; size: number }[];
   reviews: ReleaseReview[];
   approvals: GoLiveApproval[];
   deploys: Deploy[];
@@ -99,6 +104,9 @@ export const hosting = (projectId: string) => {
     setSecret: (environment: Environment, name: string, value: string) =>
       api.put<{ ok: boolean }>(`${base}/hosting/secrets`, { environment, name, value }),
     setOperator: (operator: Operator) => api.put<Operator>(`${base}/hosting/operator`, operator),
+    exportData: (environment: Environment) => api.post<{ started: boolean }>(`${base}/hosting/export`, { environment }),
+    exportUrl: (backupId: string) => `${base}/hosting/backups/${id(backupId)}`,
+    deleteApp: () => api.delete(`${base}/hosting`),
   };
 };
 

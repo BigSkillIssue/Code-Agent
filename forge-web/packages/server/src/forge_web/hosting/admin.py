@@ -9,7 +9,6 @@ import json
 import logging
 import secrets
 import time
-from collections.abc import Awaitable
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -32,7 +31,9 @@ from forge_web.db.models import Project, User
 from forge_web.gateway.meter import month_start
 from forge_web.hosting.alerts import incident_view, totals
 from forge_web.hosting.deploy import view
+from forge_web.hosting.gdpr import start_deleting
 from forge_web.hosting.hosts import ONLINE_S, create_host
+from forge_web.hosting.ops import said
 from forge_web.services import Services, services_of
 
 log = logging.getLogger(__name__)
@@ -236,6 +237,12 @@ def app_routes(router: APIRouter) -> None:
                     ip=client_ip(request), environment=body.environment)  # fmt: skip
         return {"started": True}
 
+    @router.delete("/apps/{project_id}")
+    async def delete_app(project_id: str, request: Request, admin: AdminUser) -> dict[str, bool]:
+        services = services_of(request)
+        await start_deleting(services, project_id, admin.id, client_ip(request))
+        return {"deleting": True}
+
     @router.post("/apps/{project_id}/suspend")
     async def suspend(
         project_id: str, body: Suspension, request: Request, admin: AdminUser
@@ -310,13 +317,6 @@ async def hosted_or_404(services: Services, project_id: str) -> HostedApp:
     if hosted is None:
         raise HTTPException(404, "no such app")
     return hosted
-
-
-async def said(work: Awaitable[str]) -> None:
-    """Run a backup or drill on the side; what went wrong goes to the log."""
-    problem = await work
-    if problem:
-        log.warning("hosting: %s", problem)
 
 
 async def live_environments(services: Services, project_id: str) -> list[str]:

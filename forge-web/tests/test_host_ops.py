@@ -20,8 +20,16 @@ import pytest
 from sqlalchemy import select
 
 from docker_standin import FakeDocker, job_of, plan, release_job, runner_for, tarball
-from forge_hostworker.backup import CHUNK, BackupError, decrypt_file, encrypt_file, outgoing
-from forge_hostworker.wire import AppUsage, HostJob, HostUsage
+from forge_hostworker.backup import outgoing
+from forge_hostworker.wire import (
+    CHUNK,
+    AppUsage,
+    BackupError,
+    HostJob,
+    HostUsage,
+    decrypt_file,
+    encrypt_file,
+)
 from forge_web.db.hosting_models import (
     AppBackup,
     AppBackupKey,

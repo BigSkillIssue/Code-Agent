@@ -25,7 +25,7 @@ from forge_hostworker import __version__, firewall
 from forge_hostworker.client import HostClient
 from forge_hostworker.docker import DockerCli, HostError, container_owner, require_runsc
 from forge_hostworker.doctor import TEST_IMAGE, doctor, is_root, report
-from forge_hostworker.edge import Edge
+from forge_hostworker.edge import CADDY_DATA, Edge
 from forge_hostworker.runner import HostRunner, default_user
 from forge_hostworker.wire import TOKEN_PREFIX, public_key
 
@@ -58,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--docker", default="docker")
     run.add_argument("--apps-domain", help="apps answer at <app>.DOMAIN (Caddy is the edge)")
     run.add_argument("--legal-base", help="Forge Web's legal pages, https://forge.../legal")
+    run.add_argument("--caddy-data", type=Path, default=CADDY_DATA,
+                     help="Caddy's storage, to remove deleted apps' certificates")  # fmt: skip
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "keygen":
@@ -145,7 +147,7 @@ async def serve(args: argparse.Namespace) -> int:
     if args.apps_domain is None:
         await client.serve(stop)
         return 0
-    edge = Edge(runner, docker, args.apps_domain, args.legal_base)
+    edge = Edge(runner, docker, args.apps_domain, args.legal_base, certificates=args.caddy_data)
     runner.on_change = edge.changed
     ask = await edge.serve_ask()
     try:

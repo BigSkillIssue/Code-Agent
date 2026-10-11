@@ -5,14 +5,17 @@ Caddy gets certificates on demand, but only for hosts this worker says are live 
 `<app>.staging.<apps domain>`. The legal pages (`/impressum`, `/datenschutz`) and the
 "report content" page (`/melden`) are served from Forge Web for every app, before the app's
 own routes, so an app cannot remove or replace them. Everything else goes to the app's
-services by their routes, the longest first.
+services by their routes, the longest first. Once an app is deleted from this host, the edge also
+removes its certificate and key from Caddy's storage.
 """
 
 import asyncio
 import contextlib
 import json
 import logging
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -25,6 +28,7 @@ from forge_hostworker.wire import DeployPlan, app_host
 LEGAL_PATHS = ("/impressum", "/datenschutz", "/melden")
 ASK_PORT = 47201
 CADDY_ADMIN = "http://127.0.0.1:2019"
+CADDY_DATA = Path("/var/lib/caddy/.local/share/caddy")  # caddy-api's storage (Debian's package)
 HSTS = "max-age=31536000"
 REFRESH_S = 60  # also brings a restarted Caddy back to the live apps
 log = logging.getLogger(__name__)
@@ -150,6 +154,7 @@ class Edge:
         legal_base: str,
         *,
         admin: str = CADDY_ADMIN,
+        certificates: Path | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.runner = runner
@@ -158,6 +163,7 @@ class Edge:
         self.legal_base = legal_base
         self.http = httpx.AsyncClient(base_url=admin, timeout=30, transport=transport)
         self.hosts: set[str] = set()
+        self.certificates = certificates  # Caddy's storage, where deleted apps' certificates go
 
     async def refresh(self) -> list[LiveApp]:
         """Load the current apps into Caddy."""
@@ -167,6 +173,10 @@ class Edge:
                                      headers={"Content-Type": "application/json"})  # fmt: skip
         reply.raise_for_status()
         self.hosts = {app.host for app in apps}
+        if self.certificates is not None:
+            apps_dir = self.runner.data_dir / "apps"
+            await asyncio.to_thread(forget_certificates, self.certificates, self.apps_domain,
+                                    apps_dir)  # fmt: skip
         return apps
 
     async def changed(self) -> None:
@@ -214,3 +224,25 @@ class Edge:
     async def close(self) -> None:
         """Stop talking to Caddy."""
         await self.http.aclose()
+
+
+def forget_certificates(storage: Path, apps_domain: str, apps_dir: Path) -> list[str]:
+    """Remove the stored certificates (and keys) of apps that are no longer on this host."""
+    gone = []
+    for folder in sorted(storage.glob("certificates/*/*")):
+        owner = app_of(folder.name, apps_domain)
+        if owner is not None and not (apps_dir / f"{owner[0]}-{owner[1]}").is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
+            gone.append(folder.name)
+    return gone
+
+
+def app_of(host: str, apps_domain: str) -> tuple[str, str] | None:
+    """Which app and environment a host name under the apps domain belongs to (see `app_host`)."""
+    name = host.lower().removesuffix("." + apps_domain.strip(".").lower())
+    if name == host.lower():
+        return None
+    app, _, rest = name.partition(".")
+    if rest not in ("", "staging"):
+        return None
+    return app, "staging" if rest else "production"

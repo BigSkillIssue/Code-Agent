@@ -32,6 +32,7 @@ from forge_web.hosting.alerts import Alerts
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
 from forge_web.hosting.ops import Backups
+from forge_web.hosting.removal import Removals
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.quotas import enforce_disk
@@ -140,17 +141,20 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     deploys = Deploys(db, vault, settings, hosts, runs.call)
     backups = Backups(db, vault, settings, hosts)
     alerts = Alerts(db, settings)
+    removals = Removals(db, settings, hosts)
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
+        removals=removals,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
     await submissions.start()
     await deploys.start()
+    await removals.start()  # and so do deletions of apps
     if settings.hosting.enabled:
         backups.start()
         alerts.start()
@@ -241,6 +245,7 @@ async def stop_services(services: Services) -> None:
     """Close everything in reverse order (containers keep running)."""
     for task in services.tasks:
         task.cancel()
+    await services.removals.close()
     await services.alerts.close()
     await services.backups.close()
     await services.deploys.close()

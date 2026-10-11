@@ -14,13 +14,18 @@ One deploy is several jobs, so the server knows after each step where it stands:
 host's own tests and migrations on a throwaway database), `backup` (the app's database dumped
 on the host), `migrate` (the release's migrations on the app's database) and `release` (start,
 health, switch). `rollback`, `stop`, `start` and `logs` act on what runs. `archive` packs and
-encrypts the app's database and files for Forge Web (uploaded to `.../archive`), and
-`restore_drill` restores such a backup (its source) into a throwaway database.
+encrypts the app's database and files for Forge Web (uploaded to `.../archive`) as a backup file
+(`encrypt_file`, which Forge Web opens with `decrypt_chunks` for an export), `restore_drill`
+restores such a backup (its source) into a throwaway database, and `delete` removes the app from
+the host.
 """
 
 import base64
 import os
 import re
+import struct
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Literal
 
 from cryptography.hazmat.primitives import hashes
@@ -44,7 +49,7 @@ Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
 JobKind = Literal[
     "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
-    "restore_drill",
+    "restore_drill", "delete",
 ]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
 WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill")  # a file to fetch
@@ -287,3 +292,68 @@ def open_sealed(private: X25519PrivateKey, box: SealedSecrets) -> bytes:
     shared = private.exchange(X25519PublicKey.from_public_bytes(ephemeral))
     cipher = ChaCha20Poly1305(_key(shared, ephemeral, recipient))
     return cipher.decrypt(base64.b64decode(box.nonce), base64.b64decode(box.sealed), None)
+
+
+# Backup files: encrypted in chunks (ChaCha20-Poly1305, the "STREAM" construction): a header with
+# a random nonce prefix, then chunks whose nonce counts up and whose last one is marked, so a
+# cut-off or reordered file does not open.
+MAGIC = b"FBK1"
+CHUNK = 1024 * 1024
+TAG = 16
+
+
+class BackupError(Exception):
+    """A backup file does not open (wrong key, changed or cut off)."""
+
+
+def _nonce(prefix: bytes, counter: int) -> bytes:
+    return prefix + struct.pack(">I", counter)
+
+
+def encrypt_file(key: bytes, source: Path, target: Path) -> None:
+    """Encrypt a file in chunks; only the key opens it again."""
+    box, prefix = ChaCha20Poly1305(key), os.urandom(8)
+    size = source.stat().st_size
+    with source.open("rb") as plain, target.open("wb") as out:
+        out.write(MAGIC + prefix)
+        counter, done = 0, 0
+        while True:
+            chunk = plain.read(CHUNK)
+            done += len(chunk)
+            last = done >= size
+            out.write(box.encrypt(_nonce(prefix, counter), chunk, b"last" if last else b"more"))
+            counter += 1
+            if last:
+                return
+
+
+def decrypt_chunks(key: bytes, source: Path) -> Iterator[bytes]:
+    """The plain chunks of an encrypted file; raises BackupError when it does not open."""
+    box = ChaCha20Poly1305(key)
+    with source.open("rb") as sealed:
+        head = sealed.read(len(MAGIC) + 8)
+        if head[: len(MAGIC)] != MAGIC:
+            raise BackupError("not a Forge backup")
+        prefix, counter, ended = head[len(MAGIC) :], 0, False
+        while chunk := sealed.read(CHUNK + TAG):
+            if ended:
+                raise BackupError("there is more after the last chunk")
+            try:
+                plain = box.decrypt(_nonce(prefix, counter), chunk, b"more")
+            except Exception:
+                try:
+                    plain = box.decrypt(_nonce(prefix, counter), chunk, b"last")
+                except Exception as err:
+                    raise BackupError("the backup does not open (wrong key, or changed)") from err
+                ended = True
+            counter += 1
+            yield plain
+        if not ended:
+            raise BackupError("the backup is cut off")
+
+
+def decrypt_file(key: bytes, source: Path, target: Path) -> None:
+    """Decrypt a whole backup file."""
+    with target.open("wb") as out:
+        for chunk in decrypt_chunks(key, source):
+            out.write(chunk)
