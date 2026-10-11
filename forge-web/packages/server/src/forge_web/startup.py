@@ -67,6 +67,8 @@ def chat_options(settings: WebSettings) -> Any:
                                apple_max_mb=settings.apple.max_source_mb)  # fmt: skip
                 if settings.apple.reviewer_model:  # its own model: it should not share blind spots
                     options["roles"] = {"apple_reviewer": [settings.apple.reviewer_model]}
+        if link.get("app"):  # a full-stack product: reviewed before it may go live (S67b)
+            options["app_review"] = True
         if script is not None:
             options["fake_script"] = script
         return options
@@ -84,7 +86,11 @@ def link_setup(settings: WebSettings, docker: bool, db: Database) -> Any:
             await client.call("forward.listen", {"target": "egress", "port": EGRESS_PORT})
         async with db.session() as session:
             kind = await session.scalar(select(Project.kind).where(Project.id == project_id))
-        return {"gateway_port": int(gateway["port"]), "apple": kind == "apple"}
+        return {
+            "gateway_port": int(gateway["port"]),
+            "apple": kind == "apple",
+            "app": kind == "app",
+        }
 
     return on_link
 

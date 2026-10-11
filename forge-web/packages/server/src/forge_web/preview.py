@@ -7,12 +7,16 @@ may look at previews; only editors start and stop programs.
 
 import json
 import re
+import shlex
+import sys
 from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Path, Request
+from forge.app_manifest import MANIFEST
 from pydantic import BaseModel, Field
 
+from forge_web.apps.template import app_port
 from forge_web.auth.sessions import CurrentUser, session_token, token_id
 from forge_web.db.models import Project
 from forge_web.files_api import allowed
@@ -24,6 +28,7 @@ PROGRAM_ID = re.compile(r"^p[0-9a-f]{8}$")
 NODE_SCRIPTS = ("dev", "start", "serve", "preview")
 LOCK_FILES = (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"),
               ("bun.lock", "bun"))  # fmt: skip
+SANDBOX_FORGE = "/opt/forge/bin/forge"  # docker/sandbox.Dockerfile
 NO_DOMAIN = "previews need a preview domain on this server ([preview] domain in the settings)"
 
 
@@ -58,6 +63,7 @@ def preview_router() -> APIRouter:
             "suggestions": await suggestions(services, project_id),
             "programs": objects(programs),
             "ports": listening(services, ports),
+            "app_port": app_port(await read_text(services, project_id, MANIFEST)),
         }
 
     @router.post("/programs", status_code=201)
@@ -121,6 +127,14 @@ def preview_hosts_router() -> APIRouter:
     return router
 
 
+def forge_command(services: Services) -> str:
+    """How a program in the sandbox starts Forge: its own venv in the image, this Python
+    locally (Forge is kept off the project's PATH)."""
+    if services.settings.sandbox.isolation == "local":
+        return f"{shlex.quote(sys.executable)} -m forge"
+    return SANDBOX_FORGE
+
+
 def listening(services: Services, found: Any) -> list[dict[str, Any]]:
     """The sandbox's listening ports (checked; Forge's own port left out in local mode)."""
     settings = services.settings
@@ -152,6 +166,8 @@ async def suggestions(services: Services, project_id: str) -> list[dict[str, str
     listing = result_dict(await sandbox_call(services, project_id, "fs.list", {"path": ""}))
     names = {e.get("name") for e in objects(listing.get("entries"))}
     found: list[tuple[str, str]] = []
+    if MANIFEST in names:  # a full-stack product: everything at once, on a throwaway database
+        found.append(("Forge app", f"{forge_command(services)} app dev"))
     if "package.json" in names:
         found += node_commands(await read_text(services, project_id, "package.json"), names)
     if "manage.py" in names:

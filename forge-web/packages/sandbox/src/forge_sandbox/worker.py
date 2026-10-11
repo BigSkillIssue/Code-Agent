@@ -41,7 +41,8 @@ from forge_sandbox.mux import Writer
 from forge_sandbox.pipe_renderer import PipeRenderer
 
 ROLES = ("refiner", "planner", "coder", "reviewer", "compressor", "explore", "tester",
-         "researcher", "browser", "lead", "apple_reviewer")  # fmt: skip
+         "researcher", "browser", "lead", "apple_reviewer", "release_reviewer",
+         "architect")  # fmt: skip
 # Tools that ask for approval by default; "auto" mode allows them instead of denying them.
 AUTO_ALLOW = ["web_fetch", "web_search", "remember", "browser_open"]
 APPLE_ALLOW = ["apple_build", "apple_screenshot"]
@@ -70,6 +71,8 @@ def config_overrides(options: ChatOptions) -> dict[str, Any]:
         overrides[f"providers.{name}"] = provider
     if options.apple_review:
         overrides["apple.review"] = True
+    if options.app_review:
+        overrides["app.review"] = True
     return overrides
 
 

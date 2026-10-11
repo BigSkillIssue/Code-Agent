@@ -20,7 +20,7 @@ export interface Project {
   name: string;
   role: Role;
   source: string;
-  kind?: "code" | "apple"; // apple: an Apple app (builds on the server's Macs)
+  kind?: "code" | "apple" | "app"; // apple: an Apple app (builds on the server's Macs); app: a full-stack product
   created_at: number;
   updated_at: number;
 }

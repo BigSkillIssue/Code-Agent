@@ -239,6 +239,8 @@ class ChatOptions(Params):
     apple_token_env: str = Field(default="FW_GATEWAY_TOKEN", pattern=r"^[A-Z][A-Z0-9_]{0,63}$")
     apple_max_mb: int = Field(default=300, ge=1, le=100_000)
     apple_review: bool = False
+    # App projects: the release review, the blueprint and the go-live question (Forge S66-S68).
+    app_review: bool = False
 
 
 class ChatParams(Params):

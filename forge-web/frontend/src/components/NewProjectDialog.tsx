@@ -1,5 +1,6 @@
 // Creating a project: empty, cloned from a git URL, unpacked from a ZIP file, (admins) a folder
-// on the server, or (when this server builds them) an Apple app from Forge's SwiftUI template.
+// on the server, a full-stack app from Forge's template, or (when this server builds them) an
+// Apple app from Forge's SwiftUI template.
 
 import { X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -26,6 +27,7 @@ const SOURCES: [Source, TextKey][] = [
   ["git", "sourceGit"],
   ["zip", "sourceZip"],
   ["folder", "sourceFolder"],
+  ["app", "sourceApp"],
   ["apple", "sourceApple"],
 ];
 
@@ -107,6 +109,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, create, forget, o
             <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="/srv/projects/…" value={folder} onChange={(e) => setFolder(e.target.value)} />
           </label>
         )}
+        {source === "app" && <p className="text-xs text-muted">{t("appAppHint")}</p>}
         {source === "apple" && (
           <div className="space-y-2 text-sm">
             <p className="text-xs text-muted">{t("appleAppHint")}</p>

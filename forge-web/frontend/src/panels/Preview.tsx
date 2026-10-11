@@ -29,6 +29,12 @@ export function landingOn(url: string, path: string): string {
   return parsed.toString();
 }
 
+/** The ports with the app's web client first (app projects), the rest as they are. */
+export function appFirst<P extends { port: number }>(ports: P[], appPort?: number | null): P[] {
+  if (!appPort) return ports;
+  return [...ports.filter((p) => p.port === appPort), ...ports.filter((p) => p.port !== appPort)];
+}
+
 /** The command a program runs, as the user typed it. */
 export function commandOf(program: Program): string {
   const [shell, flag, line] = program.argv;
@@ -98,9 +104,10 @@ export function PreviewPanel({ api, canEdit, active, onError }: Props) {
       {!overview.enabled && <p className="mb-3 rounded border border-warn p-2 text-xs">{t("previewOff")}</p>}
       <Programs api={api} canEdit={canEdit} overview={overview} onChange={refresh} onError={onError} />
       <h3 className="mt-4 mb-1 text-xs font-medium uppercase text-muted">{t("ports")}</h3>
+      {overview.app_port && <p className="mb-1 text-xs text-muted">{t("appPort", { port: String(overview.app_port) })}</p>}
       {overview.ports.length === 0 && <p className="text-xs text-muted">{t("noPorts")}</p>}
       <div className="flex flex-wrap gap-2">
-        {overview.ports.map(({ port }) => (
+        {appFirst(overview.ports, overview.app_port).map(({ port }) => (
           <span key={port} className="flex items-center rounded border border-line">
             <button
               type="button"
@@ -108,6 +115,7 @@ export function PreviewPanel({ api, canEdit, active, onError }: Props) {
               disabled={!overview.enabled}
               onClick={() => void show(port)}
             >
+              {port === overview.app_port ? `${t("appPortLabel")} · ` : ""}
               {t("showPort", { port: String(port) })}
             </button>
             <button

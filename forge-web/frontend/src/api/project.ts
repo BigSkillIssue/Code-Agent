@@ -76,6 +76,7 @@ export interface PreviewOverview {
   suggestions: { label: string; command: string }[];
   programs: Program[];
   ports: { port: number; address: string }[];
+  app_port?: number | null; // app projects: the web client's port from forge.app.toml
 }
 
 export interface ProgramOutput {

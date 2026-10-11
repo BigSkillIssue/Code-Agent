@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PreviewOverview, Program, ProjectApi } from "../api/project";
-import { commandOf, landingOn, PreviewPanel } from "./Preview";
+import { appFirst, commandOf, landingOn, PreviewPanel } from "./Preview";
 
 afterEach(() => {
   cleanup();
@@ -40,6 +40,18 @@ describe("helpers", () => {
     expect(new URL(landingOn(TICKET, "/a")).searchParams.get("ticket")).toBe("T1");
     expect(commandOf(program("p", "npm run dev"))).toBe("npm run dev");
     expect(commandOf({ ...program("p", ""), argv: ["python3", "-m", "http.server"] })).toBe("python3 -m http.server");
+  });
+});
+
+describe("app projects", () => {
+  it("puts the app's web client first and names it", async () => {
+    expect(appFirst([{ port: 8000 }, { port: 8080 }], 8080)).toEqual([{ port: 8080 }, { port: 8000 }]);
+    expect(appFirst([{ port: 8000 }], null)).toEqual([{ port: 8000 }]);
+    const api = fakeApi({ app_port: 8080, ports: [{ port: 8000, address: "::1" }, { port: 8080, address: "::1" }] });
+    render(<PreviewPanel api={asApi(api)} canEdit active onError={vi.fn()} />);
+    expect(await screen.findByText(/listens on port 8080|lauscht auf Port 8080/)).toBeTruthy();
+    const buttons = screen.getAllByRole("button", { name: /(Show port|anzeigen)/ });
+    expect(buttons[0].textContent).toMatch(/^App · /);
   });
 });
 

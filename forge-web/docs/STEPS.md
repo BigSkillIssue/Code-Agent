@@ -206,7 +206,7 @@ Security principles (the apps' code is foreign code):
 - Apps send mail and take payments only through Forge Web's relays (quotas, one token per app).
 - Impressum, privacy policy and "report content" are served by the edge (Caddy) at fixed paths; the app cannot remove them.
 
-- [ ] **W24 — Full-stack projects**
+- [x] **W24 — Full-stack projects**
     - Files: `docker/sandbox.Dockerfile` (+ PostgreSQL 16, Chromium), `forge_web/projects.py`, `forge_web/apps/{__init__,template}.py`, `frontend/src/components/NewProjectDialog.tsx`, `tests/{test_app_projects,test_access}.py`
     - Build: the new-project dialog offers "App (server + web)": it writes `forge app new`'s template into the project, kind `app`; chats of app projects run with `--app` (S67b); the preview shows the web port from `forge.app.toml`; the sandbox image gets Postgres and Chromium so `forge app dev`, `forge app check` and the product screenshots work inside it.
     - Tests: an app project gets the template and kind `app`; its chats run with the app checkpoints; the preview port comes from the manifest; under the `docker` marker `forge app check` passes inside the image on a freshly made product.

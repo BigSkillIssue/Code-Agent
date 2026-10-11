@@ -18,7 +18,7 @@ import type {
 
 export interface NewProject {
   name: string;
-  source?: "empty" | "git" | "zip" | "folder" | "apple";
+  source?: "empty" | "git" | "zip" | "folder" | "apple" | "app";
   url?: string;
   folder?: string;
   bundle_id?: string; // apple

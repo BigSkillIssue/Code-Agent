@@ -1,5 +1,5 @@
-"""Projects: create (empty, from a git URL, for a ZIP upload, a server folder, or an Apple app
-from Forge's template), list, rename and delete them."""
+"""Projects: create (empty, from a git URL, for a ZIP upload, a server folder, an Apple app or a
+full-stack app from Forge's templates), list, rename and delete them."""
 
 import logging
 import secrets
@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from forge_web.access import member_projects, require_project
 from forge_web.apple.template import app_name, checked_bundle_id, write_template
+from forge_web.apps import template as app_template
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.models import Project, ProjectMember, User
@@ -23,11 +24,14 @@ from forge_web.sources import server_folder
 log = logging.getLogger(__name__)
 
 
+KINDS = {"apple": "apple", "app": "app"}  # sources that make a kind of project of their own
+
+
 class ProjectIn(BaseModel):
     """A new project and where its files come from (a ZIP is uploaded once it exists)."""
 
     name: str = Field(min_length=1, max_length=100)
-    source: Literal["empty", "git", "zip", "folder", "apple"] = "empty"
+    source: Literal["empty", "git", "zip", "folder", "apple", "app"] = "empty"
     url: str = Field(default="", max_length=2000)  # git
     folder: str = Field(default="", max_length=4096)  # folder (admins)
     bundle_id: str = Field(default="", max_length=155)  # apple (default com.example.<app>)
@@ -46,7 +50,7 @@ class ProjectOut(BaseModel):
     name: str
     role: str
     source: str
-    kind: str  # code | apple
+    kind: str  # code | apple | app
     created_at: float
     updated_at: float
 
@@ -85,7 +89,7 @@ def projects_router() -> APIRouter:
         project = Project(
             id=secrets.token_hex(8), name=body.name.strip(), owner_id=user.id,
             source=body.source, source_url=body.url.strip() if body.source == "git" else "",
-            folder=str(folder or ""), kind="apple" if body.source == "apple" else "code",
+            folder=str(folder or ""), kind=KINDS.get(body.source, "code"),
             created_at=now, updated_at=now,
         )  # fmt: skip
         async with services.db.session() as session, session.begin():
@@ -98,6 +102,8 @@ def projects_router() -> APIRouter:
             await fill(services, project, user, client_ip(request))
             if body.source == "apple":
                 await write_template(services, project.id, app_name(body.name), bundle_id, user)
+            elif body.source == "app":
+                await app_template.write_template(services, project.id, body.name, user)
         except HTTPException:
             await delete_project(request, project)
             raise

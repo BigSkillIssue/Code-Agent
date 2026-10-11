@@ -61,6 +61,16 @@ describe("NewProjectDialog", () => {
     expect(screen.getByLabelText(/^(Server folder|Ordner auf dem Server)$/)).toBeTruthy();
   });
 
+  it("offers full-stack apps to everyone", async () => {
+    const { create } = setup(false, vi.fn().mockResolvedValue({ ...project, source: "app", kind: "app" }));
+    pick(/^(App \(server \+ web\)|App \(Server \+ Web\))$/);
+    expect(screen.getByText(/independent reviewer|unabhängiger Prüfer/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    });
+    expect(create).toHaveBeenCalledWith({ name: "App", source: "app", url: "", folder: "" });
+  });
+
   it("offers Apple apps where this user may build them, with an optional bundle id", async () => {
     setup();
     expect(screen.queryByLabelText(/^(Apple app|Apple-App)$/)).toBeNull();
