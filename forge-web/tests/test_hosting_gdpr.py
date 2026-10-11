@@ -21,6 +21,7 @@ from forge_web.db.hosting_models import (
     AbuseNotice,
     AppBackup,
     AppBackupKey,
+    AppDomain,
     AppMail,
     AppOperator,
     AppSecret,
@@ -48,7 +49,7 @@ from test_hosting_deploy import (
 )
 
 __all__ = ["short_polls"]
-EVERY_TABLE = (AbuseNotice, AppBackup, AppBackupKey, AppMail, AppOperator, AppSecret,
+EVERY_TABLE = (AbuseNotice, AppBackup, AppBackupKey, AppDomain, AppMail, AppOperator, AppSecret,
                AppUsageSample, Deploy, GoLiveApproval, HostedApp)  # fmt: skip
 
 

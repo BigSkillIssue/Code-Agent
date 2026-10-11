@@ -1,7 +1,7 @@
 // "Go live": an app project's way to its users. The release review and the approved commit,
 // then staging (with the app server's own checks and the staging link), then "Go live" for the
-// same commit; the app's secrets, which go in here and never come back out; and for the owner,
-// the export of the app's data and its deletion.
+// same commit; the app's secrets, which go in here and never come back out; the app's own
+// domains; and for the owner, the export of the app's data and its deletion.
 
 import { Check, CircleDashed, CircleX, Globe, PauseCircle } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import { type Deploy, type DeployStep, type Environment, hosting, type ReleaseRe
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
 import { AppData } from "./AppData";
+import { Domains } from "./Domains";
 import { OperatorForm } from "./OperatorForm";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
 
@@ -115,6 +116,9 @@ export function GoLivePage() {
           />
         )}
         {canEdit && <Secrets projectId={projectId} names={data?.secrets ?? []} onSaved={reload} />}
+        {data?.app && canEdit && !data.deleting && (
+          <Domains api={api} environments={(["staging", "production"] as const).filter((env) => data[env])} />
+        )}
         {data?.app && project?.role === "owner" && <AppData api={api} data={data} onChanged={reload} />}
       </div>
     </div>

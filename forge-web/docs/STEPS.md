@@ -261,8 +261,8 @@ Security principles (the apps' code is foreign code):
     - Build: the creator's export of an app (its database and files); the full deletion of an app (containers, networks, volumes, database, backups on both sides, its edge entry and certificate, its rows).
     - Tests: deletion leaves nothing behind; the export holds the database and the files.
     - Verify: `uv run pytest -q tests/test_hosting_gdpr.py`
-- [ ] **W30 — Custom domains**
-    - Files: `forge_web/hosting/domains.py`, `forge_hostworker/edge.py`, `tests/test_domains.py`
+- [x] **W30 — Custom domains**
+    - Files: `forge_web/hosting/{domains,removal}.py`, `forge_web/{settings,app}.py`, `forge_web/db/{hosting_models.py,migrations/versions/0019_app_domains.py}`, `forge_hostworker/{edge,lifecycle,runner,wire}.py`, `frontend/src/pages/{GoLive,Domains}.tsx` (+ test), `tests/{test_domains,dns_standin,test_access,test_hosting_gdpr}.py`
     - Build: a customer's own domain for an app, checked by a DNS TXT record before the edge asks for a certificate.
     - Tests: without the TXT record no certificate is asked for; a verified domain serves the app with the edge's legal pages; a domain belongs to one app only.
     - Verify: `uv run pytest -q tests/test_domains.py tests/test_host_edge.py`

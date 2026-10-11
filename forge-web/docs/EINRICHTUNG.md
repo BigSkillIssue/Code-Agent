@@ -770,6 +770,12 @@ Sicherungen und Einstellungen der App. Das Projekt bleibt; ein Projekt mit gehos
 sich erst nach der App löschen. Ist der App-Server nicht erreichbar, steht der Grund auf der Seite;
 schaltet ein Admin den Server ab, wird die App ohne ihn gelöscht.
 
+**Eigene Domains:** Auf derselben Seite kann eine App zusätzlich unter der Domain ihres Erstellers
+erreichbar werden. Forge Web nennt dafür einen TXT-Eintrag (`_forge-verify.<domain>`) und das Ziel
+(CNAME auf die Adresse der App); erst wenn der TXT-Eintrag gefunden ist, bekommt die Domain ein
+Zertifikat. Forge Web fragt das DNS über DNS-over-HTTPS (`dns_resolver` unter `[hosting]`,
+vorgegeben ist Cloudflare); der Forge-Web-Server braucht dafür Zugang nach außen.
+
 ### 11.8 Prüfen
 
 ```bash

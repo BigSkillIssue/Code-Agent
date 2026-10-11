@@ -93,6 +93,18 @@ export interface HostingOverview {
   operator: (Operator & { updated_at: number }) | null;
 }
 
+/** A customer's own domain for the app: the TXT record proves it, then the edge serves it. */
+export interface AppDomain {
+  domain: string;
+  environment: Environment;
+  txt_name: string;
+  txt_value: string;
+  points_to: string;
+  verified_at: number;
+  checked_at: number;
+  error: string;
+}
+
 const id = encodeURIComponent;
 
 export const hosting = (projectId: string) => {
@@ -107,6 +119,11 @@ export const hosting = (projectId: string) => {
     exportData: (environment: Environment) => api.post<{ started: boolean }>(`${base}/hosting/export`, { environment }),
     exportUrl: (backupId: string) => `${base}/hosting/backups/${id(backupId)}`,
     deleteApp: () => api.delete(`${base}/hosting`),
+    domains: () => api.get<AppDomain[]>(`${base}/hosting/domains`),
+    addDomain: (domain: string, environment: Environment) =>
+      api.post<AppDomain>(`${base}/hosting/domains`, { domain, environment }),
+    checkDomain: (domain: string) => api.post<AppDomain>(`${base}/hosting/domains/${id(domain)}/check`, {}),
+    removeDomain: (domain: string) => api.delete(`${base}/hosting/domains/${id(domain)}`),
   };
 };
 

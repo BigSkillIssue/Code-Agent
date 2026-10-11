@@ -28,12 +28,13 @@ const overview = (changes: Partial<HostingOverview>): HostingOverview => ({
 
 const mocks = vi.hoisted(() => ({
   overview: vi.fn(), start: vi.fn(), retry: vi.fn(), setSecret: vi.fn(), setOperator: vi.fn(), exportData: vi.fn(),
-  deleteApp: vi.fn(),
+  deleteApp: vi.fn(), domains: vi.fn(), addDomain: vi.fn(), checkDomain: vi.fn(), removeDomain: vi.fn(),
 }));
 vi.mock("../api/hosting", () => ({
   hosting: () => ({
     overview: mocks.overview, start: mocks.start, retry: mocks.retry, setSecret: mocks.setSecret,
     setOperator: mocks.setOperator, exportData: mocks.exportData, deleteApp: mocks.deleteApp,
+    domains: mocks.domains, addDomain: mocks.addDomain, checkDomain: mocks.checkDomain, removeDomain: mocks.removeDomain,
     exportUrl: (backupId: string) => `/api/projects/p1/hosting/backups/${backupId}`,
   }),
 }));
@@ -46,6 +47,10 @@ beforeEach(() => {
   mocks.setOperator.mockReset().mockResolvedValue(OPERATOR);
   mocks.exportData.mockReset().mockResolvedValue({ started: true });
   mocks.deleteApp.mockReset().mockResolvedValue(undefined);
+  mocks.domains.mockReset().mockResolvedValue([]);
+  mocks.addDomain.mockReset().mockResolvedValue({});
+  mocks.checkDomain.mockReset().mockResolvedValue({});
+  mocks.removeDomain.mockReset().mockResolvedValue(undefined);
   useStore.setState({ error: "", projects: [{ id: "p1", name: "Shop", role: "owner", source: "app", kind: "app", created_at: 0, updated_at: 0 }] });
 });
 
@@ -170,5 +175,26 @@ describe("the go-live page", () => {
     open();
     await screen.findByText(/0123456789/);
     expect(screen.queryByRole("button", { name: /^(Delete the app|App löschen)$/ })).toBeNull();
+  });
+
+  it("adds an own domain, shows the TXT record to create and checks it", async () => {
+    const staged = deploy({});
+    mocks.overview.mockResolvedValue(overview({ staging: staged, deploys: [staged] }));
+    const waiting = {
+      domain: "shop.example.org", environment: "staging" as const, txt_name: "_forge-verify.shop.example.org",
+      txt_value: "forge-verify=abc123", points_to: "shop.staging.apps.example", verified_at: 0, checked_at: 4,
+      error: "no TXT record forge-verify=abc123 at _forge-verify.shop.example.org yet",
+    };
+    mocks.domains.mockResolvedValueOnce([]).mockResolvedValue([waiting]);
+    open();
+    fireEvent.change(await screen.findByPlaceholderText("shop.example.com"), { target: { value: " shop.example.org " } });
+    fireEvent.click(button(/^(Add|Hinzufügen)$/));
+    await waitFor(() => expect(mocks.addDomain).toHaveBeenCalledWith("shop.example.org", "staging"));
+    const dns = await screen.findByTestId("domain-dns");
+    expect(dns.textContent).toContain("_forge-verify.shop.example.org");
+    expect(dns.textContent).toContain("forge-verify=abc123");
+    expect(dns.textContent).toContain("shop.staging.apps.example");
+    fireEvent.click(button(/^(Check|Prüfen)$/));
+    await waitFor(() => expect(mocks.checkDomain).toHaveBeenCalledWith("shop.example.org"));
   });
 });

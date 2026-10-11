@@ -253,3 +253,19 @@ class Incident(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
     opened_at: Mapped[float] = mapped_column(Float)
     closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: still open
+
+
+class AppDomain(Base):
+    """A customer's own domain for an app (W30): the edge serves it once its TXT record is seen."""
+
+    __tablename__ = "app_domains"
+    __table_args__ = (Index("app_domains_by_project", "project_id"),)
+
+    domain: Mapped[str] = mapped_column(String(253), primary_key=True)  # one app's only
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    environment: Mapped[str] = mapped_column(String(16))
+    token: Mapped[str] = mapped_column(String(64))  # the TXT record says forge-verify=<token>
+    created_at: Mapped[float] = mapped_column(Float)
+    verified_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: not yet
+    checked_at: Mapped[float] = mapped_column(Float, default=0.0)
+    error: Mapped[str] = mapped_column(Text, default="")  # why the last check failed

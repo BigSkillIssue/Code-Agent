@@ -123,6 +123,15 @@ export const hostingEn = {
   deleteAppAgain: "Try deleting again",
   appDeleting: "The app is being deleted.",
   appDeletingFailed: "Not done yet: {error}",
+  domainsTitle: "Own domains",
+  domainsHint: "Your app can answer at your own domain too (live, or in staging while nothing is live). Create the TXT record shown at your domain's DNS provider, point the domain to the app, then check it: only a checked domain gets a certificate.",
+  domainName: "Domain",
+  domainAdd: "Add",
+  domainCheck: "Check",
+  domainVerified: "checked: served with its own certificate",
+  domainWaiting: "waiting for its TXT record",
+  domainTxt: "TXT record: {name} with the value {value}",
+  domainPoint: "Then point the domain to {target} (CNAME; for a bare domain an A record to that address).",
 };
 
 export const hostingDe: typeof hostingEn = {
@@ -247,4 +256,13 @@ export const hostingDe: typeof hostingEn = {
   deleteAppAgain: "Erneut löschen",
   appDeleting: "Die App wird gelöscht.",
   appDeletingFailed: "Noch nicht fertig: {error}",
+  domainsTitle: "Eigene Domains",
+  domainsHint: "Deine App kann auch unter deiner eigenen Domain erreichbar sein (live, oder auf Staging, solange nichts live ist). Lege beim DNS-Anbieter deiner Domain den angezeigten TXT-Eintrag an, lass die Domain auf die App zeigen und prüfe sie dann: Nur eine geprüfte Domain bekommt ein Zertifikat.",
+  domainName: "Domain",
+  domainAdd: "Hinzufügen",
+  domainCheck: "Prüfen",
+  domainVerified: "geprüft: wird mit eigenem Zertifikat ausgeliefert",
+  domainWaiting: "wartet auf ihren TXT-Eintrag",
+  domainTxt: "TXT-Eintrag: {name} mit dem Wert {value}",
+  domainPoint: "Dann die Domain auf {target} zeigen lassen (CNAME; bei einer Domain ohne Subdomain ein A-Eintrag auf deren Adresse).",
 };

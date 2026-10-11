@@ -2,11 +2,12 @@
 
 Caddy gets certificates on demand, but only for hosts this worker says are live apps (its
 `ask` endpoint). Production apps answer at `<app>.<apps domain>`, staging at
-`<app>.staging.<apps domain>`. The legal pages (`/impressum`, `/datenschutz`) and the
+`<app>.staging.<apps domain>`, and each also at the customer's own domains that Forge Web
+verified (W30). The legal pages (`/impressum`, `/datenschutz`) and the
 "report content" page (`/melden`) are served from Forge Web for every app, before the app's
 own routes, so an app cannot remove or replace them. Everything else goes to the app's
-services by their routes, the longest first. Once an app is deleted from this host, the edge also
-removes its certificate and key from Caddy's storage.
+services by their routes, the longest first. Once an app is deleted from this host, or an own
+domain is given up, the edge also removes its certificate and key from Caddy's storage.
 """
 
 import asyncio
@@ -22,6 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from forge_hostworker.docker import Docker
+from forge_hostworker.lifecycle import saved_domains
 from forge_hostworker.runner import HostRunner, network, service_container
 from forge_hostworker.wire import DeployPlan, app_host
 
@@ -50,13 +52,13 @@ class LiveApp:
     environment: str
     host: str
     upstreams: tuple[Upstream, ...]
+    domains: tuple[str, ...] = ()  # the customer's own, verified by Forge Web
 
 
 async def live_apps(runner: HostRunner, docker: Docker, apps_domain: str) -> list[LiveApp]:
     """Every app with a live release on this host, with its services' addresses."""
     found: list[LiveApp] = []
-    apps = runner.data_dir / "apps"
-    for folder in sorted(apps.iterdir()) if apps.is_dir() else []:
+    for folder in folders(runner.data_dir / "apps"):
         app, _, environment = folder.name.rpartition("-")
         state = runner.state(app, environment)
         plan = runner.saved_plan(app, environment, state.live)
@@ -65,7 +67,8 @@ async def live_apps(runner: HostRunner, docker: Docker, apps_domain: str) -> lis
         upstreams = await addresses(docker, plan)
         if upstreams:
             host = app_host(app, environment, apps_domain)
-            found.append(LiveApp(app, environment, host, tuple(upstreams)))
+            own = tuple(saved_domains(folder))
+            found.append(LiveApp(app, environment, host, tuple(upstreams), own))
     return found
 
 
@@ -137,7 +140,7 @@ def app_route(app: LiveApp, legal_host: str, legal_tls: bool, legal_path: str) -
     headers = {"handler": "headers", "response": {"set": {
         "Strict-Transport-Security": [HSTS], "X-Content-Type-Options": ["nosniff"]}}}  # fmt: skip
     return {
-        "match": [{"host": [app.host]}],
+        "match": [{"host": [app.host, *app.domains]}],
         "handle": [headers, {"handler": "subroute", "routes": [legal, *own]}],
         "terminal": True,
     }
@@ -172,12 +175,17 @@ class Edge:
         reply = await self.http.post("/load", content=json.dumps(config),
                                      headers={"Content-Type": "application/json"})  # fmt: skip
         reply.raise_for_status()
-        self.hosts = {app.host for app in apps}
+        self.hosts = {host for app in apps for host in (app.host, *app.domains)}
         if self.certificates is not None:
-            apps_dir = self.runner.data_dir / "apps"
-            await asyncio.to_thread(forget_certificates, self.certificates, self.apps_domain,
-                                    apps_dir)  # fmt: skip
+            await asyncio.to_thread(self.forget, self.certificates)
         return apps
+
+    def forget(self, storage: Path) -> None:
+        """Remove the certificates of deleted apps and of own domains no app has any more."""
+        apps_dir = self.runner.data_dir / "apps"
+        forget_certificates(storage, self.apps_domain, apps_dir)
+        kept = {d for folder in folders(apps_dir) for d in saved_domains(folder)}
+        forget_domains(storage, self.runner.data_dir / "edge-domains.json", kept)
 
     async def changed(self) -> None:
         """Refresh after a job; Caddy being away is logged, not a failed job."""
@@ -234,6 +242,26 @@ def forget_certificates(storage: Path, apps_domain: str, apps_dir: Path) -> list
         if owner is not None and not (apps_dir / f"{owner[0]}-{owner[1]}").is_dir():
             shutil.rmtree(folder, ignore_errors=True)
             gone.append(folder.name)
+    return gone
+
+
+def folders(apps_dir: Path) -> list[Path]:
+    """The apps' folders on this host."""
+    return sorted(p for p in apps_dir.iterdir() if p.is_dir()) if apps_dir.is_dir() else []
+
+
+def forget_domains(storage: Path, record: Path, kept: set[str]) -> list[str]:
+    """Remove the certificates of own domains that were served before and are not kept now;
+    `record` remembers the domains between runs."""
+    try:
+        before = set(json.loads(record.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        before = set()
+    gone = sorted(before - kept)
+    for domain in gone:
+        for folder in storage.glob(f"certificates/*/{domain}"):
+            shutil.rmtree(folder, ignore_errors=True)
+    record.write_text(json.dumps(sorted(kept)), encoding="utf-8")
     return gone
 
 

@@ -16,8 +16,8 @@ on the host), `migrate` (the release's migrations on the app's database) and `re
 health, switch). `rollback`, `stop`, `start` and `logs` act on what runs. `archive` packs and
 encrypts the app's database and files for Forge Web (uploaded to `.../archive`) as a backup file
 (`encrypt_file`, which Forge Web opens with `decrypt_chunks` for an export), `restore_drill`
-restores such a backup (its source) into a throwaway database, and `delete` removes the app from
-the host.
+restores such a backup (its source) into a throwaway database, `delete` removes the app from
+the host, and `domains` gives it the customer's own domains (verified by Forge Web).
 """
 
 import base64
@@ -47,9 +47,12 @@ MAX_LOG_CHARS = 20_000
 SEAL_INFO = b"forge-hostworker secrets v1"
 Runtime = Literal["python3.12", "node22", "static"]
 Environment = Literal["staging", "production"]
+DOMAIN = re.compile(
+    r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$"
+)  # a customer's own domain, in its plain form
 JobKind = Literal[
     "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
-    "restore_drill", "delete",
+    "restore_drill", "delete", "domains",
 ]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
 WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill")  # a file to fetch
@@ -164,9 +167,19 @@ class HostJob(BaseModel):
     app: str = Field(pattern=SLUG)
     environment: Environment
     plan: DeployPlan | None = None  # check, migrate and release jobs
+    domains: list[str] = Field(default_factory=list, max_length=20)  # a domains job: all of them
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
 
     _app = field_validator("app")(app_name)
+
+    @field_validator("domains")
+    @classmethod
+    def plain_domains(cls, value: list[str]) -> list[str]:
+        """Plain host names only: they go into the edge's configuration."""
+        for domain in value:
+            if not DOMAIN.match(domain):
+                raise ValueError(f"{domain!r} is not a domain name")
+        return value
 
     @model_validator(mode="after")
     def plan_fits(self) -> "HostJob":

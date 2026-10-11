@@ -98,6 +98,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "forge_hostworker__wire__PollRequest": {"free_slots": 1, "running": []},
     "HostUsage": {"disk_free_gb": 10, "apps": []},
     "ExportIn": {"environment": "staging"},
+    "DomainIn": {"domain": "shop.example.org"},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -236,7 +237,7 @@ def filled(path: str, world: World) -> str:
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
-        "notice_id": "0" * 12, "backup_id": "0" * 16,
+        "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

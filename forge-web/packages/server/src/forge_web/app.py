@@ -30,6 +30,7 @@ from forge_web.git_api import git_router
 from forge_web.hosting.abuse import notices_router, report_router
 from forge_web.hosting.admin import hosting_admin_router
 from forge_web.hosting.deploy_api import deploy_router, host_router
+from forge_web.hosting.domains import domains_router
 from forge_web.hosting.gdpr import gdpr_router
 from forge_web.hosting.legal_pages import legal_router, operator_router
 from forge_web.hosting.mail_relay import relay_router
@@ -73,7 +74,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         submission_routes(),
         git_credentials_router(), host_router(), deploy_router(), hosting_admin_router(),
         operator_router(), legal_router(), relay_router(), report_router(), notices_router(),
-        gdpr_router(),
+        gdpr_router(), domains_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

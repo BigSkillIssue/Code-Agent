@@ -20,6 +20,7 @@ from forge_web.db.hosting_models import (
     AbuseNotice,
     AppBackup,
     AppBackupKey,
+    AppDomain,
     AppMail,
     AppMailLog,
     AppOperator,
@@ -40,7 +41,7 @@ log = logging.getLogger(__name__)
 ENVIRONMENTS = ("staging", "production")
 DELETE_TIMEOUT_S = 600.0
 ROWS = (AppUsageSample, AppBackup, AppBackupKey, AppMailLog, AppMail, AppSecret, AppOperator,
-        AbuseNotice, GoLiveApproval, Deploy)  # fmt: skip
+        AbuseNotice, GoLiveApproval, Deploy, AppDomain)  # fmt: skip
 
 
 class Removals:

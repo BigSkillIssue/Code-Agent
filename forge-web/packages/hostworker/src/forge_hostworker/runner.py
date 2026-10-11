@@ -24,7 +24,7 @@ from forge_hostworker.build import SourceError, build_release, file_digest, hand
 from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
 from forge_hostworker.firewall import BUILD_SUBNET
-from forge_hostworker.lifecycle import delete_app, live_logs, start_live
+from forge_hostworker.lifecycle import delete_app, live_logs, set_domains, start_live
 from forge_hostworker.metrics import usage
 from forge_hostworker.migrate import migrate_release
 from forge_hostworker.postgres import dump_database, ensure_database
@@ -41,7 +41,7 @@ from forge_hostworker.wire import (
 )
 
 HEALTH_TIMEOUT_S = 120
-CHANGES_WHAT_RUNS = ("release", "rollback", "stop", "start", "delete")  # the edge reloads
+CHANGES_WHAT_RUNS = ("release", "rollback", "stop", "start", "delete", "domains")  # edge reloads
 BUILD_NETWORK = "forge-build"
 PATH = "/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Health = Callable[[str, float], Awaitable[bool]]
@@ -171,6 +171,8 @@ class HostRunner:
             return await live_logs(self, job.app, job.environment)
         if job.kind == "delete":
             return await delete_app(self, job.app, job.environment)
+        if job.kind == "domains":
+            return await set_domains(self, job.app, job.environment, job.domains)
         return await self.stop(job.app, job.environment)
 
     async def usage(self) -> HostUsage:

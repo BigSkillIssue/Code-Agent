@@ -233,6 +233,8 @@ class HostingSettings(_Strict):
     keep_backups: int = Field(default=14, ge=1)
     drill_every_days: float = Field(default=7, gt=0)  # restore the newest one to prove it works
     max_backup_mb: int = Field(default=10_000, ge=1)
+    # Customers' own domains (W30): their TXT records are looked up over DNS-over-HTTPS (JSON).
+    dns_resolver: str = "https://cloudflare-dns.com/dns-query"
 
 
 class WebSettings(_Strict):

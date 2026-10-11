@@ -1,9 +1,12 @@
 """What an admin does with a running app (W27): start a suspended app's live release again, and
-read the end of its services' logs. Stopping it is the runner's `stop`. And the end of an app on
-this host (W29c): its deletion."""
+read the end of its services' logs. Stopping it is the runner's `stop`. The customer's own
+domains of an app (W30), which the edge serves too. And the end of an app on this host (W29c):
+its deletion."""
 
 import asyncio
+import json
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from forge_hostworker import postgres
@@ -14,6 +17,7 @@ if TYPE_CHECKING:  # the runner imports this module
     from forge_hostworker.runner import HostRunner
 
 LOG_LINES = "200"
+DOMAINS_FILE = "domains.json"  # in the app's folder
 
 
 async def start_live(runner: "HostRunner", app: str, environment: str) -> JobResult:
@@ -60,3 +64,23 @@ async def delete_app(runner: "HostRunner", app: str, environment: str) -> JobRes
         return JobResult(ok=False, error="parts of the app could not be removed",
                          log_tail=left.out[-2000:])  # fmt: skip
     return JobResult(ok=True)
+
+
+async def set_domains(
+    runner: "HostRunner", app: str, environment: str, domains: list[str]
+) -> JobResult:
+    """Keep the app's own domains (each verified by Forge Web); they replace the ones before."""
+    folder = runner.folder(app, environment)
+    folder.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(sorted(set(domains)))
+    await asyncio.to_thread((folder / DOMAINS_FILE).write_text, text, "utf-8")
+    return JobResult(ok=True)
+
+
+def saved_domains(folder: Path) -> list[str]:
+    """The app's own domains, as `set_domains` kept them."""
+    try:
+        found = json.loads((folder / DOMAINS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [domain for domain in found if isinstance(domain, str)]
