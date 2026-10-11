@@ -797,3 +797,28 @@ zu tun ist. Als root ausführen, sonst kann er die Firewall nicht prüfen.
 | `FAIL Caddy` | `systemctl status caddy-api`; nur `caddy-api` darf laufen, nicht `caddy` |
 | App ohne Zertifikat | DNS-Einträge aus 11.4 prüfen; die App muss live sein (`journalctl -u caddy-api`) |
 | `no host token` | Token aus 11.6 nach `/var/lib/forge-host/token` |
+
+## 12. Bezahlen lassen: Stripe anschließen (optional, erst im Testmodus)
+
+Kunden bezahlen dich über dein eigenes Stripe-Konto; Kartendaten sehen weder du noch Forge Web.
+Solange die Rechtstexte (AGB, Widerruf, Datenschutz) nicht von deiner Anwältin oder deinem
+Steuerberater kommen, bleibt alles im **Testmodus**: Forge Web nimmt nur Testschlüssel an.
+
+1. In `forge-web.toml`:
+   ```toml
+   [billing]
+   enabled = true
+   # allow_live = true   # erst, wenn die Rechtstexte da sind
+   ```
+2. Im Stripe-Dashboard (Testmodus) unter **Entwickler → Webhooks** einen Endpunkt anlegen:
+   `https://<deine Forge-Web-Adresse>/api/billing/stripe/webhook`. Stripe zeigt dann das
+   **Signing secret** (`whsec_…`).
+3. In Forge Web unter **Verwaltung** den **Secret key** (`sk_test_…`, unter Entwickler →
+   API-Schlüssel) und das Signing secret eintragen (bis die Seite dafür da ist, mit
+   `PUT /api/admin/billing/stripe`). Beide liegen danach verschlüsselt in der Datenbank und werden
+   nie wieder angezeigt, nur ihre letzten vier Zeichen.
+
+Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
+sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
+hat.
+

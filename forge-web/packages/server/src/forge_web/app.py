@@ -22,6 +22,8 @@ from forge_web.auth.oauth import oauth_router
 from forge_web.auth.origin import OriginGuard
 from forge_web.auth.routes import auth_router
 from forge_web.auth.second_factor import second_factor_router
+from forge_web.billing.admin import billing_admin_router
+from forge_web.billing.webhooks import webhook_router
 from forge_web.chats.api import chats_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.files_api import files_router
@@ -74,7 +76,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         submission_routes(),
         git_credentials_router(), host_router(), deploy_router(), hosting_admin_router(),
         operator_router(), legal_router(), relay_router(), report_router(), notices_router(),
-        gdpr_router(), domains_router(),
+        gdpr_router(), domains_router(), billing_admin_router(), webhook_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

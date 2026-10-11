@@ -34,6 +34,8 @@ PUBLIC = {
     # The legal pages of hosted apps, which every visitor of an app sees through its edge.
     "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz", "GET /legal/{app}/melden",
     "POST /legal/{app}/melden",
+    # Stripe's webhooks: the signature is the proof, not a session.
+    "POST /api/billing/stripe/webhook",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -99,6 +101,10 @@ BODIES: dict[str, dict[str, Any]] = {
     "HostUsage": {"disk_free_gb": 10, "apps": []},
     "ExportIn": {"environment": "staging"},
     "DomainIn": {"domain": "shop.example.org"},
+    "StripeKeysIn": {
+        "secret_key": "_".join(("sk", "test", "x" * 24)),
+        "webhook_secret": "whsec_x" * 2,
+    },
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",

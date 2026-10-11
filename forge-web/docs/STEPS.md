@@ -271,8 +271,8 @@ Security principles (the apps' code is foreign code):
 
 Strangers pay only once the legal texts exist (from the admin's lawyer and tax adviser); Forge supplies the mechanics. Stripe runs in test mode first; a live test (`pytest -m live`, Stripe test mode) runs only with keys as GitHub secrets.
 
-- [ ] **W31 — Stripe client and webhooks**
-    - Files: `forge_web/billing/{__init__,stripe_client,webhooks,events}.py`, `forge_web/db/{models.py,migrations/versions/0014_billing.py}`, `tests/{stripe_standin,test_stripe_client,test_stripe_webhooks}.py`
+- [x] **W31 — Stripe client and webhooks**
+    - Files: `forge_web/billing/{__init__,stripe_client,webhooks,events,setup,admin}.py`, `forge_web/db/{billing_models.py,migrations/env.py,migrations/versions/0020_billing.py}`, `forge_web/{settings,services,startup,app}.py`, `docs/EINRICHTUNG.md`, `tests/{stripe_standin,test_stripe_client,test_stripe_webhooks,test_access}.py`
     - Build: an `httpx` client for Stripe with idempotency keys; webhooks checked by HMAC and a timestamp window; every event stored once and handled in order; keys in the vault; test mode first.
     - Tests (against the stand-in): a retried call is not repeated; a wrong signature or an old timestamp is refused; a repeated event is handled once; events out of order are handled in order; keys are never logged or shown again.
     - Verify: `uv run pytest -q tests/test_stripe_client.py tests/test_stripe_webhooks.py`

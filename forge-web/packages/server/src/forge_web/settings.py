@@ -237,6 +237,13 @@ class HostingSettings(_Strict):
     dns_resolver: str = "https://cloudflare-dns.com/dns-query"
 
 
+class BillingSettings(_Strict):
+    """Customers paying the admin (Phase E), through the admin's own Stripe account."""
+
+    enabled: bool = False
+    allow_live: bool = False  # test keys only until the legal texts are there (W34)
+
+
 class WebSettings(_Strict):
     """Every setting of one Forge Web server."""
 
@@ -252,6 +259,7 @@ class WebSettings(_Strict):
     preview: PreviewSettings = PreviewSettings()
     apple: AppleSettings = AppleSettings()
     hosting: HostingSettings = HostingSettings()
+    billing: BillingSettings = BillingSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

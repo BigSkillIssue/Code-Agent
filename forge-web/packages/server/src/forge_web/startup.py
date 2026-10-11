@@ -16,6 +16,7 @@ from forge_web.apple.sandbox_api import apple_routes
 from forge_web.apple.submission import Submissions
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
+from forge_web.billing.setup import Billing
 from forge_web.chats.runs import RunManager
 from forge_web.containers.docker import DockerDriver
 from forge_web.containers.driver import ContainerDriver
@@ -142,19 +143,22 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     backups = Backups(db, vault, settings, hosts)
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
+    billing = Billing(db, vault, settings)
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
         sign_in=SignIn(load_providers(settings.auth.providers)),
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
-        removals=removals,
+        removals=removals, billing=billing,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
     await submissions.start()
     await deploys.start()
     await removals.start()  # and so do deletions of apps
+    if settings.billing.enabled:
+        billing.events.start()  # Stripe's events that wait
     if settings.hosting.enabled:
         backups.start()
         alerts.start()
@@ -245,6 +249,7 @@ async def stop_services(services: Services) -> None:
     """Close everything in reverse order (containers keep running)."""
     for task in services.tasks:
         task.cancel()
+    await services.billing.events.close()
     await services.removals.close()
     await services.alerts.close()
     await services.backups.close()
