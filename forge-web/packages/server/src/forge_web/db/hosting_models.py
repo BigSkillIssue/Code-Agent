@@ -117,3 +117,50 @@ class HostJobRow(Base):
     created_at: Mapped[float] = mapped_column(Float)
     claimed_at: Mapped[float] = mapped_column(Float, default=0.0)
     finished_at: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class AppOperator(Base):
+    """Who runs a hosted app (its creator), for its Impressum and privacy page (DDG § 5, GDPR)."""
+
+    __tablename__ = "app_operators"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    representative: Mapped[str] = mapped_column(String(300), default="")  # a company's form, who
+    address: Mapped[str] = mapped_column(Text)
+    email: Mapped[str] = mapped_column(String(320))
+    phone: Mapped[str] = mapped_column(String(60), default="")
+    trade_register: Mapped[str] = mapped_column(String(300), default="")  # court, number
+    vat_id: Mapped[str] = mapped_column(String(40), default="")
+    privacy_email: Mapped[str] = mapped_column(String(320), default="")
+    privacy_extra: Mapped[str] = mapped_column(Text, default="")  # in the operator's own words
+    updated_at: Mapped[float] = mapped_column(Float)
+
+
+class AppMail(Base):
+    """The mail relay of a hosted app in one environment: its token and its mails a day."""
+
+    __tablename__ = "app_mail"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    environment: Mapped[str] = mapped_column(String(16), primary_key=True)
+    token: Mapped[str] = mapped_column(Text)  # encrypted (it is sealed into every release)
+    daily_limit: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppMailLog(Base):
+    """One mail an app sent (no address and no text are kept: only the recipient's domain)."""
+
+    __tablename__ = "app_mail_log"
+    __table_args__ = (Index("app_mail_by_day", "project_id", "environment", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    environment: Mapped[str] = mapped_column(String(16))
+    domain: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[float] = mapped_column(Float)

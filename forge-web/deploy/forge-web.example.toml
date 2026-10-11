@@ -34,6 +34,10 @@ monthly_limit_usd = 20.0
 # [hosting]
 # enabled = true
 # apps_domain = "meine-apps.de"   # apps answer at <app>.meine-apps.de and <app>.staging.meine-apps.de
+# provider_name = "Beispiel Hosting GmbH"    # you, as the apps' privacy pages name their host
+# provider_address = "Hauptstraße 1, 10115 Berlin"
+# contact_email = "abuse@example.com"         # for authorities and notices (DSA Art. 11, 12, 16)
+# mail_daily_max = 1000                       # mails a day per app at most (needs [auth.smtp])
 # [hosting.images]                # the runtime images the hosts pull (fixed versions)
 # "python3.12" = "ghcr.io/bigskillissue/forge-runtime-python:3.12"
 # static = "ghcr.io/bigskillissue/forge-runtime-static:1"

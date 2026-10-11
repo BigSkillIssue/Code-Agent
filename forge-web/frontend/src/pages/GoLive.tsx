@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 import { type Deploy, type DeployStep, type Environment, hosting, type ReleaseReview } from "../api/hosting";
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { OperatorForm } from "./OperatorForm";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
 
 const STEP_TEXT: Record<DeployStep, TextKey> = {
@@ -86,11 +87,12 @@ export function GoLivePage() {
             <Button disabled={!open || busy} onClick={() => void start("staging")}>
               {t("toStaging")}
             </Button>
-            <Button kind="primary" disabled={!open || busy || !staged} onClick={() => void start("production")}>
+            <Button kind="primary" disabled={!open || busy || !staged || !data?.operator} onClick={() => void start("production")}>
               {t("goLive")}
             </Button>
             {data && !staged && <span className="text-muted">{t("goLiveNeedsStaging")}</span>}
           </div>
+          {data && !data.operator && <p className="text-muted">{t("goLiveNeedsOperator")}</p>}
         </div>
         {data && data.reviews.length > 0 && <Reviews reviews={data.reviews} />}
         <Section title={t("deploysTitle")}>
@@ -101,6 +103,15 @@ export function GoLivePage() {
             ))}
           </ul>
         </Section>
+        {data && (
+          <OperatorForm
+            key={data.operator?.updated_at ?? 0}
+            saved={data.operator}
+            canEdit={canEdit}
+            onSave={api.setOperator}
+            onSaved={reload}
+          />
+        )}
         {canEdit && <Secrets projectId={projectId} names={data?.secrets ?? []} onSaved={reload} />}
       </div>
     </div>

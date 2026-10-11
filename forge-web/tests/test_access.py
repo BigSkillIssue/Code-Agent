@@ -31,6 +31,8 @@ PUBLIC = {
     "POST /api/auth/verify", "GET /api/auth/oauth/{name}/start",
     "GET /api/auth/oauth/{name}/callback", "POST /api/auth/totp/verify",
     "GET /api/preview/allowed-host",
+    # The legal pages of hosted apps, which every visitor of an app sees through its edge.
+    "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -112,6 +114,8 @@ BODIES: dict[str, dict[str, Any]] = {
     "Suspension": {"suspended": True, "reason": "taken over"},
     "LogsIn": {"environment": "production"},
     "TrustIn": {"trusted": True},
+    "OperatorIn": {"name": "Mallory", "address": "Somewhere 1", "email": "m@example.com"},
+    "MailIn": {"to": "victim@example.com", "subject": "Hi", "text": "spam"},
 }
 
 
@@ -205,6 +209,8 @@ def rule(method: str, path: str) -> str:
         return "mac"  # Mac workers, with their own tokens
     if path.startswith("/api/host/"):
         return "host"  # the hosts of apps, with their own tokens
+    if path.startswith("/api/relay/"):
+        return "relay"  # hosted apps sending mail, with their relay tokens
     if "{project_id}" in path or "{chat_id}" in path:
         return "project"
     raise AssertionError(f"{key} has no access rule: add it to PUBLIC or OWN, or to this test")
@@ -219,7 +225,7 @@ def filled(path: str, world: World) -> str:
         "credential_id": "0" * 16, "terminal_id": "t0123abcd", "port": "3000",
         "program_id": "p0123abcd", "mac_id": "0" * 16, "job_id": "0" * 32,
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
-        "host_id": "0" * 16,
+        "host_id": "0" * 16, "app": "nobody",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -269,6 +275,16 @@ async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
     assert len(routes) == 4
+    for method, path, model in routes:
+        status = await call(world.admin, method, filled(path, world), model)
+        assert status == 401, f"{method} {path} answered {status} to an admin's session"
+
+
+@on_shared_loop
+async def test_people_cannot_send_app_mail(shared: World) -> None:
+    world = shared
+    routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "relay"]
+    assert len(routes) == 1
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

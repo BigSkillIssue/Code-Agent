@@ -29,6 +29,8 @@ from forge_web.gateway.api import keys_router
 from forge_web.git_api import git_router
 from forge_web.hosting.admin import hosting_admin_router
 from forge_web.hosting.deploy_api import deploy_router, host_router
+from forge_web.hosting.legal_pages import legal_router, operator_router
+from forge_web.hosting.mail_relay import relay_router
 from forge_web.members import members_router
 from forge_web.preview import preview_hosts_router, preview_router
 from forge_web.preview_auth import preview_base
@@ -68,6 +70,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         approvals_router(), asc_key_routes(), release_routes(), listing_routes(),
         submission_routes(),
         git_credentials_router(), host_router(), deploy_router(), hosting_admin_router(),
+        operator_router(), legal_router(), relay_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

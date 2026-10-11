@@ -24,6 +24,7 @@ from forge_hostworker.wire import DeployPlan, Limits, ServicePlan, app_host
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
 from forge_web.containers.driver import SandboxError
+from forge_web.hosting.mail_relay import TOKEN_SECRET, URL_SETTING
 
 SandboxCall = Callable[[str, str, dict[str, Any]], Awaitable[Any]]
 SANDBOX_ERRORS = (RpcError, ChannelClosed, SandboxError, OSError, TimeoutError)
@@ -35,6 +36,8 @@ LIMITS = {
     "large": Limits(cpus=2, memory_mb=2048, pids=1024),
 }
 MIGRATE = ["alembic", "upgrade", "head"]
+# What hosting sets in every release itself: no secret may take these names.
+HOSTING_SETS = frozenset({"APP_URL", "STORAGE_DIR", URL_SETTING, TOKEN_SECRET})
 
 
 class PlanProblem(Exception):
@@ -138,7 +141,11 @@ def folder(root: str) -> str:
 
 
 def service_plan(
-    service: Service, product: Product, images: dict[str, str], env: dict[str, str]
+    service: Service,
+    product: Product,
+    images: dict[str, str],
+    env: dict[str, str],
+    extra_secrets: tuple[str, ...] = (),
 ) -> ServicePlan:
     """One service of the plan, with the host's checks and the migrations it needs."""
     image = images.get(service.runtime)
@@ -155,7 +162,7 @@ def service_plan(
         name=service.name, runtime=service.runtime, image=image, root=service.root,
         build=service.build, command=service.command, output=service.output, port=service.port,
         health=service.health, route=service.route, env=env,
-        secrets=[] if service.runtime == "static" else manifest.secrets,
+        secrets=[] if service.runtime == "static" else [*manifest.secrets, *extra_secrets],
         check_build=dev_build if python and dev_build != service.build else None,
         test=["pytest", "-q"] if has_tests else ["npm", "test"] if npm_test else [],
         migrate=MIGRATE if migrates else [],
@@ -169,16 +176,20 @@ def make_plan(
     release: int,
     images: dict[str, str],
     apps_domain: str,
+    relay: str = "",
 ) -> DeployPlan:
-    """The whole plan for one release of the product."""
+    """The whole plan for one release of the product (`relay`: this server's mail relay)."""
     manifest = product.manifest
     env = dict(manifest.env)
+    extra: tuple[str, ...] = ()
+    if manifest.mail is not None and relay:
+        env[URL_SETTING], extra = relay, (TOKEN_SECRET,)  # the token is sealed like a secret
     if apps_domain:
         env["APP_URL"] = f"https://{app_host(app, environment, apps_domain)}"
     if manifest.storage is not None:
         env["STORAGE_DIR"] = "/data"  # the host mounts the app's files there
     try:
-        services = [service_plan(s, product, images, env) for s in manifest.services]
+        services = [service_plan(s, product, images, env, extra) for s in manifest.services]
         return DeployPlan(
             app=app,
             environment=environment,

@@ -1,5 +1,5 @@
-// Hosting (W26, W27): a project's deploys to staging and production, its secrets, what the
-// go-live page shows; and the admin's hosting panel (hosts, the approval queue, apps, trust).
+// Hosting (W26–W28): a project's deploys to staging and production, its secrets and operator
+// data, what the go-live page shows; and the admin's hosting panel (hosts, the approval queue, apps, trust).
 
 import { api } from "./client";
 
@@ -61,6 +61,19 @@ export interface GoLiveApproval {
   chat_id: string;
 }
 
+/** Who runs the app (its creator), for its Impressum and privacy page. */
+export interface Operator {
+  name: string;
+  representative: string;
+  address: string;
+  email: string;
+  phone: string;
+  trade_register: string;
+  vat_id: string;
+  privacy_email: string;
+  privacy_extra: string;
+}
+
 export interface HostingOverview {
   enabled: boolean;
   app: string;
@@ -72,6 +85,7 @@ export interface HostingOverview {
   staging: Deploy | null;
   production: Deploy | null;
   secrets: { environment: Environment; name: string }[];
+  operator: (Operator & { updated_at: number }) | null;
 }
 
 const id = encodeURIComponent;
@@ -84,6 +98,7 @@ export const hosting = (projectId: string) => {
     retry: (deployId: string) => api.post<Deploy>(`${base}/deploys/${id(deployId)}/retry`, {}),
     setSecret: (environment: Environment, name: string, value: string) =>
       api.put<{ ok: boolean }>(`${base}/hosting/secrets`, { environment, name, value }),
+    setOperator: (operator: Operator) => api.put<Operator>(`${base}/hosting/operator`, operator),
   };
 };
 

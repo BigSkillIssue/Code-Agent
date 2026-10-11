@@ -731,7 +731,22 @@ erreichen nur DNS, HTTP und HTTPS (die Paket-Server). Braucht eine App einen Die
 privaten Netz (etwa Forges Mail-Relay), gibst du ihn mit `--allow 10.1.2.3` frei
 (`ExecStartPre` in `systemctl edit` anpassen).
 
-### 11.7 Prüfen
+### 11.7 Rechtstexte und Mail der Apps
+
+In Forge Webs Einstellungen trägst du unter `[hosting]` dich als **Hosting-Anbieter** ein
+(`provider_name`, `provider_address`) und eine **Kontaktadresse** für Behörden und Meldungen
+rechtswidriger Inhalte (`contact_email`). Jede App bekommt daraus und aus den Angaben ihres
+Erstellers ein Impressum (`/impressum`) und eine Datenschutzerklärung (`/datenschutz`); ohne die
+Angaben des Erstellers geht keine App live. Die Texte sind eine sorgfältige Vorlage für Betreiber in
+Deutschland – lass sie einmal von einer Anwältin oder einem Anwalt lesen.
+
+Apps verschicken Mails nur über Forge Web (auf dem App-Server ist Port 25 gesperrt). Dafür braucht
+Forge Web einen SMTP-Zugang: in `forge-web.toml` unter `[auth.smtp]` `host`, `port`, `username`
+und `from_address`, das Passwort in der Umgebungsvariablen `FORGE_WEB_SMTP_PASSWORD`. Jede App
+sendet unter ihrem Namen von dieser Absenderadresse, Antworten gehen an den Ersteller, und pro Tag
+höchstens so viele Mails, wie ihre Vorlage angibt (und `mail_daily_max` erlaubt).
+
+### 11.8 Prüfen
 
 ```bash
 /opt/forge-host/bin/forge-host-worker doctor --data /var/lib/forge-host
@@ -741,7 +756,7 @@ privaten Netz (etwa Forges Mail-Relay), gibst du ihn mit `--allow 10.1.2.3` frei
 Firewall, Caddy, Schlüssel, Token und freien Platz. Fehlt etwas, steht unter der Zeile `FAIL`, was
 zu tun ist. Als root ausführen, sonst kann er die Firewall nicht prüfen.
 
-### 11.8 Wenn etwas nicht geht
+### 11.9 Wenn etwas nicht geht
 
 | Problem | Lösung |
 | --- | --- |

@@ -26,11 +26,20 @@ from forge_hostworker.wire import ENV_NAME, RESERVED_ENV, JobResult, PollAnswer,
 from forge_hostworker.wire import SealedSecrets as Sealed
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
-from forge_web.db.hosting_models import AppSecret, Deploy, GoLiveApproval, HostedApp, HostServer
+from forge_web.db.hosting_models import (
+    AppOperator,
+    AppSecret,
+    Deploy,
+    GoLiveApproval,
+    HostedApp,
+    HostServer,
+)
 from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.files_api import allowed
 from forge_web.hosting.deploy import ACTIVE, view
 from forge_web.hosting.hosts import JobGone, host_of, pick_host
+from forge_web.hosting.legal_pages import operator_ready, operator_view
+from forge_web.hosting.plan import HOSTING_SETS
 from forge_web.services import Services, services_of
 
 POLL_WAIT_S = 25.0
@@ -177,7 +186,7 @@ def secret_routes(router: APIRouter) -> None:
         project_id: str, body: SecretIn, request: Request, user: CurrentUser
     ) -> dict[str, bool]:
         services = await allowed(request, user, project_id, "editor")
-        if body.name in RESERVED_ENV:
+        if body.name in RESERVED_ENV or body.name in HOSTING_SETS:
             raise HTTPException(422, f"{body.name} is set by hosting itself")
         key = (project_id, body.environment, body.name)
         async with services.db.session() as session, session.begin():
@@ -202,9 +211,11 @@ async def new_deploy(services: Services, user: User, project_id: str, body: Depl
         if project is None or project.kind != "app":
             raise HTTPException(409, "only app projects can be hosted")
         commit = await approved_commit(session, project_id, body.commit)
-        if body.environment == "production" and not await live_in_staging(session, project_id,
-                                                                          commit):  # fmt: skip
-            raise HTTPException(409, "deploy this commit to staging first and check it there")
+        if body.environment == "production":
+            if not await live_in_staging(session, project_id, commit):
+                raise HTTPException(409, "deploy this commit to staging first and check it there")
+            if not operator_ready(await session.get(AppOperator, project_id)):
+                raise HTTPException(409, "enter who operates the app (its Impressum) first")
         busy = await session.scalar(select(Deploy.id).where(
             Deploy.project_id == project_id, Deploy.environment == body.environment,
             Deploy.status.in_(ACTIVE)))  # fmt: skip
@@ -286,13 +297,14 @@ async def hosting_overview(services: Services, project_id: str) -> dict[str, Any
         reviews = await release_reviews(session, project_id)
         names = [{"environment": s.environment, "name": s.name} for s in await session.scalars(
             select(AppSecret).where(AppSecret.project_id == project_id))]  # fmt: skip
+        operator = operator_view(await session.get(AppOperator, project_id))
     live = {d["environment"]: d for d in deploys if d["status"] == "live"}
     return {"enabled": services.settings.hosting.enabled, "app": hosted.app if hosted else "",
             "suspended": bool(hosted and hosted.suspended),
             "suspended_reason": hosted.suspended_reason if hosted else "",
             "reviews": reviews, "approvals": approvals, "deploys": deploys,
             "staging": live.get("staging"), "production": live.get("production"),
-            "secrets": names}  # fmt: skip
+            "secrets": names, "operator": operator}  # fmt: skip
 
 
 async def release_reviews(session: Any, project_id: str) -> list[dict[str, Any]]:

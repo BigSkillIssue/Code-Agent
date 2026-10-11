@@ -66,11 +66,23 @@ def git(workspace: Path, *args: str) -> str:
                           check=True).stdout.strip()  # fmt: skip
 
 
-async def app_project(server: LiveServer, web: Any, user_id: str) -> tuple[str, str]:
-    """An app project whose HEAD its user said is "Ready to go live"."""
+OPERATOR = {
+    "name": "Ada Lovelace",
+    "address": "Hauptstraße 1\n10115 Berlin",
+    "email": "ada@example.com",
+}
+
+
+async def app_project(
+    server: LiveServer, web: Any, user_id: str, operator: bool = True
+) -> tuple[str, str]:
+    """An app project whose HEAD its user said is "Ready to go live" (with its Impressum)."""
     made = await web.request("POST", "/api/projects", json={"name": "Shop", "source": "app"})
     assert made.status_code == 201, made.text
     project_id = str(made.json()["id"])
+    if operator:
+        url = f"/api/projects/{project_id}/hosting/operator"
+        assert (await web.request("PUT", url, json=OPERATOR)).status_code == 200
     return project_id, await approve_head(server, project_id, user_id)
 
 
@@ -245,7 +257,9 @@ async def test_secrets_are_sealed_and_fetched_once(
         live = await until(lambda: settled(client, project_id, deploy_id))
         assert live["status"] == "live", live["error"]
     release = host.last("release")
-    assert host.secrets[release.id] == {"MAPS_KEY": "maps-s3cr3t"}
+    opened = host.secrets[release.id]
+    relay = opened.pop("MAIL_RELAY_TOKEN")  # the template sends mail: its relay token comes too
+    assert opened == {"MAPS_KEY": "maps-s3cr3t"} and relay.startswith("fmr_")
     assert list(host.secrets) == [release.id]  # only the release opens secrets
     async with httpx.AsyncClient(base_url=server.url, timeout=30) as hosted:
         again = await hosted.get(f"/api/host/jobs/{release.id}/secrets",
@@ -255,6 +269,7 @@ async def test_secrets_are_sealed_and_fetched_once(
         jobs = list(await session.scalars(select(HostJobRow)))
         stored = list(await session.scalars(select(AppSecret)))
     assert all(not job.sealed and "maps-s3cr3t" not in job.job + job.result for job in jobs)
+    assert all(relay not in job.job + job.result for job in jobs)
     assert stored and all("maps-s3cr3t" not in row.value for row in stored)
     names = (await client.get(f"/api/projects/{project_id}/hosting/secrets")).json()
     assert names == [{"environment": "staging", "name": "MAPS_KEY",

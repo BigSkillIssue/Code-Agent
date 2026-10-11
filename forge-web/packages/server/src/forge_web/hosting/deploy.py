@@ -43,6 +43,7 @@ from forge_web.db.engine import Database
 from forge_web.db.hosting_models import AppSecret, Deploy, HostedApp, HostServer
 from forge_web.db.models import User
 from forge_web.hosting.hosts import HostQueue
+from forge_web.hosting.mail_relay import TOKEN_SECRET, relay_token, relay_url
 from forge_web.hosting.plan import PlanProblem, SandboxCall, make_plan, pack_commit, read_product
 from forge_web.settings import WebSettings
 from forge_web.vault import Vault
@@ -186,9 +187,11 @@ class Deploys:
         source = await self.packed(row)
         product = await asyncio.to_thread(read_product, source)
         row.app = await self.app_name(row, product.manifest.name)
-        hosting = self.settings.hosting
+        hosting, mail = self.settings.hosting, product.manifest.mail
+        relay = relay_url(self.settings) if mail else ""
         plan = make_plan(product, row.app, row.environment, row.release, hosting.images,
-                         hosting.apps_domain)  # fmt: skip
+                         hosting.apps_domain, relay)  # fmt: skip
+        data["mail_limit"] = min(mail.daily_limit, hosting.mail_daily_max) if mail else 0
         missing = await self.missing_secrets(row, plan)
         if missing:
             raise DeployProblem(f"secrets without a value for {row.environment}: "
@@ -301,14 +304,19 @@ class Deploys:
             job = HostJob(id=data[key], kind=kind, app=row.app, environment=row.environment,
                           plan=plan, timeout_s=timeout)  # fmt: skip
             source = await self.packed(row) if kind in WITH_SOURCE else None
-            sealed = await self.sealed(row, self.plan_of(data)) if kind == "release" else None
+            sealed = await self.sealed(row, data) if kind == "release" else None
             await self.queue.send(row.host_id, row.id, job, source, sealed)
         return await self.queue.result(data[key])
 
-    async def sealed(self, row: Deploy, plan: DeployPlan) -> Any:
-        """The release's secrets, sealed to its host's key."""
-        names = {name for service in plan.services for name in service.secrets}
+    async def sealed(self, row: Deploy, data: dict[str, Any]) -> Any:
+        """The release's secrets (with its mail relay token), sealed to its host's key."""
+        names = {name for service in self.plan_of(data).services for name in service.secrets}
         values = await self.secret_values(row.project_id, row.environment)
+        if TOKEN_SECRET in names:
+            limit = int(data.get("mail_limit", 0))
+            values[TOKEN_SECRET] = await relay_token(
+                self.db, self.vault, row.project_id, row.environment, limit
+            )
         missing = sorted(names - set(values))
         if missing:
             hint = "set them on the deploy page, then start the deploy again"
@@ -330,7 +338,7 @@ class Deploys:
             return {row.name: self.vault.decrypt(row.value) for row in rows}
 
     async def missing_secrets(self, row: Deploy, plan: DeployPlan) -> list[str]:
-        names = {name for service in plan.services for name in service.secrets}
+        names = {name for service in plan.services for name in service.secrets} - {TOKEN_SECRET}
         return sorted(names - set(await self.secret_values(row.project_id, row.environment)))
 
     async def app_name(self, row: Deploy, wanted: str) -> str:

@@ -222,6 +222,12 @@ class HostingSettings(_Strict):
     check_timeout_s: float = Field(default=1_800, gt=0)  # the host's own checks
     job_timeout_s: float = Field(default=1_800, gt=0)  # every other job on a host
     job_grace_s: float = Field(default=600, gt=0)  # a host's report may take this much longer
+    mail_daily_max: int = Field(default=1_000, ge=0)  # an app's mails a day (its manifest: fewer)
+    # The hosting provider (the admin), as the apps' privacy pages name it, and its contact for
+    # authorities and for notices of illegal content (DSA Art. 11, 12, 16).
+    provider_name: str = Field(default="", max_length=200)
+    provider_address: str = Field(default="", max_length=500)
+    contact_email: str = Field(default="", max_length=320)
 
 
 class WebSettings(_Strict):

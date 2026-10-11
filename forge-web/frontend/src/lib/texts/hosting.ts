@@ -78,6 +78,20 @@ export const hostingEn = {
   trustTitle: "Trusted people",
   trustHint: "Their production deploys need no admin approval (the app server's checks still run).",
   trusted: "trusted",
+  operatorTitle: "Who runs the app (Impressum)",
+  operatorHint:
+    "You run the app; its Impressum and privacy page show these details at /impressum and /datenschutz. Going live needs them.",
+  operatorName: "Name (a person's or a company's full name)",
+  operatorRepresentative: "A company: legal form and who represents it",
+  operatorAddress: "Postal address (no P.O. box)",
+  operatorEmail: "Email",
+  operatorPhone: "Phone (optional)",
+  operatorRegister: "Register entry (court and number, if any)",
+  operatorVat: "VAT ID (if any)",
+  operatorPrivacyEmail: "Privacy contact (if not the email above)",
+  operatorPrivacyExtra: "What else the app does with personal data (newsletter, analytics …)",
+  operatorSave: "Save the details",
+  goLiveNeedsOperator: "Going live needs the details of who runs the app (below).",
 };
 
 export const hostingDe: typeof hostingEn = {
@@ -157,4 +171,18 @@ export const hostingDe: typeof hostingEn = {
   trustTitle: "Vertrauenswürdige Personen",
   trustHint: "Ihre Live-Deploys brauchen keine Freigabe durch einen Admin (die Prüfung auf dem App-Server läuft trotzdem).",
   trusted: "vertrauenswürdig",
+  operatorTitle: "Wer die App betreibt (Impressum)",
+  operatorHint:
+    "Du betreibst die App; ihr Impressum und ihre Datenschutzerklärung zeigen diese Angaben unter /impressum und /datenschutz. Ohne sie geht die App nicht live.",
+  operatorName: "Name (vollständiger Name einer Person oder Firma)",
+  operatorRepresentative: "Bei Firmen: Rechtsform und Vertretungsberechtigte",
+  operatorAddress: "Postanschrift (kein Postfach)",
+  operatorEmail: "E-Mail",
+  operatorPhone: "Telefon (optional)",
+  operatorRegister: "Registereintrag (Gericht und Nummer, falls vorhanden)",
+  operatorVat: "USt-IdNr. (falls vorhanden)",
+  operatorPrivacyEmail: "Datenschutz-Kontakt (falls nicht die E-Mail oben)",
+  operatorPrivacyExtra: "Was die App sonst mit personenbezogenen Daten tut (Newsletter, Statistik …)",
+  operatorSave: "Angaben speichern",
+  goLiveNeedsOperator: "Zum Livegang fehlen noch die Angaben, wer die App betreibt (unten).",
 };

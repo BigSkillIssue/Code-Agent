@@ -236,11 +236,16 @@ Security principles (the apps' code is foreign code):
     - Build: for the creator: the reviews, the checks, the staging link and "Live schalten"; for the admin: hosts and their tokens, the approval queue (showing the checked commit and its checks), trusted users, suspending an app, logs.
     - Tests: the creator sees the reviews and checks and can go live only after staging is healthy; the queue shows exactly the checked commit; marking a user trusted skips the admin step for their next deploy; a suspended app is taken off the edge; only admins reach the panel.
     - Verify: `uv run pytest -q tests/test_hosting_admin.py tests/test_access.py && (cd frontend && npm run typecheck && npm test)`
-- [ ] **W28 — App services: mail, legal pages, abuse**
-    - Files: `forge_web/hosting/{mail_relay,legal_pages,abuse}.py`, `forge_web/db/{models.py,migrations/versions/0013_app_services.py}`, frontend pages, `tests/{test_mail_relay,test_legal_pages,test_abuse,test_access}.py`
-    - Build: a mail relay per app with quotas and a token of its own; the operator's data (Impressum, privacy contact) required before go-live and rendered for the edge; a DSA notice form → admin review → suspension with a statement of reasons to the creator.
-    - Tests: an app's token sends only within its quota and only as its own sender; go-live is refused without operator data; the legal pages show the creator's data; a notice reaches the admin, and a suspension records and sends its reasons.
-    - Verify: `uv run pytest -q tests/test_mail_relay.py tests/test_legal_pages.py tests/test_abuse.py tests/test_access.py`
+- [x] **W28a — App services: legal pages and mail**
+    - Files: `forge_web/hosting/{legal_pages,mail_relay}.py`, `forge_web/db/{hosting_models.py,migrations/versions/0014_app_services.py}`, `forge_web/{settings,app}.py`, `forge_web/auth/mail.py`, `frontend/src/pages/{GoLive,OperatorForm}.tsx` (+ test), `tests/{test_mail_relay,test_legal_pages,test_access}.py`
+    - Build: a mail relay per app and environment with a daily quota and a token of its own (sealed into each release as `MAIL_RELAY_TOKEN`, with `MAIL_RELAY_URL` in its settings); mail leaves from the server's address under the app's name, replies go to the operator; the operator's data (Impressum, privacy contact) required before going live and rendered for the edge at `/legal/<app>/{impressum,datenschutz}`.
+    - Tests: an app's token sends only within its quota and only as its own app; forged tokens and smuggled headers are refused; going live is refused without operator data; the legal pages show the creator's data, escaped.
+    - Verify: `uv run pytest -q tests/test_mail_relay.py tests/test_legal_pages.py tests/test_access.py`
+- [ ] **W28b — App services: reports of illegal content**
+    - Files: `forge_web/hosting/abuse.py`, `forge_web/db/{hosting_models.py,migrations/versions/0015_abuse.py}`, `frontend/src/pages/AdminHosting.tsx` (+ test), `tests/{test_abuse,test_access}.py`
+    - Build: a DSA notice form at the edge's `/melden` (DSA Art. 16: the place, the reasons, name and email, good faith; a confirmation), each notice to the admins; the admin's review: dismiss (the notifier hears so) or suspend the app with a statement of reasons (DSA Art. 17) recorded and sent to the creator.
+    - Tests: a notice reaches the admin and its notifier gets a confirmation; incomplete notices are shown the form again; a suspension records and sends its reasons and stops the app; a dismissal tells the notifier.
+    - Verify: `uv run pytest -q tests/test_abuse.py tests/test_access.py`
 - [ ] **W29 — Operations**
     - Files: `forge_hostworker/{backup,metrics}.py`, `forge_web/hosting/{ops,gdpr}.py`, `tests/{test_host_ops,test_hosting_gdpr}.py`
     - Build: nightly encrypted backups off the host and a restore drill; metering per app (CPU, RAM, disk, traffic); mail alerts; export and full deletion of an app (containers, database, backups, certificates).

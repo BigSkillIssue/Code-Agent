@@ -14,17 +14,24 @@ const deploy = (changes: Partial<Deploy>): Deploy => ({
   migrated: true, created_at: 1, updated_at: 1,
   ...changes,
 });
+const OPERATOR = {
+  name: "Ada Lovelace", representative: "", address: "Hauptstraße 1\n10115 Berlin", email: "ada@example.com",
+  phone: "", trade_register: "", vat_id: "", privacy_email: "", privacy_extra: "",
+};
 const overview = (changes: Partial<HostingOverview>): HostingOverview => ({
   enabled: true, app: "shop", suspended: false, suspended_reason: "",
   reviews: [{ stage: "product", verdict: "ok", summary: "Impressum, privacy page and reporting are there.", findings: [] }],
   approvals: [{ commit: APPROVED, at: 1, summary: "", chat_id: "c1" }],
-  deploys: [], staging: null, production: null, secrets: [],
+  deploys: [], staging: null, production: null, secrets: [], operator: { ...OPERATOR, updated_at: 1 },
   ...changes,
 });
 
-const mocks = vi.hoisted(() => ({ overview: vi.fn(), start: vi.fn(), retry: vi.fn(), setSecret: vi.fn() }));
+const mocks = vi.hoisted(() => ({ overview: vi.fn(), start: vi.fn(), retry: vi.fn(), setSecret: vi.fn(), setOperator: vi.fn() }));
 vi.mock("../api/hosting", () => ({
-  hosting: () => ({ overview: mocks.overview, start: mocks.start, retry: mocks.retry, setSecret: mocks.setSecret }),
+  hosting: () => ({
+    overview: mocks.overview, start: mocks.start, retry: mocks.retry, setSecret: mocks.setSecret,
+    setOperator: mocks.setOperator,
+  }),
 }));
 
 beforeEach(() => {
@@ -32,6 +39,7 @@ beforeEach(() => {
   mocks.start.mockReset().mockResolvedValue(deploy({ status: "running", step: "pack" }));
   mocks.retry.mockReset().mockResolvedValue(deploy({}));
   mocks.setSecret.mockReset().mockResolvedValue({ ok: true });
+  mocks.setOperator.mockReset().mockResolvedValue(OPERATOR);
   useStore.setState({ error: "", projects: [{ id: "p1", name: "Shop", role: "owner", source: "app", kind: "app", created_at: 0, updated_at: 0 }] });
 });
 
@@ -97,6 +105,23 @@ describe("the go-live page", () => {
     expect(problem.textContent).toContain("KeyError");
     fireEvent.click(screen.getByRole("button", { name: /^(Start again from here|Ab hier neu starten)$/ }));
     await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith("d2"));
+  });
+
+  it("goes live only with the operator's details, which it takes in a form", async () => {
+    const staged = deploy({});
+    mocks.overview.mockResolvedValue(overview({ staging: staged, deploys: [staged], operator: null }));
+    open();
+    expect(await screen.findByText(/(details of who runs the app|Angaben, wer die App betreibt)/)).toBeTruthy();
+    expect(button(goLive).disabled).toBe(true);
+    const save = button(/^(Save the details|Angaben speichern)$/);
+    expect(save.disabled).toBe(true); // name, address and email first
+    fireEvent.change(screen.getByLabelText(/^(Name \(a person|Name \(vollständiger)/), { target: { value: "Ada Lovelace" } });
+    fireEvent.change(screen.getByLabelText(/^(Postal address|Postanschrift)/), { target: { value: "Hauptstraße 1" } });
+    fireEvent.change(screen.getByLabelText(/^(Email|E-Mail)$/), { target: { value: "ada@example.com" } });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(mocks.setOperator).toHaveBeenCalledWith(expect.objectContaining({ name: "Ada Lovelace", email: "ada@example.com" })),
+    );
   });
 
   it("takes a secret's value without ever showing one", async () => {
