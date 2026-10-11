@@ -16,6 +16,7 @@ from forge_web.apple.sandbox_api import apple_routes
 from forge_web.apple.submission import Submissions
 from forge_web.auth.dev import ensure_dev_user
 from forge_web.auth.oauth_providers import SignIn, load_providers
+from forge_web.billing.entitlements import EntitlementEngine
 from forge_web.billing.setup import Billing
 from forge_web.chats.runs import RunManager
 from forge_web.containers.docker import DockerDriver
@@ -113,10 +114,12 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     chosen = driver or make_driver(settings)
     docker = chosen.name != "local"
     holder: dict[str, RunManager] = {}
-    gateway = Gateway(db, vault, settings.gateway, lambda chat_id: holder["runs"].working(chat_id))
+    entitlements = EntitlementEngine(db, settings)
+    gateway = Gateway(db, vault, settings.gateway, lambda chat_id: holder["runs"].working(chat_id),
+                      limits_of=entitlements.of)  # fmt: skip
     apple = AppleJobs(db, settings.apple, settings.data_dir)
     await apple.start()
-    gateway.routers.append(apple_routes(gateway, apple, settings.apple))
+    gateway.routers.append(apple_routes(gateway, apple, settings.apple, entitlements.of))
     gateway_server = PrivateServer(gateway.app(), settings.data_dir / "run")
     await gateway_server.start()
     policy = EgressPolicy(settings.egress.allow, settings.egress.allow_private)
@@ -150,7 +153,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         sign_in=SignIn(load_providers(settings.auth.providers)),
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
-        removals=removals, billing=billing,
+        removals=removals, billing=billing, entitlements=entitlements,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on

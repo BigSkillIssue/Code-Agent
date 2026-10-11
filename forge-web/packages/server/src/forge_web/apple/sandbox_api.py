@@ -14,8 +14,9 @@ from forge.ports import AppleAction, ApplePlatform
 from forge_macworker.wire import BuildParams, JobResult, ScreenshotParams
 from forge_web.apple.jobs import AppleJobs, NewJob
 from forge_web.apple.workers import any_online
+from forge_web.billing.entitlements import Entitlements
 from forge_web.db.models import User
-from forge_web.gateway.proxy import Gateway, Refusal
+from forge_web.gateway.proxy import Gateway, LimitsOf, Refusal
 from forge_web.settings import AppleSettings
 
 GZIP = b"\x1f\x8b"
@@ -26,16 +27,24 @@ def problem(status: int, error: str, hint: str = "") -> JSONResponse:
     return JSONResponse({"error": error, "hint": hint}, status_code=status)
 
 
-def apple_routes(gateway: Gateway, jobs: AppleJobs, settings: AppleSettings) -> APIRouter:
-    """The gateway's Apple endpoints."""
+def apple_routes(
+    gateway: Gateway, jobs: AppleJobs, settings: AppleSettings, limits_of: LimitsOf | None = None
+) -> APIRouter:
+    """The gateway's Apple endpoints; the users' limits from `limits_of` (the entitlements),
+    else the Apple settings' Mac minutes."""
     router = APIRouter()
+
+    async def limits(user: User) -> Entitlements:
+        if limits_of is not None:
+            return await limits_of(user)
+        return Entitlements(source="server", mac_minutes=settings.minutes_per_month or None)
 
     async def submit(request: Request, params: BuildParams | ScreenshotParams) -> Response:
         try:
             chat, user = await gateway.caller(request)
         except Refusal as refusal:
             return problem(refusal.status, str(refusal))
-        refused = await may_build(jobs, settings, user)
+        refused = await may_build(jobs, settings, user, await limits(user))
         if refused is not None:
             return refused
         source = jobs.root / "incoming" / f"{secrets.token_hex(16)}.tar.gz"
@@ -68,7 +77,9 @@ def apple_routes(gateway: Gateway, jobs: AppleJobs, settings: AppleSettings) -> 
     return router
 
 
-async def may_build(jobs: AppleJobs, settings: AppleSettings, user: User) -> Response | None:
+async def may_build(
+    jobs: AppleJobs, settings: AppleSettings, user: User, limits: Entitlements
+) -> Response | None:
     """Why this user cannot build now, or None."""
     if not settings.enabled:
         return problem(403, "Apple builds are turned off on this server",
@@ -76,8 +87,8 @@ async def may_build(jobs: AppleJobs, settings: AppleSettings, user: User) -> Res
     if not settings.allows(user.role, user.apple_allowed):
         return problem(403, "you may not build Apple apps on this server",
                        "ask an admin to allow it for your account")  # fmt: skip
-    limit = settings.minutes_per_month
-    if limit and await jobs.minutes_used(user.id) >= limit:
+    limit = limits.mac_minutes
+    if limit is not None and await jobs.minutes_used(user.id) >= limit:
         return problem(429, f"your {limit:.0f} Mac minutes of this month are used up",
                        "ask an admin for more, or wait for the next month")  # fmt: skip
     if not await any_online(jobs.db):

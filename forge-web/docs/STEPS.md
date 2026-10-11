@@ -281,11 +281,16 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: plans (monthly, yearly), a one-time price per app, hosting per app and month, add-ons, trials and coupons, all set by the admin and synced to Stripe.
     - Tests: syncing twice changes nothing; a removed plan is archived at Stripe, not deleted; a price change makes a new price; only admins edit the catalog.
     - Verify: `uv run pytest -q tests/test_billing_catalog.py tests/test_access.py`
-- [ ] **W33a — Checkout and entitlements**
-    - Files: `forge_web/billing/{checkout,entitlements}.py`, `forge_web/quotas.py`, `forge_web/gateway/meter.py`, `frontend/src/pages/Billing.tsx` (+ test), `tests/{test_checkout,test_entitlements,test_access}.py`
-    - Build: Stripe Checkout (no card data on the server); the order button's text per §312j BGB; the waiver of the right of withdrawal for digital content (a box and a confirmation mail); Stripe Tax. One entitlement engine sets every limit: projects, AI budget per month **and per product**, Mac minutes, hosted apps, storage, custom domains, store publishing.
-    - Tests: a paid checkout grants its entitlements, a cancelled one grants nothing; checkout is refused without the waiver box; the gateway stops a product at its own budget; every limit comes from the engine.
-    - Verify: `uv run pytest -q tests/test_checkout.py tests/test_entitlements.py tests/test_access.py`
+- [x] **W33a1 — Entitlements** (W33a split in two)
+    - Files: `forge_web/billing/entitlements.py`, `forge_web/db/{billing_models.py,migrations/versions/0022_subscriptions.py}`, `forge_web/{quotas,settings,services,startup,sources,projects}.py`, `forge_web/gateway/{meter,proxy,keys}.py`, `forge_web/apple/{sandbox_api,release_api}.py`, `forge_web/hosting/{deploy_api,domains}.py`, `tests/test_entitlements.py`
+    - Build: one entitlement engine sets every limit: projects, AI budget per month **and per product**, Mac minutes, hosted apps, storage, custom domains, store publishing; from the customer's plan and add-ons (subscriptions), else the server's own settings.
+    - Tests: every limit comes from the engine; a plan and its add-ons set the limits, a cancelled plan gives nothing; the gateway stops a product at its own budget.
+    - Verify: `uv run pytest -q tests/test_entitlements.py tests/test_gateway.py`
+- [ ] **W33a2 — Checkout**
+    - Files: `forge_web/billing/checkout.py`, `frontend/src/pages/Billing.tsx` (+ test), `tests/{test_checkout,test_access}.py`
+    - Build: Stripe Checkout (no card data on the server); the order button's text per §312j BGB; the waiver of the right of withdrawal for digital content (a box and a confirmation mail); Stripe Tax; Stripe's events turn into subscriptions, which the entitlements read.
+    - Tests: a paid checkout grants its entitlements, a cancelled one grants nothing; checkout is refused without the waiver box.
+    - Verify: `uv run pytest -q tests/test_checkout.py tests/test_access.py`
 - [ ] **W33b — Cancellation and dunning**
     - Files: `forge_web/billing/{cancel,dunning}.py`, frontend pages, `tests/{test_cancel,test_dunning}.py`
     - Build: the §312k cancellation button (two steps and a confirmation mail), Stripe's Customer Portal; unpaid → grace period → suspended → deleted after notice and an export.

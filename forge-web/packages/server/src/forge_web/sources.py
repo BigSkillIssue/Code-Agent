@@ -61,7 +61,10 @@ def sources_router() -> APIRouter:
     @router.get("/usage")
     async def usage(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
         services = await allowed(request, user, project_id)
-        return {"bytes": await disk_use(services, project_id), "limit": disk_limit(services)}
+        return {
+            "bytes": await disk_use(services, project_id),
+            "limit": await disk_limit(services, project_id),
+        }
 
     return router
 

@@ -84,10 +84,14 @@ async def test_projects_over_their_quota_are_stopped() -> None:
     async def forget(project_id: str) -> None:
         pass
 
+    async def of_project(project_id: str) -> Any:  # the entitlements, from the server's quota
+        return SimpleNamespace(storage_mb=services.settings.quotas.project_disk_mb or None)
+
     services: Any = SimpleNamespace(
         driver=SimpleNamespace(disk_use=disk_use, stop=stop),
         runs=SimpleNamespace(forget_project=forget),
         settings=SimpleNamespace(quotas=SimpleNamespace(project_disk_mb=10)),
+        entitlements=SimpleNamespace(of_project=of_project),
         host_disk_use={}, disk_use={"big": (0.0, 5)},
     )  # fmt: skip
     assert await enforce_disk(services) == ["big"] and stopped == ["big"]

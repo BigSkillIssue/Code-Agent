@@ -23,6 +23,7 @@ from forge_hostworker.wire import DOMAIN, HostJob, app_host
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.hosting_models import AppDomain, HostedApp
+from forge_web.db.models import Project
 from forge_web.files_api import allowed
 from forge_web.hosting.ops import said
 from forge_web.services import Services
@@ -179,6 +180,7 @@ async def added(
     services: Services, project_id: str, domain: str, environment: str
 ) -> tuple[HostedApp, AppDomain]:
     """A new, unverified domain of the app (409 when it cannot have it)."""
+    await room_for_a_domain(services, project_id)
     async with services.db.session() as session, session.begin():
         hosted = await session.get(HostedApp, project_id)
         if hosted is None or hosted.deleting_at:
@@ -193,6 +195,22 @@ async def added(
                         token=secrets.token_hex(16), created_at=time.time())  # fmt: skip
         session.add(row)
     return hosted, row
+
+
+async def room_for_a_domain(services: Services, project_id: str) -> None:
+    """403 when the project owner's entitlements allow no further domain (across their apps)."""
+    limit = (await services.entitlements.of_project(project_id)).custom_domains
+    if limit is None:
+        return
+    async with services.db.session() as session:
+        project = await session.get(Project, project_id)
+        owner = project.owner_id if project else ""
+        count = await session.scalar(
+            select(func.count()).select_from(AppDomain)
+            .join(Project, Project.id == AppDomain.project_id)
+            .where(Project.owner_id == owner))  # fmt: skip
+    if (count or 0) >= limit:
+        raise HTTPException(403, f"your plan allows {limit} own domains")
 
 
 async def own_domain(

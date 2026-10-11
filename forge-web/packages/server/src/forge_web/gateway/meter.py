@@ -22,6 +22,7 @@ from forge_web.db.models import UsageRecord
 # Price for models the catalog does not know, so limits still bite (USD per 1M tokens).
 FALLBACK_IN, FALLBACK_OUT = 5.0, 25.0
 CHARS_PER_TOKEN = 3
+PRODUCT = "product:"  # the ledger's holders are users and, with this prefix, products
 
 
 @dataclass
@@ -162,39 +163,48 @@ class Ledger:
     reserved: dict[str, float] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
-    async def spent_this_month(self, user_id: str) -> float:
-        """Server-key spending of the user this month (from the database once, then kept)."""
+    async def spent_this_month(self, holder: str) -> float:
+        """Server-key spending this month of a user, or of a product (`PRODUCT` + project id),
+        from the database once, then kept."""
         start = month_start()
-        if self.month.get(user_id) != start:
+        if self.month.get(holder) != start:
+            whose = (UsageRecord.project_id == holder.removeprefix(PRODUCT)
+                     if holder.startswith(PRODUCT) else UsageRecord.user_id == holder)  # fmt: skip
             async with self.db.session() as session:
                 total = await session.scalar(
                     select(func.coalesce(func.sum(UsageRecord.cost_usd), 0.0)).where(
-                        UsageRecord.user_id == user_id,
-                        UsageRecord.key_kind == "server",
-                        UsageRecord.created_at >= start,
+                        whose, UsageRecord.key_kind == "server", UsageRecord.created_at >= start
                     )
                 )
-            self.spent[user_id], self.month[user_id] = float(total or 0.0), start
-        return self.spent[user_id]
+            self.spent[holder], self.month[holder] = float(total or 0.0), start
+        return self.spent[holder]
 
-    async def reserve(self, user_id: str, amount: float, limit: float) -> bool:
-        """Hold `amount` for a call if it fits under the limit."""
+    async def reserve(self, user_id: str, amount: float, limit: float | None,
+                      project_id: str = "", product_limit: float | None = None) -> str:  # fmt: skip
+        """Hold `amount` for a call if it fits under the user's monthly limit and the product's
+        own; "" when it does, else which limit is used up (None: no limit)."""
+        product = PRODUCT + project_id
         async with self.lock:
             spent = await self.spent_this_month(user_id)
-            if spent + self.reserved.get(user_id, 0.0) + amount > limit:
-                return False
-            self.reserved[user_id] = self.reserved.get(user_id, 0.0) + amount
-            return True
+            if limit is not None and spent + self.reserved.get(user_id, 0.0) + amount > limit:
+                return "Your monthly limit for the server's API keys is used up."
+            if project_id and product_limit is not None:
+                used = await self.spent_this_month(product)
+                if used + self.reserved.get(product, 0.0) + amount > product_limit:
+                    return "This product's monthly AI budget is used up."
+            for holder in (user_id, product) if project_id else (user_id,):
+                self.reserved[holder] = self.reserved.get(holder, 0.0) + amount
+            return ""
 
     async def settle(self, record: UsageRecord, reserved: float) -> None:
         """Replace a reservation by what the call cost, and store the record."""
+        holders = [record.user_id] + ([PRODUCT + record.project_id] if record.project_id else [])
         async with self.lock:
-            if reserved:
-                self.reserved[record.user_id] = max(
-                    0.0, self.reserved.get(record.user_id, 0.0) - reserved
-                )
-            if record.key_kind == "server":
-                await self.spent_this_month(record.user_id)
-                self.spent[record.user_id] = self.spent.get(record.user_id, 0.0) + record.cost_usd
+            for holder in holders:
+                if reserved:
+                    self.reserved[holder] = max(0.0, self.reserved.get(holder, 0.0) - reserved)
+                if record.key_kind == "server":
+                    await self.spent_this_month(holder)
+                    self.spent[holder] = self.spent.get(holder, 0.0) + record.cost_usd
         async with self.db.session() as session, session.begin():
             session.add(record)

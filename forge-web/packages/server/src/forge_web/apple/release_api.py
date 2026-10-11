@@ -88,8 +88,11 @@ async def may_release(services: Services, user: User, project_id: str) -> AppleA
     """The approval to release, once everything a release needs is there (else 403/409)."""
     if not services.settings.apple.allows(user.role, user.apple_allowed):
         raise HTTPException(403, "you may not build Apple apps on this server")
-    limit = services.settings.apple.minutes_per_month
-    if limit and await services.apple.minutes_used(user.id) >= limit:
+    limits = await services.entitlements.of(user)
+    if not limits.store_publishing:
+        raise HTTPException(403, "your plan does not include publishing to the stores")
+    limit = limits.mac_minutes
+    if limit is not None and await services.apple.minutes_used(user.id) >= limit:
         raise HTTPException(409, "your Mac minutes for this month are used up")
     async with services.db.session() as session:
         if await session.get(AppStoreKey, user.id) is None:

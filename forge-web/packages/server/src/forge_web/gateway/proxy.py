@@ -13,7 +13,7 @@ import socket
 import sys
 import tempfile
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +22,10 @@ import uvicorn
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from forge_web.billing.entitlements import Entitlements
 from forge_web.db.engine import Database
 from forge_web.db.models import Chat, UsageRecord, User
-from forge_web.gateway.keys import ChosenKey, choose_key
+from forge_web.gateway.keys import ChosenKey, choose_key, server_key_limit
 from forge_web.gateway.meter import CHARS_PER_TOKEN, Ledger, UsageSniffer, cost
 from forge_web.gateway.tokens import parse_token, run_token
 from forge_web.gateway.upstreams import (
@@ -45,6 +46,7 @@ log = logging.getLogger(__name__)
 MAX_BODY = 8 * 1024 * 1024
 MAX_SOCKET_PATH = 100
 ChatIsWorking = Callable[[str], bool]
+LimitsOf = Callable[[User], Awaitable[Entitlements]]
 
 
 class Refusal(Exception):
@@ -59,17 +61,29 @@ class Gateway:
     """Forwards model calls from sandboxes with the right key, within the user's limits."""
 
     def __init__(
-        self, db: Database, vault: Vault, settings: GatewaySettings, chat_is_working: ChatIsWorking
+        self,
+        db: Database,
+        vault: Vault,
+        settings: GatewaySettings,
+        chat_is_working: ChatIsWorking,
+        limits_of: LimitsOf | None = None,
     ) -> None:
         self.db = db
         self.vault = vault
         self.settings = settings
         self.chat_is_working = chat_is_working
+        # The user's limits (the entitlement engine); by default the gateway's own settings.
+        self.limits_of: LimitsOf = limits_of or self.server_limits
         self.key = vault.derive("gateway-token")
         self.ledger = Ledger(db)
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30))
         self._settling: set[asyncio.Task[None]] = set()
         self.routers: list[APIRouter] = []  # more endpoints for sandboxes (Apple builds)
+
+    async def server_limits(self, user: User) -> Entitlements:
+        """Without an entitlement engine: the server keys' grant and monthly limit only."""
+        limit = await server_key_limit(self.db, user, self.settings)
+        return Entitlements(source="server", ai_month_usd=limit, server_keys=limit is not None)
 
     def token_for(self, chat: Chat) -> str:
         """The run token a chat's worker uses."""
@@ -126,14 +140,17 @@ class Gateway:
             raise Refusal(400, "the request body is not JSON") from None
         if not isinstance(body, dict):
             raise Refusal(400, "the request body must be a JSON object")
-        key = await self._key(user, up)
+        limits = await self.limits_of(user)
+        key = await self._key(user, up, limits.server_keys)
         cap = prepare_body(up.kind, path, body, self.settings.max_output_tokens)
         model = model_of(up.kind, path, body)
         reserved = 0.0
         if key.kind == "server":
             reserved = cost(up.name, model, len(raw) // CHARS_PER_TOKEN, cap)
-            if not await self.ledger.reserve(user.id, reserved, key.limit_usd or 0.0):
-                raise Refusal(403, "Your monthly limit for the server's API keys is used up.")
+            refused = await self.ledger.reserve(user.id, reserved, limits.ai_month_usd,
+                                                chat.project_id, limits.ai_product_usd)  # fmt: skip
+            if refused:
+                raise Refusal(403, refused)
         headers = {k: v for k, v in request.headers.items() if k.lower() in FORWARD_HEADERS}
         headers.update(auth_headers(up.kind, key.secret), **{"accept-encoding": "identity"})
         params = {k: v for k, v in request.query_params.items() if k != "key"}
@@ -167,10 +184,10 @@ class Gateway:
             headers={"content-type": response.headers.get("content-type", "application/json")},
         )
 
-    async def _key(self, user: User, up: Upstream) -> ChosenKey:
+    async def _key(self, user: User, up: Upstream, server_keys: bool) -> ChosenKey:
         if up.keyless:
-            return ChosenKey(None, "none", None)
-        key = await choose_key(self.db, self.vault, user, up.name, self.settings)
+            return ChosenKey(None, "none")
+        key = await choose_key(self.db, self.vault, user, up.name, server_keys)
         if key is None:
             raise Refusal(
                 403,

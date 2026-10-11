@@ -18,7 +18,6 @@ class ChosenKey:
 
     secret: str | None
     kind: str  # own | server | none
-    limit_usd: float | None  # the monthly limit when the server pays
 
 
 def hint(secret: str) -> str:
@@ -79,14 +78,12 @@ async def server_key_limit(db: Database, user: User, settings: GatewaySettings) 
 
 
 async def choose_key(
-    db: Database, vault: Vault, user: User, provider: str, settings: GatewaySettings
+    db: Database, vault: Vault, user: User, provider: str, server_keys: bool
 ) -> ChosenKey | None:
     """The key for a call: the user's own, else the server's if allowed, else None."""
     for owner in (user.id, ""):
-        if owner == "":
-            limit = await server_key_limit(db, user, settings)
-            if limit is None:
-                return None
+        if owner == "" and not server_keys:  # what the user may use is the entitlements' call
+            return None
         async with db.session() as session:
             key = await session.scalar(
                 select(ApiKey).where(ApiKey.owner_id == owner, ApiKey.provider == provider)
@@ -97,6 +94,6 @@ async def choose_key(
                     update(ApiKey).where(ApiKey.id == key.id).values(last_used_at=time.time())
                 )
             if owner:
-                return ChosenKey(vault.decrypt(key.secret), "own", None)
-            return ChosenKey(vault.decrypt(key.secret), "server", limit)
+                return ChosenKey(vault.decrypt(key.secret), "own")
+            return ChosenKey(vault.decrypt(key.secret), "server")
     return None

@@ -1,7 +1,7 @@
 """Tables of billing (Phase E): the admin's Stripe keys and the events Stripe sent (W31), the
 catalog and its coupons (W32)."""
 
-from sqlalchemy import Boolean, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from forge_web.db.models import Base
@@ -85,3 +85,21 @@ class Coupon(Base):
     stripe_coupon: Mapped[str] = mapped_column(String(255), default="")
     stripe_promotion: Mapped[str] = mapped_column(String(255), default="")
     synced_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: a change waits for the sync
+
+
+class Subscription(Base):
+    """One item a customer pays for, as Stripe reports it (W33a): a plan, an add-on or hosting."""
+
+    __tablename__ = "billing_subscriptions"
+    __table_args__ = (Index("billing_subscriptions_by_user", "user_id", "status"),)
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)  # Stripe's subscription item
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    item_id: Mapped[str] = mapped_column(String(40))  # in the catalog
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32))  # Stripe's: active, trialing, past_due, …
+    interval: Mapped[str] = mapped_column(String(8), default="month")
+    stripe_subscription: Mapped[str] = mapped_column(String(255), default="")
+    current_period_end: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)

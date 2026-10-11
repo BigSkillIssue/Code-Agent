@@ -173,7 +173,7 @@ async def fill(services: Services, project: Project, user: User, ip: str) -> Non
     await services.runs.call(project.id, "git.init")
     if project.source == "git":
         await clone(services, project.id, user, project.source_url, ip)
-        limit = disk_limit(services)
+        limit = await disk_limit(services, project.id)
         used = await disk_use(services, project.id, fresh=True)
         if limit is not None and used > limit:
             raise HTTPException(

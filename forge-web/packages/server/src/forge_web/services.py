@@ -13,6 +13,7 @@ from forge_web.apple.release import Releases
 from forge_web.apple.submission import Submissions
 from forge_web.auth.oauth_providers import SignIn
 from forge_web.auth.ratelimit import AuthLimits
+from forge_web.billing.entitlements import EntitlementEngine
 from forge_web.billing.setup import Billing
 from forge_web.chats.runs import RunManager
 from forge_web.containers.driver import ContainerDriver
@@ -58,6 +59,7 @@ class Services:
     alerts: Alerts
     removals: Removals
     billing: Billing
+    entitlements: EntitlementEngine  # every limit of a user
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up
