@@ -59,6 +59,8 @@ def plain(value: Any) -> str:
     """One form value as Stripe reads it."""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else repr(value)  # 25.0 -> "25"
     return str(value)
 
 

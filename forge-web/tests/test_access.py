@@ -105,6 +105,8 @@ BODIES: dict[str, dict[str, Any]] = {
         "secret_key": "_".join(("sk", "test", "x" * 24)),
         "webhook_secret": "whsec_x" * 2,
     },
+    "ItemIn": {"kind": "plan", "name": "Pro", "amounts": {"month": 2900}},
+    "CouponIn": {"code": "LAUNCH", "name": "Launch", "percent_off": 10},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -244,6 +246,7 @@ def filled(path: str, world: World) -> str:
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
+        "item_id": "pro", "coupon_id": "launch",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

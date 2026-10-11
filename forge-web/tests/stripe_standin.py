@@ -1,6 +1,8 @@
-"""Stripe for the billing tests (W31): its API as an httpx transport that keeps the objects it
-made and answers each idempotency key once (a repeated key gets the first answer again, as Stripe
-does), can lose answers or fail on purpose; and Stripe's way of signing webhook events."""
+"""Stripe for the billing tests (W31, W32): its API as an httpx transport that keeps the objects
+it made (customers, products, prices, coupons, promotion codes) and answers each idempotency key
+once (a repeated key gets the first answer again, as Stripe does), can lose answers or fail on
+purpose, and refuses what Stripe refuses (a price's amount never changes); and Stripe's way of
+signing webhook events."""
 
 import hashlib
 import hmac
@@ -16,6 +18,8 @@ import httpx
 TEST_KEY = "_".join(("sk", "test", "standin0standin0standin0"))
 LIVE_KEY = "_".join(("sk", "live", "standin0standin0standin0"))
 WEBHOOK_SECRET = "_".join(("whsec", "standin0standin0standin0standin0"))
+MADE = {"/v1/customers": "cus", "/v1/products": "prod", "/v1/prices": "price",
+        "/v1/coupons": "coupon", "/v1/promotion_codes": "promo"}  # fmt: skip
 
 
 class StripeStandIn:
@@ -28,6 +32,7 @@ class StripeStandIn:
         self.answered: dict[str, httpx.Response] = {}  # idempotency key -> its first answer
         self.trouble: list[str | int] = []  # for the next calls: "down", "lost" or a status
         self.ids = itertools.count(1)
+        self.objects: dict[str, dict[str, Any]] = {}  # id -> what Stripe keeps
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self)
@@ -56,16 +61,48 @@ class StripeStandIn:
     def handle(self, request: httpx.Request) -> httpx.Response:
         params = dict(parse_qsl(request.content.decode())) if request.content else {}
         path = request.url.path
-        if request.method == "POST" and path == "/v1/customers":
-            self.effects.append(("POST", path, params))
-            customer = {"id": f"cus_{next(self.ids)}", "object": "customer",
-                        "email": params.get("email", "")}  # fmt: skip
-            return httpx.Response(200, json=customer)
+        if request.method == "DELETE":
+            self.effects.append(("DELETE", path, {}))
+            return httpx.Response(200, json={"deleted": True})
+        if request.method == "POST" and path in MADE:
+            return self.make(path, params)
+        folder, _, object_id = path.rpartition("/")
+        if request.method == "POST" and folder in MADE and object_id in self.objects:
+            return self.change(path, folder, object_id, params)
         if request.method == "POST" and path == "/v1/payment_intents":
             return error(402, "Your card was declined.", "card_declined")
         if request.method == "GET" and path == "/v1/balance":
             return httpx.Response(200, json={"object": "balance", "livemode": False})
         return error(404, f"Unrecognized request URL ({request.method}: {path}).")
+
+    def make(self, path: str, params: dict[str, str]) -> httpx.Response:
+        object_id = params.get("id") or f"{MADE[path]}_{next(self.ids)}"
+        if object_id in self.objects:
+            return error(400, f"{object_id} already exists", "resource_already_exists")
+        made = {"object": MADE[path], **params, "id": object_id,
+                "active": params.get("active", "true") != "false"}  # fmt: skip
+        self.objects[object_id] = made
+        self.effects.append(("POST", path, params))
+        return httpx.Response(200, json=made)
+
+    def change(
+        self, path: str, folder: str, object_id: str, params: dict[str, str]
+    ) -> httpx.Response:
+        if folder == "/v1/prices" and {"unit_amount", "currency", "recurring[interval]"} & set(
+            params
+        ):
+            return error(400, "A price's amount cannot be changed; make a new price.")
+        changed = self.objects[object_id]
+        changed.update(params)
+        changed["active"] = (
+            params.get("active", "true" if changed["active"] else "false") != "false"
+        )
+        self.effects.append(("POST", path, params))
+        return httpx.Response(200, json=changed)
+
+    def of(self, kind: str) -> list[dict[str, Any]]:
+        """The objects of one kind ("prod", "price", ...), in the order they were made."""
+        return [o for o in self.objects.values() if o["object"] == kind]
 
 
 def error(status: int, message: str, code: str = "") -> httpx.Response:

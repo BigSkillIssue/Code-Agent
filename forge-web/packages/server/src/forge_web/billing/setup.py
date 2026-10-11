@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from forge_web.billing.catalog import Catalog
 from forge_web.billing.events import Events
 from forge_web.billing.stripe_client import StripeClient, key_mode
 from forge_web.db.billing_models import BillingKeys
@@ -39,11 +40,12 @@ class StripeKeys:
 
 
 class Billing:
-    """Billing's parts: the keys, Stripe's client and its events."""
+    """Billing's parts: the keys, Stripe's client, its events and the catalog."""
 
     def __init__(self, db: Database, vault: Vault, settings: WebSettings) -> None:
         self.db, self.vault, self.settings = db, vault, settings
         self.events = Events(db)
+        self.catalog = Catalog(db)
         self.transport: httpx.AsyncBaseTransport | None = None  # tests: Stripe's stand-in
 
     async def keys(self) -> StripeKeys | None:

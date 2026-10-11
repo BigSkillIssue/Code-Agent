@@ -813,10 +813,14 @@ Steuerberater kommen, bleibt alles im **Testmodus**: Forge Web nimmt nur Testsch
 2. Im Stripe-Dashboard (Testmodus) unter **Entwickler → Webhooks** einen Endpunkt anlegen:
    `https://<deine Forge-Web-Adresse>/api/billing/stripe/webhook`. Stripe zeigt dann das
    **Signing secret** (`whsec_…`).
-3. In Forge Web unter **Verwaltung** den **Secret key** (`sk_test_…`, unter Entwickler →
-   API-Schlüssel) und das Signing secret eintragen (bis die Seite dafür da ist, mit
-   `PUT /api/admin/billing/stripe`). Beide liegen danach verschlüsselt in der Datenbank und werden
-   nie wieder angezeigt, nur ihre letzten vier Zeichen.
+3. In Forge Web unter **Verwaltung → Abrechnung** den **Secret key** (`sk_test_…`, unter
+   Entwickler → API-Schlüssel) und das Signing secret eintragen. Beide liegen danach verschlüsselt
+   in der Datenbank und werden nie wieder angezeigt, nur ihre letzten vier Zeichen.
+4. Darunter legst du den **Katalog** an: Tarife (monatlich und jährlich, mit Testzeitraum und
+   Grenzen wie Projekte, KI-Budget pro Monat und pro Produkt, gehostete Apps), einen Einmalpreis
+   pro App, Hosting pro App und Monat, Zusätze und Gutscheine. **Mit Stripe abgleichen** legt alles
+   bei Stripe an; ein geänderter Betrag wird dort ein neuer Preis, Entferntes wird archiviert, nie
+   gelöscht, damit laufende Abos weiter funktionieren.
 
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt

@@ -1,4 +1,5 @@
-"""Tables of billing (Phase E): the admin's Stripe keys and the events Stripe sent (W31)."""
+"""Tables of billing (Phase E): the admin's Stripe keys and the events Stripe sent (W31), the
+catalog and its coupons (W32)."""
 
 from sqlalchemy import Boolean, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -41,3 +42,46 @@ class BillingEvent(Base):
     outcome: Mapped[str] = mapped_column(
         Text, default=""
     )  # handled, ignored, superseded, failed: …
+
+
+class CatalogItem(Base):
+    """Something customers can buy (W32): a plan, an app's one-time price, hosting or an add-on."""
+
+    __tablename__ = "billing_items"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # the admin's name for it
+    kind: Mapped[str] = mapped_column(String(16))  # plan, app_once, hosting, addon
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    currency: Mapped[str] = mapped_column(String(3), default="eur")
+    amounts: Mapped[str] = mapped_column(Text, default="{}")  # interval -> cents
+    trial_days: Mapped[int] = mapped_column(Integer, default=0)
+    limits: Mapped[str] = mapped_column(Text, default="{}")  # what a plan allows (W33a)
+    version: Mapped[int] = mapped_column(Integer, default=1)  # counts the admin's changes
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)
+    archived_at: Mapped[float] = mapped_column(Float, default=0.0)  # removed by the admin
+    stripe_product: Mapped[str] = mapped_column(String(255), default="")
+    stripe_prices: Mapped[str] = mapped_column(Text, default="{}")  # interval -> id, amount
+    product_synced: Mapped[str] = mapped_column(String(32), default="")  # what Stripe has
+    synced_at: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Coupon(Base):
+    """A discount with a code (W32); its terms stay once Stripe has it."""
+
+    __tablename__ = "billing_coupons"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    percent_off: Mapped[float | None] = mapped_column(Float, nullable=True)
+    amount_off: Mapped[int | None] = mapped_column(Integer, nullable=True)  # cents
+    currency: Mapped[str] = mapped_column(String(3), default="eur")
+    duration: Mapped[str] = mapped_column(String(16), default="once")
+    duration_in_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    archived_at: Mapped[float] = mapped_column(Float, default=0.0)
+    stripe_coupon: Mapped[str] = mapped_column(String(255), default="")
+    stripe_promotion: Mapped[str] = mapped_column(String(255), default="")
+    synced_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: a change waits for the sync

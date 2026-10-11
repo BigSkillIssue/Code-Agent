@@ -276,8 +276,8 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: an `httpx` client for Stripe with idempotency keys; webhooks checked by HMAC and a timestamp window; every event stored once and handled in order; keys in the vault; test mode first.
     - Tests (against the stand-in): a retried call is not repeated; a wrong signature or an old timestamp is refused; a repeated event is handled once; events out of order are handled in order; keys are never logged or shown again.
     - Verify: `uv run pytest -q tests/test_stripe_client.py tests/test_stripe_webhooks.py`
-- [ ] **W32 — Catalog (admin)**
-    - Files: `forge_web/billing/catalog.py`, `frontend/src/pages/AdminBilling.tsx` (+ test), `tests/{test_billing_catalog,test_access}.py`
+- [x] **W32 — Catalog (admin)**
+    - Files: `forge_web/billing/{catalog,admin,setup,stripe_client}.py`, `forge_web/db/{billing_models.py,migrations/versions/0021_catalog.py}`, `frontend/src/{api/billing.ts,lib/texts/billing.ts,lib/i18n.ts,pages/Admin.tsx,pages/AdminBilling.tsx}` (+ test), `tests/{test_billing_catalog,stripe_standin,test_access}.py`
     - Build: plans (monthly, yearly), a one-time price per app, hosting per app and month, add-ons, trials and coupons, all set by the admin and synced to Stripe.
     - Tests: syncing twice changes nothing; a removed plan is archived at Stripe, not deleted; a price change makes a new price; only admins edit the catalog.
     - Verify: `uv run pytest -q tests/test_billing_catalog.py tests/test_access.py`
