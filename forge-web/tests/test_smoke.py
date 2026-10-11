@@ -70,3 +70,23 @@ def test_forge_mac_worker_version_command() -> None:
         check=True,
     )  # fmt: skip
     assert out.stdout.strip() == "forge-mac-worker 0.3.0"
+
+
+def test_the_host_worker_stands_apart() -> None:
+    # AGENTS.md rule 2: the host worker runs foreign apps on a server of its own; it takes nothing
+    # from Forge, the server or the sandbox, and the server takes only its wire format.
+    packages = Path(__file__).parents[1] / "packages"
+    server = re.compile(r"^(?:from|import) forge_hostworker\.(\w+)", re.MULTILINE)
+    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(f.read_text())}
+    assert used <= {"wire"}, used
+    other = re.compile(r"^(?:from|import) (forge_web|forge_sandbox|forge_macworker|forge)\b", re.M)
+    host = [f.name for f in (packages / "hostworker").rglob("*.py") if other.search(f.read_text())]
+    assert not host, host
+
+
+def test_forge_host_worker_version_command() -> None:
+    out = subprocess.run(
+        [sys.executable, "-m", "forge_hostworker", "--version"], capture_output=True, text=True,
+        check=True,
+    )  # fmt: skip
+    assert out.stdout.strip() == "forge-host-worker 0.1.0"

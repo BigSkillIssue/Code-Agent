@@ -1,22 +1,25 @@
-# Forge Web: the multi-user server and web UI for Forge. A uv workspace of three packages:
-#   packages/sandbox    -> forge-sandbox   (runs inside each project's container)
-#   packages/server     -> forge-web       (the server and the built web UI)
-#   packages/macworker  -> forge-macworker (runs on a Mac and builds Apple apps for the server)
+# Forge Web: the multi-user server and web UI for Forge. A uv workspace of four packages:
+#   packages/sandbox    -> forge-sandbox    (runs inside each project's container)
+#   packages/server     -> forge-web        (the server and the built web UI)
+#   packages/macworker  -> forge-macworker  (runs on a Mac and builds Apple apps for the server)
+#   packages/hostworker -> forge-hostworker (runs on a Linux host and runs the hosted apps)
 
 [tool.uv.workspace]
-members = ["packages/sandbox", "packages/server", "packages/macworker"]
+members = ["packages/sandbox", "packages/server", "packages/macworker", "packages/hostworker"]
 
 [tool.uv.sources]
 forge = { path = "..", editable = true }
 forge-sandbox = { workspace = true }
 forge-web = { workspace = true }
 forge-macworker = { workspace = true }
+forge-hostworker = { workspace = true }
 
 [dependency-groups]
 dev = [
     "forge-sandbox",
     "forge-web",
     "forge-macworker",
+    "forge-hostworker",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -27,7 +30,13 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["packages/sandbox/src", "packages/server/src", "packages/macworker/src", "tests"]
+src = [
+    "packages/sandbox/src",
+    "packages/server/src",
+    "packages/macworker/src",
+    "packages/hostworker/src",
+    "tests",
+]
 extend-exclude = ["*.md", "frontend"]
 
 [tool.ruff.lint]
@@ -47,8 +56,8 @@ ignore = [
 python_version = "3.12"
 strict = true
 # Forge itself is found from its source tree (it ships no py.typed marker).
-mypy_path = "packages/sandbox/src:packages/server/src:packages/macworker/src:../src"
-packages = ["forge_sandbox", "forge_web", "forge_macworker"]
+mypy_path = "packages/sandbox/src:packages/server/src:packages/macworker/src:packages/hostworker/src:../src"
+packages = ["forge_sandbox", "forge_web", "forge_macworker", "forge_hostworker"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

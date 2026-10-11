@@ -22,11 +22,13 @@ Work through `docs/STEPS.md` in order, record each step in `PROGRESS.md`, one co
    belongs to the agent engine itself is built in Forge, on `main`, as Forge steps (the user asked for this
    for Apple apps: S58–S60); everything else is built here on Forge's public modules. Forge's changes arrive
    from `main` through `forge-web-sync` (`scripts/sync-core.sh`); when one breaks Forge Web, fix Forge Web.
-2. **Three packages, one direction.** `forge_sandbox` (runs inside a project's container) never imports
+2. **Four packages, one direction.** `forge_sandbox` (runs inside a project's container) never imports
    `forge_web`. `forge_web` (the server) imports only the shared wire modules of the sandbox package —
    `frames`, `protocol`, `methods`, `mux`, `rpc`, `streams`, `fingerprint` — never the daemon, its services or
    the worker. `forge_macworker` (runs on a Mac that builds Apple apps) imports neither of them; the server
-   imports only its `wire` module. All may import Forge.
+   imports only its `wire` module. `forge_hostworker` (runs on a Linux host and runs the hosted apps, W25)
+   imports none of them and not even Forge (the host stays small); the server imports only its `wire`
+   module. The others may import Forge.
 3. **The container is hostile.** Every frame, event, path and number that comes out of a container is
    validated and size-limited. The server never trusts usage reported by a worker, never uses a path from a
    container on the host, and never runs git or any project code on the host.
@@ -62,7 +64,8 @@ highlight.js, @uiw/react-codemirror and language packs, diff, @xterm/xterm, @xte
 tailwindcss, vite, typescript, vitest, @testing-library/react, jsdom.
 
 External programs: `git` and `docker` (or `podman`) on the server; inside the sandbox image: Python, git,
-node, ripgrep; on a Mac worker: Xcode, XcodeGen, `tart` and `softnet` (Cirrus Labs).
+node, ripgrep; on a Mac worker: Xcode, XcodeGen, `tart` and `softnet` (Cirrus Labs); on a host worker:
+Docker with gVisor (`runsc`).
 
 ## Commands
 

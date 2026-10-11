@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "forge-hostworker",
     "forge-macworker",
     "forge-sandbox",
     "forge-web",
@@ -16,6 +17,7 @@ members = [
 
 [manifest.dependency-groups]
 dev = [
+    { name = "forge-hostworker", editable = "packages/hostworker" },
     { name = "forge-macworker", editable = "packages/macworker" },
     { name = "forge-sandbox", editable = "packages/sandbox" },
     { name = "forge-web", editable = "packages/server" },
@@ -930,6 +932,23 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "respx", specifier = ">=0.21" },
     { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
+name = "forge-hostworker"
+version = "0.1.0"
+source = { editable = "packages/hostworker" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=43" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.9" },
 ]
 
 [[package]]
