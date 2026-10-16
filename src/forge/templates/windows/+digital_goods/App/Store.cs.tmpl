@@ -1,0 +1,41 @@
+using Microsoft.UI.Xaml;
+using Windows.Services.Store;
+using WinRT.Interop;
+
+namespace @@namespace@@;
+
+/// <summary>Digital goods, sold as add-ons in the Microsoft Store (Store policy 10.8), never
+/// through a web checkout. Create the add-on in Partner Center with the product ID in
+/// <see cref="Pro"/>; the Store tells the app what was bought.</summary>
+public sealed class Store
+{
+    public const string Pro = "pro";
+
+    private readonly StoreContext context = StoreContext.GetDefault();
+
+    public Store(Window window)
+    {
+        // A desktop app names the window the Store's dialogs belong to.
+        InitializeWithWindow.Initialize(context, WindowNative.GetWindowHandle(window));
+    }
+
+    /// <summary>Whether the add-on with this product ID is bought and active.</summary>
+    public async Task<bool> OwnsAsync(string productId)
+    {
+        var license = await context.GetAppLicenseAsync();
+        return license.AddOnLicenses.Values.Any(found => found.IsActive && found.InAppOfferToken == productId);
+    }
+
+    /// <summary>Ask the Store to sell the add-on; whether it is owned afterwards.</summary>
+    public async Task<bool> BuyAsync(string productId)
+    {
+        var products = await context.GetAssociatedStoreProductsAsync(["Durable", "Consumable"]);
+        var product = products.Products.Values.FirstOrDefault(found => found.InAppOfferToken == productId);
+        if (product is null)
+        {
+            return false;
+        }
+        var result = await product.RequestPurchaseAsync();
+        return result.Status is StorePurchaseStatus.Succeeded or StorePurchaseStatus.AlreadyPurchased;
+    }
+}

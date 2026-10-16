@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything that is not UI, with the client of the server's API that Kiota generates into
+       Api/ from the server's snapshot whenever the snapshot changes. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>@@namespace@@.Core</RootNamespace>
+    <AssemblyName>@@namespace@@.Core</AssemblyName>
+    <Snapshot>$(MSBuildThisFileDirectory)../../server/openapi.json</Snapshot>
+    <KiotaArgs>generate --language CSharp --openapi &quot;$(Snapshot)&quot; --output Api --namespace-name @@namespace@@.Core.Api --class-name ApiClient --clean-output --exclude-backward-compatible --log-level Warning</KiotaArgs>
+@@if digital_goods@@
+    <!-- The app sells in the Microsoft Store (App/Store.cs), never through the web checkout. -->
+    <KiotaArgs>$(KiotaArgs) --exclude-path &quot;/api/payments/**&quot;</KiotaArgs>
+@@end@@
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Kiota.Bundle" Version="2.1.2" />
+  </ItemGroup>
+
+  <Target Name="GenerateApiClient" BeforeTargets="BeforeBuild" Inputs="$(Snapshot)" Outputs="Api/kiota-lock.json">
+    <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildThisFileDirectory).." EnvironmentVariables="KIOTA_TUTORIAL_ENABLED=false;KIOTA_OFFLINE_ENABLED=true" />
+    <Exec Command="dotnet tool run kiota $(KiotaArgs)" WorkingDirectory="$(MSBuildThisFileDirectory)" EnvironmentVariables="KIOTA_TUTORIAL_ENABLED=false;KIOTA_OFFLINE_ENABLED=true" />
+  </Target>
+
+  <Target Name="CompileApiClient" AfterTargets="GenerateApiClient" BeforeTargets="CoreCompile">
+    <!-- Files written during the build are not in the evaluated item list yet. -->
+    <ItemGroup>
+      <Compile Include="Api/**/*.cs" Exclude="@(Compile)" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -79,6 +79,11 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   app whose API client openapi-generator writes from `server/openapi.json` on every build, with
   sign-in and account deletion in the app, a Gradle wrapper and pinned versions; it builds on
   Linux. With `--digital-goods` it sells with Google Play Billing and its client has no web checkout.
+- **Windows app for a product:** `forge app new NAME --windows` adds a WinUI 3 app on .NET 10,
+  packaged as MSIX for the Microsoft Store, with a `Core` library whose API client Kiota generates
+  from `server/openapi.json` on every build, sign-in and account deletion in the app, tests and
+  pinned versions; it builds on Windows. With `--digital-goods` it sells Microsoft Store add-ons
+  and its client has no web checkout.
 
 ## 1.0.0 - 2026-10-05
 

@@ -415,7 +415,7 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: Kotlin + Jetpack Compose with a client from the OpenAPI snapshot, Play Billing for digital goods, account deletion in the app, a Gradle wrapper and pinned versions; builds on Linux.
     - Tests: placeholders filled, every file parses; under `fullstack` (JDK and Android SDK) the generated app builds and its tests pass.
     - Verify: `uv run pytest tests/test_android_template.py -q`
-- [ ] **S72 — Windows template** (with Forge Web's W38)
+- [x] **S72 — Windows template** (with Forge Web's W38)
     - Files: `src/forge/windows_template.py`, `src/forge/templates/windows/**.tmpl`, `src/forge/app_cli.py`, `.github/workflows/ci.yml` (Windows job under `fullstack`), `tests/test_windows_template.py`
     - Build: .NET 10 LTS + WinUI 3 packaged as MSIX (the Store signs it), a client from the OpenAPI snapshot, Store purchases for digital goods.
     - Tests: placeholders filled, project files parse as XML; on Windows under `fullstack` the generated app builds and its tests pass.
