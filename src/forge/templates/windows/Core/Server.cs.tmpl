@@ -1,0 +1,25 @@
+using Microsoft.Kiota.Abstractions.Authentication;
+using Microsoft.Kiota.Http.HttpClientLibrary;
+using @@namespace@@.Core.Api;
+
+namespace @@namespace@@.Core;
+
+/// <summary>Where the product's server runs, and a client of its API. Every release is tested
+/// against staging first; the Store build talks to production.</summary>
+public static class Server
+{
+    public static readonly Uri Staging = new("@@staging@@");
+    public static readonly Uri Production = new("@@production@@");
+
+    /// <summary>A client of the server at <paramref name="baseUrl"/>; it keeps the session
+    /// cookie the server sets at sign-in.</summary>
+    public static ApiClient Client(Uri baseUrl, HttpMessageHandler? handler = null)
+    {
+        var http = new HttpClient(handler ?? new HttpClientHandler { CookieContainer = new() });
+        var adapter = new HttpClientRequestAdapter(new AnonymousAuthenticationProvider(), httpClient: http)
+        {
+            BaseUrl = baseUrl.ToString().TrimEnd('/'),
+        };
+        return new ApiClient(adapter);
+    }
+}

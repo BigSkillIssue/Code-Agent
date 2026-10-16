@@ -1,0 +1,74 @@
+using Microsoft.Kiota.Abstractions;
+using Microsoft.UI.Xaml;
+using @@namespace@@.Core;
+using @@namespace@@.Core.Api;
+
+namespace @@namespace@@;
+
+/// <summary>Sign-in, and deleting the account (the Store requires that an app which makes
+/// accounts lets people delete them in the app).</summary>
+public sealed partial class MainWindow : Window
+{
+#if DEBUG
+    private readonly ApiClient client = Server.Client(Server.Staging);
+#else
+    private readonly ApiClient client = Server.Client(Server.Production);
+#endif
+@@if digital_goods@@
+    private readonly Store store;
+@@end@@
+
+    public MainWindow()
+    {
+        InitializeComponent();
+@@if digital_goods@@
+        store = new Store(this);
+@@end@@
+    }
+
+    private async void OnSignIn(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var user = await Account.SignInAsync(client, Email.Text, Password.Password);
+            Status.Text = $"Signed in as {user?.DisplayName}.";
+            DeleteButton.IsEnabled = true;
+@@if digital_goods@@
+            BuyPro.IsEnabled = !await store.OwnsAsync(Store.Pro);
+@@end@@
+        }
+        catch (ApiException error)
+        {
+            Status.Text = $"Signing in did not work ({error.ResponseStatusCode}).";
+        }
+        catch (HttpRequestException)
+        {
+            Status.Text = "The server cannot be reached; try again in a moment.";
+        }
+    }
+
+    private async void OnDelete(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Account.DeleteAsync(client, Password.Password);
+            Status.Text = "Your account and everything in it are deleted.";
+            DeleteButton.IsEnabled = false;
+        }
+        catch (ApiException error)
+        {
+            Status.Text = $"The account was not deleted ({error.ResponseStatusCode}).";
+        }
+        catch (HttpRequestException)
+        {
+            Status.Text = "The server cannot be reached; nothing was deleted.";
+        }
+    }
+@@if digital_goods@@
+
+    private async void OnBuyPro(object sender, RoutedEventArgs e)
+    {
+        BuyPro.IsEnabled = !await store.BuyAsync(Store.Pro);
+    }
+@@end@@
+}

@@ -12,8 +12,8 @@ from forge.local.local_executor import LocalExecutor
 from forge.ports import SandboxPolicy
 
 USAGE = """\
-forge app new NAME [--title T] [--payments] [--apple] [--android] [--digital-goods]
-                   [--apps-domain D]             a new product in ./NAME
+forge app new NAME [--title T] [--payments] [--apple] [--android] [--windows]
+                   [--digital-goods] [--apps-domain D]   a new product in ./NAME
 forge app dev [--database-url URL]               run it (on a throwaway PostgreSQL by default)
 forge app check [--database-url URL] [--json]    the fixed checks; .forge/out/app/checks.json"""
 # The user runs these commands themselves, like a shell command, so they run unsandboxed.
@@ -31,6 +31,7 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
     )
     parser.add_argument("--apple", action="store_true", help="new: with an Apple app")
     parser.add_argument("--android", action="store_true", help="new: with an Android app")
+    parser.add_argument("--windows", action="store_true", help="new: with a Windows app")
     parser.add_argument(
         "--digital-goods",
         action="store_true",
@@ -51,8 +52,9 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
 def features_of(args: argparse.Namespace) -> list[str]:
     """The optional parts `forge app new` was asked for."""
     wanted = {"payments": args.payments or args.digital_goods, "apple": args.apple,
-              "android": args.android, "digital_goods": args.digital_goods}  # fmt: skip
-    if args.digital_goods and not (args.apple or args.android):
+              "android": args.android, "windows": args.windows,
+              "digital_goods": args.digital_goods}  # fmt: skip
+    if args.digital_goods and not (args.apple or args.android or args.windows):
         wanted["apple"] = True  # digital goods are sold in an app store
     return [feature for feature, asked in wanted.items() if asked]
 
