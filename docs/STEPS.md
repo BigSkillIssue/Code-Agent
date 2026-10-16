@@ -400,8 +400,8 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: in `--app` runs, the `architect` role turns the refined request into a blueprint before planning: entities, API, auth, storage, clients, payments and hosting needs → `.forge/out/product/blueprint.json` and `docs/architecture.md` in the product. The planner makes one group of plan steps per component; the plan review reads the blueprint; the blueprint must agree with `forge.app.toml`.
     - Tests: a recorded request yields a valid blueprint; every component gets its group of steps; a blueprint with payments but none in the manifest is a problem; invalid JSON is retried once; the plan review receives the blueprint.
     - Verify: `uv run pytest tests/test_blueprint.py -q`
-- [ ] **S69 — Template payments module** (after Forge Web's W35)
-    - Files: `src/forge/templates/fullstack/server/payments/**.tmpl`, `src/forge/templates/fullstack/web/**.tmpl` (payment pages), `src/forge/app_template.py`, `tests/test_app_template.py`
+- [x] **S69 — Template payments module** (after Forge Web's W35)
+    - Files: `src/forge/templates/fullstack/+payments/{server,web}/**.tmpl` (the module, its migration, fake relay, tests, payment pages, API snapshot and typed client), `src/forge/templates/fullstack/{forge.app.toml,README.md,server/app/{main,settings,models,account}.py,web/src/{App,components/Layout}.tsx}.tmpl` (`@@if payments@@` blocks), `src/forge/app_template.py`, `src/forge/app_cli.py` (`--payments`), `README.md`, `CHANGELOG.md`, `tests/test_app_template.py`, `tests/fullstack/test_server_live.py`
     - Build: subscriptions and one-time purchases through Forge Web's payments relay (W35): the app holds only its relay token, never a Stripe key; an end-user cancellation page; a fake relay in the product's own tests; switched on by `payments` in `forge.app.toml`.
     - Tests: the module is written only when the manifest asks for payments; no Stripe key or Stripe package in the generated product; under `fullstack` the product's payment tests pass against its fake relay.
     - Verify: `uv run pytest tests/test_app_template.py -q`; `uv run pytest -m fullstack -q`

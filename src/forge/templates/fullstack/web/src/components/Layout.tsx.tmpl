@@ -15,8 +15,14 @@ export function Layout() {
           {APP_NAME}
         </Link>
         <nav>
+@@if payments@@
+          <Link to="/pricing">Pricing</Link>
+@@end@@
           {user ? (
             <>
+@@if payments@@
+              <Link to="/purchases">Purchases</Link>
+@@end@@
               <Link to="/account">Account</Link>
               <button type="button" onClick={signOut}>
                 Sign out

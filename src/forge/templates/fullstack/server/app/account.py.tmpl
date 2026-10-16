@@ -8,6 +8,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+@@if payments@@
+from app import payments
+@@end@@
 from app.models import Block, LoginSession, Report
 from app.security import verify_password
 from app.sessions import COOKIE, CurrentUser, Db
@@ -54,6 +57,9 @@ def export(user: CurrentUser, db: Db) -> dict[str, Any]:
             for r in reports
         ],
         "blocked_user_ids": [b.blocked_id for b in blocks],
+@@if payments@@
+        "purchases": payments.export_rows(db, user),
+@@end@@
     }
 
 
@@ -64,6 +70,9 @@ def delete_account(
     """Delete the account and everything that belongs to it."""
     if not verify_password(user.password_hash, body.password):
         raise HTTPException(status_code=403, detail="The password is wrong.")
+@@if payments@@
+    payments.end_subscriptions(request.app.state.payments, db, user)  # no charges after this
+@@end@@
     db.delete(user)
     db.commit()
     request.app.state.storage.delete(f"users/{user.id}/avatar")

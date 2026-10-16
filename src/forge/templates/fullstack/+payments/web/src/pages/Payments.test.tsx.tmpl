@@ -1,0 +1,67 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { App } from "../App";
+import { ADA, mockApi } from "../test/api";
+
+const OFFERS = [{ id: "lifetime", name: "Lifetime access", amount: 4900, currency: "eur", interval: null }];
+const SUBSCRIPTION = {
+  id: 7, offer: "pro-monthly", name: "Pro, every month", amount: 900, currency: "eur",
+  interval: "month", status: "paid", cancel_at_period_end: false, current_period_end: null,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+function open(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <App />
+    </MemoryRouter>,
+  );
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("payments", () => {
+  it("orders only with the box, by a button that says it costs money", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    const calls = mockApi(({ path }) => {
+      if (path === "/api/auth/me") return [200, ADA];
+      if (path === "/api/payments/offers") return [200, OFFERS];
+      if (path === "/api/payments/checkout") return [201, { purchase_id: 1, url: "https://checkout.stripe.test/cs_1" }];
+      return [404, { detail: "Not Found" }];
+    });
+    open("/pricing");
+    const order = await screen.findByRole("button", { name: "Order with obligation to pay" });
+    expect(screen.getByText(/49\.00 EUR once/)).toBeTruthy();
+    expect((order as HTMLButtonElement).disabled).toBe(true);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(order);
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/payments/checkout",
+      body: { offer: "lifetime", begin_now: true },
+    });
+    expect(assign).toHaveBeenCalledWith("https://checkout.stripe.test/cs_1");
+  });
+
+  it("cancels a subscription in two steps", async () => {
+    const calls = mockApi(({ method, path }) => {
+      if (path === "/api/auth/me") return [200, ADA];
+      if (path === "/api/payments/purchases") return [200, [SUBSCRIPTION]];
+      if (method === "POST" && path === "/api/payments/purchases/7/cancel") {
+        return [200, { ...SUBSCRIPTION, cancel_at_period_end: true, current_period_end: "2030-03-17T00:00:00Z" }];
+      }
+      return [404, { detail: "Not Found" }];
+    });
+    open("/purchases");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Cancel contracts here" }));
+    expect(calls.some((call) => call.method === "POST")).toBe(false); // the first step only asks
+    await user.click(screen.getByRole("button", { name: "Cancel now" }));
+    expect(await screen.findByText(/ends/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Cancel/ })).toBeNull();
+  });
+});

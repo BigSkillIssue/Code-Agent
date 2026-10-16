@@ -3,6 +3,10 @@ import { AuthProvider } from "./auth";
 import { Layout } from "./components/Layout";
 import { Account } from "./pages/Account";
 import { ForgotPassword, ResetPassword } from "./pages/Password";
+@@if payments@@
+import { Pricing } from "./pages/Pricing";
+import { Purchases } from "./pages/Purchases";
+@@end@@
 import { Home } from "./pages/Home";
 import { SignIn, SignUp } from "./pages/SignIn";
 
@@ -18,6 +22,10 @@ export function App() {
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="reset-password" element={<ResetPassword />} />
           <Route path="account" element={<Account />} />
+@@if payments@@
+          <Route path="pricing" element={<Pricing />} />
+          <Route path="purchases" element={<Purchases />} />
+@@end@@
         </Route>
       </Routes>
     </AuthProvider>

@@ -6,7 +6,11 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
+@@if payments@@
+from app import account, auth, moderation, payments
+@@else@@
 from app import account, auth, moderation
+@@end@@
 from app.db import make_engine
 from app.mail import Mailer, make_mailer
 from app.ratelimit import RateLimiter, rate_limit
@@ -35,11 +39,18 @@ def create_app(
     app.state.engine = make_engine(settings.database_url)
     app.state.mailer = mailer or make_mailer(settings.mail_relay_url, settings.mail_relay_token)
     app.state.storage = storage or LocalStorage(settings.storage_dir)
+@@if payments@@
+    relay = payments.make_relay(settings.payments_relay_url, settings.payments_relay_token)
+    app.state.payments = relay  # the tests put their fake relay here
+@@end@@
     app.state.limiter = RateLimiter(settings.requests_per_minute, settings.auth_requests_per_minute)
     app.middleware("http")(rate_limit)
     app.include_router(auth.router)
     app.include_router(account.router)
     app.include_router(moderation.router)
+@@if payments@@
+    app.include_router(payments.router)
+@@end@@
     app.add_api_route("/healthz", healthz, methods=["GET"], include_in_schema=False)
     return app
 

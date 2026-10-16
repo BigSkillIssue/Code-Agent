@@ -66,6 +66,11 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   entities, API, sign-in, storage, clients, payments and hosting needs, split into components
   (`.forge/out/product/blueprint.json` and `docs/architecture.md`); the planner makes one group
   of steps per component and fixes `forge.app.toml` where it lacks what the blueprint needs.
+- **Payments in products:** `forge app new NAME --payments` adds one-time purchases and
+  subscriptions through Forge Web's payments relay: the product holds only its relay token,
+  never a Stripe key; the order button says it costs money, the buyer agrees that the service
+  begins at once, subscriptions are cancelled in two steps on the purchases page, and a deleted
+  account leaves no subscription running. The product's own tests use a fake relay.
 
 ## 1.0.0 - 2026-10-05
 
