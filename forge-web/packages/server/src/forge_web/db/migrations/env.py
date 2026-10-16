@@ -5,6 +5,7 @@ from alembic import context
 from forge_web.db import (
     billing_models,  # noqa: F401  (its tables join Base's metadata)
     hosting_models,  # noqa: F401  (its tables join Base's metadata)
+    store_models,  # noqa: F401  (its tables join Base's metadata)
 )
 from forge_web.db.models import Base
 

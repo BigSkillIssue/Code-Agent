@@ -7,11 +7,13 @@ import contextlib
 import io
 import tarfile
 import tempfile
+import zipfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
+from forge_hostworker.android import bundle_path
 from forge_hostworker.backup import backup_key, outgoing
 from forge_hostworker.client import HostClient
 from forge_hostworker.wire import (
@@ -50,6 +52,7 @@ class HostStandIn:
         self.secrets: dict[str, dict[str, str]] = {}  # job id -> the secrets it opened
         self.archives: dict[str, bytes] = {}  # archive job id -> the backup it uploaded
         self.drilled: dict[str, bytes] = {}  # drill job id -> the backup it was given
+        self.bundles: dict[str, bytes] = {}  # android job id -> the bundle it uploaded
         self.results: dict[str, JobResult] = {}  # kind -> the answer instead of success
         self.holds: dict[str, asyncio.Event] = {}  # kind -> answered once this is set
         self.data_dir = Path(tempfile.mkdtemp(prefix="host-standin-"))  # where uploads wait
@@ -88,7 +91,23 @@ class HostStandIn:
             encrypt_file(backup_key(values), plain, sealed)  # with the key it was sent
             plain.unlink()
             self.archives[job.id] = sealed.read_bytes()
+        if job.kind == "android" and job.kind not in self.results and job.android is not None:
+            made = bundle_path(self.data_dir, job.id)
+            made.parent.mkdir(parents=True, exist_ok=True)
+            made.write_bytes(stand_in_bundle(job.android.version_code))
+            self.bundles[job.id] = made.read_bytes()
         return self.results.get(job.kind) or healthy(job)
+
+
+def stand_in_bundle(version_code: int) -> bytes:
+    """An unsigned bundle as Gradle makes it, but with a manifest in plain text (a real one is a
+    protocol buffer) that names the version code for the Google Play stand-in."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr("BundleConfig.pb", b"\x0a\x00")
+        bundle.writestr("base/manifest/AndroidManifest.xml", f"versionCode={version_code}\n")
+        bundle.writestr("base/dex/classes.dex", b"dex\n035\x00")
+    return buffer.getvalue()
 
 
 def healthy(job: HostJob) -> JobResult:

@@ -326,11 +326,21 @@ The apps take money from their own users. The template's payments module (S69) a
 
 Android before Windows (it builds on Linux and costs less). The templates are built in Forge on `main` (S71, S72).
 
-- [ ] **W37 — Android** (with S71)
+- [ ] **W37 — Android** (with S71), split in two:
     - Files: `forge_hostworker/android.py`, `forge_web/stores/{__init__,play}.py`, `tests/{play_standin,test_android_build,test_play_release}.py`
     - Build: a Gradle build in a Linux container; the Play Developer API with a service-account JWT (RS256); release only after the review gate. New personal Play accounts need a 14-day closed test with 12 testers; an organisation account (D-U-N-S) avoids it.
     - Tests: the build runs in a throwaway container without secrets; every token is checked by the stand-in; nothing is released without the approval; a personal account is told about the closed test.
     - Verify: `uv run pytest -q tests/test_android_build.py tests/test_play_release.py`
+- [x] **W37a — Android build on the host**
+    - Files: `forge_hostworker/{android,wire,runner,client,firewall}.py`, `forge_web/stores/{__init__,android,android_api}.py`, `forge_web/db/{store_models.py,migrations/versions/0029_android_builds.py}`, `forge_web/{settings,services,startup,app,projects}.py`, `forge_web/hosting/{hosts,deploy_api}.py`, `tests/{test_android_build,host_standin,test_access}.py`
+    - Build: an `android` host job: the newest approved commit, packed by the sandbox, built on the app's host with `./gradlew testReleaseUnitTest bundleRelease` in a throwaway gVisor container (read-only, no secrets, build network only, the admin's `hosting.android_image`); the unsigned bundle goes to `/api/host/jobs/<id>/artifact` and is kept on Forge Web; each build has the project's next version code.
+    - Tests: the container's flags (no env file, no secrets, build network); a missing app, a failed build and a missing bundle say why; end to end with the stand-in host (bundle download, version codes rise); 409 without an image, an approval, a host, or while a build runs; a restart waits for the same job.
+    - Verify: `uv run pytest -q tests/test_android_build.py`
+- [ ] **W37b — Google Play release**
+    - Files: `forge_web/stores/play.py`, `tests/{play_standin,test_play_release}.py`
+    - Build: the Play Developer API (androidpublisher v3) with the admin's service-account JWT (RS256): an edit, the bundle uploaded, a track release, the edit committed; only a build of an approved commit, only after the review gate; the upload-key signing; a personal account is told about the 14-day closed test with 12 testers.
+    - Tests: every token is checked by the stand-in; nothing is released without the approval; a personal account is told about the closed test.
+    - Verify: `uv run pytest -q tests/test_play_release.py`
 - [ ] **W38 — Windows** (with S72)
     - Files: `packages/winworker/` (the Mac-worker protocol on a Windows machine), `forge_web/stores/msstore.py`, `pyproject.toml` (workspace), `AGENTS.md` (package rule), `tests/{msstore_standin,test_winworker,test_msstore}.py`
     - Build: a Windows worker that builds MSIX packages; a submission through the Partner Center submission API (Entra ID); the Store signs the MSIX; direct downloads come later with Azure Trusted Signing.

@@ -16,6 +16,7 @@ from collections.abc import Callable
 Run = Callable[[list[str], str], int]  # argv, stdin -> exit code
 APP_POOL = "10.88.0.0/16"  # deploy/host/daemon.json: default-address-pools
 BUILD_SUBNET = "10.89.0.0/24"  # the forge-build network
+BUILD_NETWORK = "forge-build"  # every build container runs on it
 CHAIN = "FORGE-EGRESS"  # jumped to from DOCKER-USER
 HOST_CHAIN = "FORGE-HOST"  # jumped to from INPUT
 SOURCES = (APP_POOL, BUILD_SUBNET)

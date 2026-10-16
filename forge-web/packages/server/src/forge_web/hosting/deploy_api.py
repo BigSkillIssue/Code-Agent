@@ -117,7 +117,7 @@ def host_router() -> APIRouter:
             raise HTTPException(409, "this is not one of this host's archive jobs") from None
         limit = services.settings.hosting.max_backup_mb * 1024 * 1024
         size = await refused_unless(
-            services.hosts.store_archive(host.id, job_id, request.stream(), target, limit)
+            services.hosts.store_upload(host.id, job_id, "archive", request.stream(), target, limit)
         )
         return {"size": size}
 

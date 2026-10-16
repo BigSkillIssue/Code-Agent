@@ -43,6 +43,7 @@ from forge_web.quotas import enforce_disk
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
+from forge_web.stores.android import AndroidBuilds
 from forge_web.vault import Vault, load_master_key
 
 log = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     submissions = Submissions(releases)
     hosts = HostQueue(db, settings.data_dir, settings.hosting.job_grace_s)
     deploys = Deploys(db, vault, settings, hosts, runs.call)
+    android = AndroidBuilds(db, settings, hosts, runs.call, deploys.packing)
     backups = Backups(db, vault, settings, hosts)
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
@@ -159,11 +161,13 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
+        android=android,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
     await submissions.start()
     await deploys.start()
+    await android.start()  # and Android builds
     await removals.start()  # and so do deletions of apps
     if settings.billing.enabled:
         billing.events.start()  # Stripe's events that wait
@@ -263,6 +267,7 @@ async def stop_services(services: Services) -> None:
     await services.removals.close()
     await services.alerts.close()
     await services.backups.close()
+    await services.android.close()
     await services.deploys.close()
     await services.submissions.close()
     await services.releases.close()

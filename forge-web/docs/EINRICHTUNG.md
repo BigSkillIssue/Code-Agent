@@ -784,6 +784,23 @@ erreichbar werden. Forge Web nennt dafür einen TXT-Eintrag (`_forge-verify.<dom
 Zertifikat. Forge Web fragt das DNS über DNS-over-HTTPS (`dns_resolver` unter `[hosting]`,
 vorgegeben ist Cloudflare); der Forge-Web-Server braucht dafür Zugang nach außen.
 
+**Android-Apps:** Hat ein Produkt eine Android-App (`forge app new --android`), baut sie der
+App-Server der App, sobald sie einmal in Staging lief: in einem Wegwerf-Container mit gVisor, ohne
+Geheimnisse und nur mit dem Build-Netz (HTTP und HTTPS, für Maven, Google und Gradle). Erst laufen
+die Unit-Tests, dann entsteht das unsignierte Release-Bundle (AAB), das Forge Web aufbewahrt. Dafür
+trägst du unter `[hosting]` ein Docker-Image mit JDK 17 und dem Android SDK (Plattform 35,
+Build-Tools 34) ein, dem du vertraust, am besten mit festem Digest:
+
+```toml
+[hosting]
+android_image = "ghcr.io/cirruslabs/android-sdk:35@sha256:<digest>"
+max_bundle_mb = 500  # größere Bundles nimmt Forge Web nicht an
+```
+
+Ohne `android_image` baut Forge Web keine Android-Apps. Ein Build braucht 6 GB Arbeitsspeicher
+und 4 CPU-Kerne auf dem App-Server und darf eine Stunde dauern; jeder Build bekommt eine höhere
+Versionsnummer (`versionCode`), wie Google Play sie für jedes Hochladen verlangt.
+
 ### 11.8 Prüfen
 
 ```bash

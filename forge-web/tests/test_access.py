@@ -69,9 +69,13 @@ SANDBOX_PATHS = (
 )  # fmt: skip
 # Changing calls that viewers may make too (they change nothing in the project).
 VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}
-# Reads of a hosted app's data that only the project's owner may make (the world has no backup,
-# so the owner hears 404).
-OWNER_READS = {"GET /api/projects/{project_id}/hosting/backups/{backup_id}"}
+# Reads that only the project's owner (a backup of a hosted app's data) or its editors (an
+# Android bundle, for whoever may release it) may make; the world has neither, so the owner
+# hears 404.
+OWNER_READS = {
+    "GET /api/projects/{project_id}/hosting/backups/{backup_id}",
+    "GET /api/projects/{project_id}/android/builds/{build_id}/bundle",
+}
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -269,7 +273,7 @@ def filled(path: str, world: World) -> str:
         "host_id": "0" * 16, "app": "nobody",
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
         "item_id": "pro", "coupon_id": "launch", "kind": "terms", "checkout_id": "cs_1",
-        "subscription_id": "sub_1",
+        "subscription_id": "sub_1", "build_id": "0" * 32,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -318,7 +322,7 @@ async def test_people_are_no_macs(shared: World) -> None:
 async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
-    assert len(routes) == 6
+    assert len(routes) == 7  # poll, source, secrets, backup, bundle, metrics, result
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

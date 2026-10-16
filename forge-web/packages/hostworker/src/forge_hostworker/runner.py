@@ -19,11 +19,12 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
+from forge_hostworker.android import android_job
 from forge_hostworker.backup import archive_job, drill_job
 from forge_hostworker.build import SourceError, build_release, file_digest, hand_over, unpack
 from forge_hostworker.checks import Check
 from forge_hostworker.docker import Docker, HostError, hardened, require_runsc
-from forge_hostworker.firewall import BUILD_SUBNET
+from forge_hostworker.firewall import BUILD_NETWORK, BUILD_SUBNET
 from forge_hostworker.lifecycle import delete_app, live_logs, set_domains, start_live
 from forge_hostworker.metrics import usage
 from forge_hostworker.migrate import migrate_release
@@ -42,7 +43,6 @@ from forge_hostworker.wire import (
 
 HEALTH_TIMEOUT_S = 120
 CHANGES_WHAT_RUNS = ("release", "rollback", "stop", "start", "delete", "domains")  # edge reloads
-BUILD_NETWORK = "forge-build"
 PATH = "/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Health = Callable[[str, float], Awaitable[bool]]
 
@@ -150,6 +150,8 @@ class HostRunner:
             return JobResult(ok=False, error=f"the {job.kind} job came without its plan or source")
         if job.kind == "archive":
             return await archive_job(self, job, secret_values)
+        if job.kind == "android" and source is not None:
+            return await android_job(self, job, source)
         if job.kind == "restore_drill" and source is not None:
             return await drill_job(self, job, source, secret_values)
         if plan is not None and source is not None:

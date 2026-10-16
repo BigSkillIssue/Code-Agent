@@ -17,7 +17,9 @@ health, switch). `rollback`, `stop`, `start` and `logs` act on what runs. `archi
 encrypts the app's database and files for Forge Web (uploaded to `.../archive`) as a backup file
 (`encrypt_file`, which Forge Web opens with `decrypt_chunks` for an export), `restore_drill`
 restores such a backup (its source) into a throwaway database, `delete` removes the app from
-the host, and `domains` gives it the customer's own domains (verified by Forge Web).
+the host, and `domains` gives it the customer's own domains (verified by Forge Web). `android`
+builds the app's Android app from its source (W37a) and uploads the unsigned release bundle to
+`.../artifact`.
 """
 
 import base64
@@ -52,10 +54,10 @@ DOMAIN = re.compile(
 )  # a customer's own domain, in its plain form
 JobKind = Literal[
     "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
-    "restore_drill", "delete", "domains",
+    "restore_drill", "delete", "domains", "android",
 ]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
-WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill")  # a file to fetch
+WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill", "android")
 WITH_SECRETS: tuple[str, ...] = ("release", "archive", "restore_drill")  # sealed values to fetch
 
 
@@ -159,6 +161,14 @@ class DeployPlan(BaseModel):
         return self
 
 
+class AndroidBuild(BaseModel):
+    """What an `android` job builds with: the admin's build image and the upload's version."""
+
+    image: str = Field(pattern=IMAGE)  # JDK 17 and the Android SDK (platform 35, build-tools 34)
+    version_code: int = Field(ge=1, le=2_100_000_000)  # higher for every upload to Google Play
+    version_name: str = Field(pattern=r"^[0-9A-Za-z][0-9A-Za-z.-]{0,39}$")
+
+
 class HostJob(BaseModel):
     """One job for the worker (see the module's notes for the kinds)."""
 
@@ -168,6 +178,7 @@ class HostJob(BaseModel):
     environment: Environment
     plan: DeployPlan | None = None  # check, migrate and release jobs
     domains: list[str] = Field(default_factory=list, max_length=20)  # a domains job: all of them
+    android: AndroidBuild | None = None  # an android job
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
 
     _app = field_validator("app")(app_name)
@@ -187,6 +198,8 @@ class HostJob(BaseModel):
         if (self.kind in PLANNED) != (self.plan is not None):
             raise ValueError(f"a {self.kind} job needs a plan" if self.kind in PLANNED
                              else f"a {self.kind} job carries no plan")  # fmt: skip
+        if (self.kind == "android") != (self.android is not None):
+            raise ValueError("an android job, and only one, says what to build with")
         if self.plan is not None and (self.plan.app, self.plan.environment) != (
             self.app,
             self.environment,

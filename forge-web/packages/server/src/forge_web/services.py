@@ -30,6 +30,7 @@ from forge_web.hosting.removal import Removals
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
+from forge_web.stores.android import AndroidBuilds
 from forge_web.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class Services:
     billing: Billing
     entitlements: EntitlementEngine  # every limit of a user
     dunning: Dunning
+    android: AndroidBuilds
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

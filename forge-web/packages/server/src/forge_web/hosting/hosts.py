@@ -31,6 +31,7 @@ ONLINE_S = 120  # a host seen this recently counts as connected
 SOURCE = "source.tar.gz"
 RECHECK_S = 5.0  # waiting for a result also looks at the database this often
 REOFFER_AFTER_S = 30.0  # a job its host does not name as running this long after is offered again
+UPLOADS = {"archive": "a backup", "android": "a bundle"}  # what a job of this kind sends
 
 
 def link_or_copy(source: Path, target: Path) -> None:
@@ -210,13 +211,20 @@ class HostQueue:
             sealed, row.sealed = row.sealed, ""
         return SealedSecrets.model_validate_json(sealed)
 
-    async def store_archive(
-        self, host_id: str, job_id: str, parts: AsyncIterator[bytes], target: Path, limit: int
+    async def store_upload(
+        self,
+        host_id: str,
+        job_id: str,
+        kind: str,
+        parts: AsyncIterator[bytes],
+        target: Path,
+        limit: int,
     ) -> int:
-        """Keep an archive job's encrypted backup (it arrives before the job's report); bytes."""
+        """Keep what a running job of this kind made (it arrives before the job's report): an
+        archive job's encrypted backup, an android job's bundle; its bytes."""
         row = await self.running(host_id, job_id)
-        if row.kind != "archive":
-            raise JobGone("only an archive job sends a backup")
+        if row.kind != kind:
+            raise JobGone(f"only an {kind} job sends {UPLOADS[kind]}")
         target.parent.mkdir(parents=True, exist_ok=True)
         partial = target.with_suffix(".part")
         size = 0
@@ -225,7 +233,7 @@ class HostQueue:
                 size += len(part)
                 if size > limit:
                     partial.unlink(missing_ok=True)
-                    raise JobGone("the backup is larger than this server keeps")
+                    raise JobGone("the upload is larger than this server keeps")
                 await asyncio.to_thread(out.write, part)
         partial.replace(target)
         return size

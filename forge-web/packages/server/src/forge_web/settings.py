@@ -235,6 +235,13 @@ class HostingSettings(_Strict):
     max_backup_mb: int = Field(default=10_000, ge=1)
     # Customers' own domains (W30): their TXT records are looked up over DNS-over-HTTPS (JSON).
     dns_resolver: str = "https://cloudflare-dns.com/dns-query"
+    # Android builds on the hosts (W37a): an image with JDK 17 and the Android SDK (platform 35,
+    # build-tools 34), chosen by the admin ("": no Android builds), and the largest bundle kept.
+    android_image: str = Field(
+        default="", pattern=r"^$|^[a-z0-9][a-z0-9._/-]{0,199}(:[A-Za-z0-9._-]{1,128})?"
+        r"(@sha256:[0-9a-f]{64})?$"
+    )  # fmt: skip
+    max_bundle_mb: int = Field(default=500, ge=1)
 
 
 class BillingSettings(_Strict):

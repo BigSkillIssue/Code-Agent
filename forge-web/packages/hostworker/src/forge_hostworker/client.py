@@ -17,6 +17,7 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from forge_hostworker import __version__
+from forge_hostworker.android import bundle_path
 from forge_hostworker.backup import outgoing
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
@@ -30,6 +31,7 @@ from forge_hostworker.wire import (
     open_sealed,
 )
 
+UPLOADS = {"archive": "archive", "android": "artifact"}  # what a job uploads, and where
 log = logging.getLogger(__name__)
 USAGE_EVERY_S = 300.0
 
@@ -147,8 +149,8 @@ class HostClient:
                 if job.kind in WITH_SECRETS:
                     values = await self.secrets(job.id)
                 result = await asyncio.wait_for(self.runner.run(job, source, values), job.timeout_s)
-                if job.kind == "archive" and result.ok:
-                    await self.upload(job.id)
+                if job.kind in UPLOADS and result.ok:
+                    await self.upload(job)
             except TimeoutError:
                 result = JobResult(ok=False, error="the job took longer than its time limit")
             except Exception as err:  # the server must hear about every job it handed out
@@ -167,13 +169,15 @@ class HostClient:
                 async for chunk in reply.aiter_bytes():
                     out.write(chunk)
 
-    async def upload(self, job_id: str) -> None:
-        """Send an archive job's encrypted backup to Forge Web (it never stays on the host)."""
-        path = outgoing(self.runner.data_dir, job_id)
+    async def upload(self, job: HostJob) -> None:
+        """Send what a job made to Forge Web: an archive job's encrypted backup, an android
+        job's bundle (neither stays on the host)."""
+        made = bundle_path if job.kind == "android" else outgoing
+        path = made(self.runner.data_dir, job.id)
         try:
             with path.open("rb") as sealed:
                 reply = await self.http.post(
-                    f"/api/host/jobs/{job_id}/archive", content=chunks(sealed),
+                    f"/api/host/jobs/{job.id}/{UPLOADS[job.kind]}", content=chunks(sealed),
                     headers={"Content-Type": "application/octet-stream"},
                     timeout=httpx.Timeout(3600, connect=30),
                 )  # fmt: skip
