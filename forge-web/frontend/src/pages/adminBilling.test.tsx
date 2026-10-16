@@ -13,6 +13,9 @@ const pro: CatalogItem = {
 
 const mocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../api/billing", () => ({ billingAdmin: mocks.api }));
+const legalMocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
+vi.mock("../api/legal", async (original) => ({ ...(await original<object>()), legalAdmin: legalMocks.api }));
+const terms = (version: number) => ({ kind: "terms", version, title: "AGB", body: `Version ${version}`, published_at: 1_760_000_000 });
 
 beforeEach(() => {
   Object.assign(mocks.api, {
@@ -25,6 +28,10 @@ beforeEach(() => {
     putCoupon: vi.fn(async () => ({})),
     removeCoupon: vi.fn(async () => undefined),
     sync: vi.fn(async () => ({ created: ["product pro", "price pro/month"], updated: [], archived: [], unchanged: 2 })),
+  });
+  Object.assign(legalMocks.api, {
+    versions: vi.fn(async () => [terms(2), terms(1)]),
+    publish: vi.fn(async () => terms(3)),
   });
   useStore.setState({ error: "" });
 });
@@ -88,5 +95,20 @@ describe("the billing panel", () => {
         expect.objectContaining({ code: "LAUNCH_25", percent_off: 25, duration: "repeating", duration_in_months: 3 }),
       ),
     );
+  });
+
+  it("shows the current version of each legal text and publishes a new one", async () => {
+    render(<BillingTab />);
+    const texts = await screen.findByTestId("legal-texts");
+    expect(texts.textContent).toMatch(/(version|Version) 2/);
+    expect(texts.querySelector('a[href="/rechtstexte/terms"]')).toBeTruthy();
+    expect(texts.textContent).toMatch(/(not published yet|noch nicht veröffentlicht)/); // the other three
+    const body = (await screen.findByLabelText(/^(Text \(plain|Text \(reiner)/)) as HTMLTextAreaElement;
+    expect(body.value).toBe("Version 2"); // the current version, to change
+    fireEvent.change(screen.getByLabelText(/^Text$/), { target: { value: "privacy" } });
+    fireEvent.change(screen.getByLabelText(/^(Title|Titel)$/), { target: { value: " Datenschutz " } });
+    fireEvent.change(screen.getByLabelText(/^(Text \(plain|Text \(reiner)/), { target: { value: "Wir speichern wenig." } });
+    fireEvent.click(screen.getByRole("button", { name: /^(Publish as a new version|Als neue Version veröffentlichen)$/ }));
+    await waitFor(() => expect(legalMocks.api.publish).toHaveBeenCalledWith("privacy", "Datenschutz", "Wir speichern wenig."));
   });
 });

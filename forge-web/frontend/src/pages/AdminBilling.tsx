@@ -1,6 +1,7 @@
-// Billing administration (W31–W32): the Stripe keys (never shown again, only their mode and last
+// Billing administration (W31–W34): the Stripe keys (never shown again, only their mode and last
 // characters), the catalog customers buy from (plans with their limits, an app's one-time price,
-// hosting, add-ons), coupons, and the sync that brings Stripe in line with the catalog.
+// hosting, add-ons), coupons, the sync that brings Stripe in line with the catalog, and the legal
+// texts customers accept.
 
 import { type FormEvent, useCallback, useState } from "react";
 import {
@@ -12,6 +13,7 @@ import {
   type SyncReport,
 } from "../api/billing";
 import { t, type TextKey } from "../lib/i18n";
+import { LegalTextsSection } from "./Legal";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 
 const KINDS: Record<ItemKind, { text: TextKey; intervals: Interval[] }> = {
@@ -41,6 +43,7 @@ export function BillingTab() {
       <StripeSection />
       <CatalogSection />
       <CouponsSection />
+      <LegalTextsSection />
     </div>
   );
 }

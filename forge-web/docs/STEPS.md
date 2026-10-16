@@ -301,8 +301,8 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: unpaid → grace period → suspended → deleted after notice and an export.
     - Tests: every dunning stage at its date; nothing is deleted before the notice and the export.
     - Verify: `uv run pytest -q tests/test_dunning.py`
-- [ ] **W34 — Legal setup**
-    - Files: `forge_web/legal.py`, `forge_web/db/{models.py,migrations/versions/0015_legal.py}`, frontend pages, `tests/{test_legal,test_access}.py`
+- [x] **W34 — Legal setup**
+    - Files: `forge_web/legal.py`, `forge_web/db/{billing_models.py,migrations/versions/0026_legal.py}`, `forge_web/{settings,app}.py`, `forge_web/billing/checkout.py`, `frontend/src/{api/legal.ts,lib/texts/billing.ts,pages/Legal.tsx,pages/Billing.tsx,pages/AdminBilling.tsx}` (+ tests), `tests/{test_legal,vies_standin,test_checkout,test_access}.py`
     - Build: versioned AGB, privacy policy, data processing agreement (with TOMs and subprocessors) and AUP; every acceptance stored; a new version must be accepted again; the EU VAT ID checked (VIES). The texts come from the admin; Forge supplies only the mechanics.
     - Tests: nothing paid is possible before acceptance; a new version asks again; acceptances name the version and the time; a VAT ID is checked against the VIES stand-in.
     - Verify: `uv run pytest -q tests/test_legal.py tests/test_access.py`

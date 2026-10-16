@@ -1,12 +1,14 @@
 // A customer's plan and billing (W33a2): what they may use, the offers, and the order. The order
 // is placed here, with the price, the interval and the trial in view, the waiver of the right of
 // withdrawal (§356 (5) BGB) and a button that says the order costs money (§312j BGB); the card
-// goes to Stripe's own page, never to this server.
+// goes to Stripe's own page, never to this server. The legal texts are accepted first (W34).
 
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { billing, type Entitlements, type Interval, type MyBilling, type Offer } from "../api/billing";
+import { legal } from "../api/legal";
 import { t, type TextKey } from "../lib/i18n";
+import { LegalConsent, VatSection } from "./Legal";
 import { Button, date, Section, useAction, useLoaded } from "./parts";
 
 const money = (cents: number, currency: string) => `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
@@ -29,6 +31,8 @@ function shown(limits: Entitlements, key: keyof Entitlements): string {
 export function BillingPage() {
   const [mine] = useLoaded(useCallback(() => billing.me(), []));
   const [offers] = useLoaded(useCallback(() => billing.offers(), []));
+  const [accepted, reloadAccepted] = useLoaded(useCallback(() => legal.me(), []));
+  const ready = accepted !== null && accepted.missing.length === 0;
   const [query] = useSearchParams();
   const plan = mine?.entitlements.source.startsWith("plan:")
     ? (offers?.find((o) => `plan:${o.id}` === mine.entitlements.source)?.name ?? mine.entitlements.source.slice(5))
@@ -57,21 +61,25 @@ export function BillingPage() {
           </Section>
         )}
         {mine?.enabled && mine.subscriptions.length > 0 && <CancelSection mine={mine} />}
+        {mine?.enabled && accepted && accepted.missing.length > 0 && (
+          <LegalConsent missing={accepted.missing} onAccepted={reloadAccepted} />
+        )}
         {mine?.enabled && offers && offers.length > 0 && (
           <Section title={t("offersTitle")}>
             <ul className="space-y-3">
               {offers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} />
+                <OfferCard key={offer.id} offer={offer} ready={ready} />
               ))}
             </ul>
           </Section>
         )}
+        {mine?.enabled && accepted && <VatSection vat={accepted.vat} />}
       </div>
     </div>
   );
 }
 
-function OfferCard({ offer }: { offer: Offer }) {
+function OfferCard({ offer, ready }: { offer: Offer; ready: boolean }) {
   const intervals = (Object.keys(offer.amounts) as Interval[]).filter((i) => offer.amounts[i]);
   const [interval, choose] = useState<Interval>(intervals[0] ?? "month");
   const [waiver, setWaiver] = useState(false);
@@ -105,7 +113,7 @@ function OfferCard({ offer }: { offer: Offer }) {
         <span>{t("waiverBox")}</span>
       </label>
       <div className="mt-2">
-        <Button kind="primary" disabled={!waiver} onClick={() => void order()}>
+        <Button kind="primary" disabled={!waiver || !ready} onClick={() => void order()}>
           {t("orderButton")}
         </Button>
       </div>

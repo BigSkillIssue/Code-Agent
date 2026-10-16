@@ -44,6 +44,7 @@ def stripe() -> StripeStandIn:
 def server(tmp_path: Path, stripe: StripeStandIn) -> Iterator[LiveServer]:
     settings = dev_settings(tmp_path / "data")
     settings.billing.enabled = True
+    settings.billing.required_texts = []  # the legal texts and their acceptance: test_legal
     settings.auth.smtp.host, settings.auth.smtp.from_address = "smtp.example", "pay@example.com"
     with LiveServer(settings) as live:
         live.services.billing.transport = stripe.transport()

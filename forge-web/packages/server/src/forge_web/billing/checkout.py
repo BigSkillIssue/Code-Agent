@@ -31,6 +31,7 @@ from forge_web.billing.stripe_client import StripeClient, StripeError
 from forge_web.db.billing_models import BillingCustomer, CatalogItem, Checkout, Subscription
 from forge_web.db.engine import Database
 from forge_web.db.models import User
+from forge_web.legal import require_accepted
 from forge_web.services import Services, services_of
 from forge_web.settings import WebSettings
 
@@ -102,6 +103,7 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
     if not body.waiver:
         raise HTTPException(422, "confirm that the service begins now and the right of "
                                  "withdrawal then lapses")  # fmt: skip
+    await require_accepted(services.db, services.settings.billing.required_texts, user)
     client = await services.billing.client()
     if client is None or not services.settings.billing.enabled:
         raise HTTPException(409, "payments are not set up on this server")

@@ -19,6 +19,8 @@ const mine: MyBilling = {
 
 const mocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../api/billing", () => ({ billing: mocks.api }));
+const legalMocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
+vi.mock("../api/legal", async (original) => ({ ...(await original<object>()), legal: legalMocks.api }));
 
 beforeEach(() => {
   Object.assign(mocks.api, {
@@ -27,6 +29,11 @@ beforeEach(() => {
     checkout: vi.fn(async () => ({ url: "https://checkout.stripe.com/c/pay/cs_1" })),
     cancel: vi.fn(async () => ({ id: "x1", status: "done", received_at: 1_760_000_000, effective_at: 1_900_000_000 })),
     portal: vi.fn(async () => ({ url: "https://billing.stripe.com/p/session/bps_1" })),
+  });
+  Object.assign(legalMocks.api, {
+    me: vi.fn(async () => ({ missing: [], vat: null })),
+    accept: vi.fn(async () => ({ accepted: true })),
+    vat: vi.fn(async () => ({ vat_id: "DE123456789", valid: true, name: "Muster GmbH", address: "Berlin" })),
   });
   useStore.setState({ error: "" });
   vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
@@ -80,5 +87,48 @@ describe("the billing page", () => {
     expect((await screen.findByTestId("cancelled")).textContent).toMatch(/(takes effect|wird zum)/);
     fireEvent.click(screen.getByRole("button", { name: /^(Payment method and invoices|Zahlungsart und Rechnungen)$/ }));
     await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://billing.stripe.com/p/session/bps_1"));
+  });
+
+  it("asks for the current legal texts before the order, each with a link to read it", async () => {
+    const missing = [
+      { kind: "terms", version: 2, title: "AGB" },
+      { kind: "privacy", version: 1, title: "Datenschutz" },
+    ];
+    legalMocks.api.me.mockResolvedValueOnce({ missing, vat: null }).mockResolvedValue({ missing: [], vat: null });
+    open();
+    const consent = await screen.findByTestId("consent");
+    expect(consent.querySelector('a[href="/rechtstexte/terms"]')).toBeTruthy();
+    const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
+    fireEvent.click(screen.getByLabelText(/(right of withdrawal|Widerrufsrecht)/));
+    expect((order as HTMLButtonElement).disabled).toBe(true); // the texts first
+    const accept = screen.getByRole("button", { name: /^(Accept|Zustimmen)$/ });
+    fireEvent.click(screen.getByLabelText(/AGB \((version|Version) 2\)/));
+    expect((accept as HTMLButtonElement).disabled).toBe(true); // every text, not only one
+    fireEvent.click(screen.getByLabelText(/Datenschutz \((version|Version) 1\)/));
+    fireEvent.click(accept);
+    await waitFor(() => expect(legalMocks.api.accept).toHaveBeenCalledTimes(2));
+    expect(legalMocks.api.accept).toHaveBeenCalledWith("terms", 2);
+    expect(legalMocks.api.accept).toHaveBeenCalledWith("privacy", 1);
+    await waitFor(() => expect(screen.queryByTestId("consent")).toBeNull());
+    expect((order as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says which text is not published yet, and orders nothing then", async () => {
+    legalMocks.api.me.mockResolvedValue({ missing: [{ kind: "aup", version: 0, title: "aup" }], vat: null });
+    open();
+    expect((await screen.findByTestId("consent")).textContent).toMatch(/(not published yet|noch nicht veröffentlicht)/);
+    expect(screen.queryByRole("button", { name: /^(Accept|Zustimmen)$/ })).toBeNull();
+    fireEvent.click(screen.getByLabelText(/(right of withdrawal|Widerrufsrecht)/));
+    const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
+    expect((order as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("checks a VAT ID with VIES", async () => {
+    open();
+    const field = await screen.findByLabelText(/^(VAT ID|USt-IdNr\.) \(DE123456789\)$/);
+    fireEvent.change(field, { target: { value: " DE 123456789 " } });
+    fireEvent.click(screen.getByRole("button", { name: /^(Check|Prüfen)$/ }));
+    await waitFor(() => expect(legalMocks.api.vat).toHaveBeenCalledWith("DE 123456789"));
+    expect((await screen.findByTestId("vat-result")).textContent).toContain("Muster GmbH");
   });
 });

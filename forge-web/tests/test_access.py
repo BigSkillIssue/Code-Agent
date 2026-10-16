@@ -38,6 +38,8 @@ PUBLIC = {
     "POST /api/billing/stripe/webhook",
     # The cancellation button (§312k BGB) must work without signing in.
     "GET /kuendigen", "POST /kuendigen",
+    # The legal texts are public: customers read them before they accept them.
+    "GET /rechtstexte/{kind}",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -52,6 +54,7 @@ OWN = {
     "POST /api/me/appstore-key/check", "DELETE /api/me/appstore-key",
     "GET /api/billing/catalog", "GET /api/billing/me", "POST /api/billing/checkout",
     "POST /api/billing/cancel", "POST /api/billing/portal",
+    "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -113,6 +116,9 @@ BODIES: dict[str, dict[str, Any]] = {
     "CouponIn": {"code": "LAUNCH", "name": "Launch", "percent_off": 10},
     "CheckoutIn": {"item_id": "pro", "waiver": True},
     "CancelIn": {"contract": "pro"},
+    "TextIn": {"title": "Terms", "body": "The terms."},
+    "AcceptIn": {"kind": "terms", "version": 1},
+    "VatIn": {"vat_id": "DE123456789"},
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -252,7 +258,7 @@ def filled(path: str, world: World) -> str:
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
-        "item_id": "pro", "coupon_id": "launch",
+        "item_id": "pro", "coupon_id": "launch", "kind": "terms",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

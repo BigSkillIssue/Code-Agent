@@ -250,6 +250,14 @@ class BillingSettings(_Strict):
     grace_days: float = Field(default=14, gt=0)
     notice_after_days: float = Field(default=14, gt=0)  # after the suspension
     delete_after_days: float = Field(default=30, gt=0)  # after the notice, once exported
+    # Legal texts (W34): which the customer accepts before paying, and where VAT IDs are checked.
+    required_texts: list[Literal["terms", "privacy", "dpa", "aup"]] = [
+        "terms",
+        "privacy",
+        "dpa",
+        "aup",
+    ]
+    vies_url: str = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number"
 
 
 class WebSettings(_Strict):

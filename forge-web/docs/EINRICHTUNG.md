@@ -845,6 +845,16 @@ seine gehosteten Apps an. 14 Tage später legt es einen Export an und kündigt d
 bleiben. Wird bezahlt, laufen die Apps wieder. Die Fristen stehen unter `[billing]`
 (`grace_days`, `notice_after_days`, `delete_after_days`).
 
+**Rechtstexte:** Unter **Verwaltung → Abrechnung → Rechtstexte** fügst du die AGB, die
+Datenschutzerklärung, den Vertrag zur Auftragsverarbeitung (mit TOMs und Unterauftragsverarbeitern)
+und die Nutzungsregeln ein, so wie deine Anwältin oder dein Anwalt sie geschrieben hat (reiner
+Text). Jedes Speichern ist eine neue Version; jeder kann sie unter
+`https://<deine Forge-Web-Adresse>/rechtstexte/terms` (und `privacy`, `dpa`, `aup`) lesen.
+Bestellen kann ein Kunde erst, wenn er der aktuellen Version jedes Textes zugestimmt hat; nach einer
+neuen Version fragt Forge Web erneut. Jede Zustimmung wird mit Version und Uhrzeit gespeichert.
+Welche Texte Pflicht sind, steht unter `[billing]` in `required_texts`. Unternehmen tragen auf der
+Seite Tarif und Abrechnung ihre USt-IdNr. ein; Forge Web prüft sie beim VIES-Dienst der EU.
+
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.

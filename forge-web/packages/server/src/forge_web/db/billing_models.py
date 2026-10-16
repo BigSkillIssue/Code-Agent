@@ -165,3 +165,45 @@ class DunningCase(Base):
     stage: Mapped[str] = mapped_column(String(16))  # grace, suspended, noticed, deleted
     stage_at: Mapped[float] = mapped_column(Float)  # when it reached its stage
     closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # paid, or done
+
+
+class LegalText(Base):
+    """One version of a legal text the admin published (W34): terms, privacy, DPA or AUP."""
+
+    __tablename__ = "legal_texts"
+
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)  # as the admin wrote it; shown as plain text
+    published_at: Mapped[float] = mapped_column(Float)
+    published_by: Mapped[str] = mapped_column(String(32), default="")
+
+
+class LegalAcceptance(Base):
+    """A user's acceptance of one version of a legal text (W34)."""
+
+    __tablename__ = "legal_acceptances"
+    __table_args__ = (Index("legal_acceptances_by_user", "user_id", "kind", "version"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer)
+    accepted_at: Mapped[float] = mapped_column(Float)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+
+
+class VatCheck(Base):
+    """A customer's EU VAT ID and what VIES said about it (W34)."""
+
+    __tablename__ = "legal_vat_ids"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    vat_id: Mapped[str] = mapped_column(String(20))
+    valid: Mapped[bool] = mapped_column(Boolean, default=False)
+    name: Mapped[str] = mapped_column(Text, default="")  # as VIES registered it
+    address: Mapped[str] = mapped_column(Text, default="")
+    checked_at: Mapped[float] = mapped_column(Float)
