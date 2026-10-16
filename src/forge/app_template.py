@@ -78,8 +78,13 @@ def _collect(folder: Traversable, prefix: str, files: dict[str, str]) -> None:
         if entry.is_dir():
             _collect(entry, f"{prefix}{name}/", files)
         elif name.endswith(SUFFIX):
-            # bytes first: reading as text would turn a .bat file's CRLF line ends into LF
-            files[prefix + name.removesuffix(SUFFIX)] = entry.read_bytes().decode("utf-8")
+            files[prefix + name.removesuffix(SUFFIX)] = entry.read_text(encoding="utf-8")
+
+
+def encoded(path: str, text: str) -> bytes:
+    """A rendered file's bytes: LF line ends, except the CRLF a Windows batch file needs (a
+    template is read with LF whatever line ends the checkout gave it)."""
+    return (text.replace("\n", "\r\n") if path.endswith(".bat") else text).encode()
 
 
 def render(text: str, values: dict[str, str], features: Collection[str] = ()) -> str:
@@ -122,7 +127,7 @@ def app_files(
     values = {"name": name, "title": title or title_of(name),
               "clients": ", ".join(f'"{c}"' for c in clients)}  # fmt: skip
     files = {
-        path: render(text, values, features).encode()
+        path: encoded(path, render(text, values, features))
         for path, text in template_files(kind, features).items()
     }
     if "apple" in features:
@@ -144,7 +149,7 @@ def android_app(
               "production": f"https://{name}.{apps_domain}",
               "app_tags": android.app_tags(api_tags(snapshot))}  # fmt: skip
     own = [f for f in features if f == "digital_goods"]
-    made = {android.placed(path, package): render(text, values, own).encode()
+    made = {android.placed(path, package): encoded(path, render(text, values, own))
             for path, text in template_files(android.KIND, own).items()}  # fmt: skip
     made[android.WRAPPER] = android.wrapper_jar()
     return {f"android/{path}": data for path, data in made.items()}
