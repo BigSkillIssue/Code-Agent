@@ -15,8 +15,9 @@ android {
         applicationId = "@@package@@"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Every upload to Google Play needs a higher versionCode: Forge Web passes -PversionCode.
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0"
         // Every release goes to staging first; the Play Store build talks to production.
         buildConfigField("String", "API_STAGING", "\"@@staging@@\"")
         buildConfigField("String", "API_PRODUCTION", "\"@@production@@\"")
