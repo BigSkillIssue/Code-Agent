@@ -151,7 +151,8 @@ async def delete_project(request: Request, project: Project) -> None:
     services = services_of(request)
     await services.runs.forget_project(project.id)
     await services.driver.remove(project.id)
-    await asyncio.to_thread(shutil.rmtree, services.android.root / project.id, True)  # bundles
+    for kept in (services.android.root, services.windows.root):  # bundles and packages
+        await asyncio.to_thread(shutil.rmtree, kept / project.id, True)
     async with services.db.session() as session, session.begin():
         row = await session.get(Project, project.id)
         if row is not None:

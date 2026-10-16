@@ -915,3 +915,35 @@ Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens f�
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.
 
+
+## 13. Windows-Apps: einen Windows-Rechner anschließen (optional)
+
+Hat ein Produkt eine Windows-App (`forge app new --windows`), testet ein Windows-Rechner sie und
+verpackt sie als MSIX für den Microsoft Store (der Store signiert sie). Der Rechner verbindet sich
+selbst mit Forge Web, wie ein Mac; er braucht keinen offenen Port.
+
+Die Builds übersetzen den Code der Produkte auf diesem Rechner. Nimm deshalb eine **Windows-VM, die
+nur dafür da ist** (Windows 11, 8 GB RAM, 4 Kerne, 100 GB Platte), und setze sie regelmäßig auf
+einen sauberen Snapshot zurück. Auf ihr:
+
+1. Das **.NET 10 SDK** installieren (`winget install Microsoft.DotNet.SDK.10`) und Python 3.12.
+2. Den Dienst installieren: `pip install forge-winworker` (aus dem Wheel dieses Repositorys,
+   `uv build --package forge-winworker`).
+3. `forge-win-worker check` muss „this machine is ready“ melden.
+4. In Forge Web unter `[stores]` `windows_enabled = true` setzen und mit
+   `POST /api/admin/stores/windows/workers` (`{"name": "win-1"}`) einen Rechner anlegen; die
+   Antwort zeigt den Schlüssel **einmal**. Lege ihn in eine Datei, die nur der Dienst lesen kann.
+5. Starten:
+
+   ```powershell
+   forge-win-worker run --server https://forge.example.com --token-file C:\forge\win-token --direct
+   ```
+
+   `--direct` sagt, dass die Builds auf dem Rechner selbst laufen; ohne startet der Dienst nicht.
+   Als Dienst dauerhaft: mit der Aufgabenplanung beim Start ausführen lassen.
+
+Ein Build (`POST /api/projects/<id>/windows/builds`) nimmt den neuesten freigegebenen Commit, lässt
+die Tests der App laufen und verpackt sie mit der nächsten Versionsnummer (`1.0.<n>.0`). Das Paket
+(`.msixupload`) bleibt auf Forge Web; auf dem Windows-Rechner bleibt nichts. Ein Rechner, der sich
+eine Stunde (`windows_timeout_s`) nicht meldet, lässt den Build scheitern. Abschalten:
+`PATCH /api/admin/stores/windows/workers/<id>` mit `{"enabled": false}`.

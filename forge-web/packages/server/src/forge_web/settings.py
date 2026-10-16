@@ -270,11 +270,17 @@ class BillingSettings(_Strict):
 
 
 class StoreSettings(_Strict):
-    """The app stores beyond Apple's (W37b). Each maker publishes with their own account; these
-    are only where Google's API answers (tests point them at a stand-in)."""
+    """The app stores beyond Apple's (W37, W38). Each maker publishes with their own account;
+    Google's addresses are only here for tests, which point them at a stand-in."""
 
     play_api_url: str = "https://androidpublisher.googleapis.com"
     play_token_url: str = "https://oauth2.googleapis.com/token"
+    # Windows apps (W38a): tested and packaged on the admin's Windows machines
+    # (`forge-win-worker`), which connect to this server like the Macs do.
+    windows_enabled: bool = False
+    windows_timeout_s: float = Field(default=3_600, gt=0)  # one test and package run
+    windows_grace_s: float = Field(default=600, gt=0)  # a worker's report may take this longer
+    max_package_mb: int = Field(default=1_000, ge=1)
 
 
 class WebSettings(_Strict):

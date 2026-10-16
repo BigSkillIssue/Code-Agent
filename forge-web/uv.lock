@@ -13,6 +13,7 @@ members = [
     "forge-macworker",
     "forge-sandbox",
     "forge-web",
+    "forge-winworker",
 ]
 
 [manifest.dependency-groups]
@@ -21,6 +22,7 @@ dev = [
     { name = "forge-macworker", editable = "packages/macworker" },
     { name = "forge-sandbox", editable = "packages/sandbox" },
     { name = "forge-web", editable = "packages/server" },
+    { name = "forge-winworker", editable = "packages/winworker" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
@@ -1004,6 +1006,7 @@ dependencies = [
     { name = "forge-hostworker" },
     { name = "forge-macworker" },
     { name = "forge-sandbox" },
+    { name = "forge-winworker" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -1027,12 +1030,28 @@ requires-dist = [
     { name = "forge-hostworker", editable = "packages/hostworker" },
     { name = "forge-macworker", editable = "packages/macworker" },
     { name = "forge-sandbox", editable = "packages/sandbox" },
+    { name = "forge-winworker", editable = "packages/winworker" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 provides-extras = ["postgres"]
+
+[[package]]
+name = "forge-winworker"
+version = "0.1.0"
+source = { editable = "packages/winworker" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
 
 [[package]]
 name = "frozenlist"

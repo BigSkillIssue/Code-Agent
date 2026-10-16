@@ -72,12 +72,13 @@ SANDBOX_PATHS = (
 # Changing calls that viewers may make too (they change nothing in the project).
 VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}
 # Reads that only the project's owner (a backup of a hosted app's data) or its editors (an
-# Android bundle, plain or signed, for whoever may release it) may make; the world has none, so
-# the owner hears 404.
+# Android bundle, plain or signed, or a Windows package, for whoever may release it) may make;
+# the world has none, so the owner hears 404.
 OWNER_READS = {
     "GET /api/projects/{project_id}/hosting/backups/{backup_id}",
     "GET /api/projects/{project_id}/android/builds/{build_id}/bundle",
     "GET /api/projects/{project_id}/android/builds/{build_id}/signed",
+    "GET /api/projects/{project_id}/windows/builds/{build_id}/package",
 }
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
@@ -115,6 +116,9 @@ BODIES: dict[str, dict[str, Any]] = {
     # The Mac and the host workers' polls differ, so the schema names them by their modules.
     "forge_macworker__wire__PollRequest": {"free_slots": 1},
     "forge_hostworker__wire__PollRequest": {"free_slots": 1, "running": []},
+    "forge_winworker__wire__PollRequest": {"free_slots": 1},
+    "NewWorker": {"name": "Sneaky Windows machine"},
+    "WorkerChange": {"enabled": False},
     "HostUsage": {"disk_free_gb": 10, "apps": []},
     "ExportIn": {"environment": "staging"},
     "DomainIn": {"domain": "shop.example.org"},
@@ -259,6 +263,8 @@ def rule(method: str, path: str) -> str:
         return "mac"  # Mac workers, with their own tokens
     if path.startswith("/api/host/"):
         return "host"  # the hosts of apps, with their own tokens
+    if path.startswith("/api/win/"):
+        return "win"  # Windows workers, with their own tokens
     if path.startswith("/api/relay/"):
         return "relay"  # hosted apps sending mail and taking payments, with their relay tokens
     if "{project_id}" in path or "{chat_id}" in path:
@@ -278,7 +284,7 @@ def filled(path: str, world: World) -> str:
         "host_id": "0" * 16, "app": "nobody",
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
         "item_id": "pro", "coupon_id": "launch", "kind": "terms", "checkout_id": "cs_1",
-        "subscription_id": "sub_1", "build_id": "0" * 32,
+        "subscription_id": "sub_1", "build_id": "0" * 32, "worker_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -328,6 +334,16 @@ async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
     assert len(routes) == 7  # poll, source, secrets, backup, bundle, metrics, result
+    for method, path, model in routes:
+        status = await call(world.admin, method, filled(path, world), model)
+        assert status == 401, f"{method} {path} answered {status} to an admin's session"
+
+
+@on_shared_loop
+async def test_people_are_no_windows_workers(shared: World) -> None:
+    world = shared
+    routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "win"]
+    assert len(routes) == 4  # poll, source, package, result
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"
