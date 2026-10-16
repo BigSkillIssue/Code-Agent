@@ -13,6 +13,11 @@ from forge_web.app import create_app
 from forge_web.settings import WebSettings
 
 
+def text(path: Path) -> str:
+    """A source file's text (UTF-8 on every platform, as the code is written)."""
+    return path.read_text(encoding="utf-8")
+
+
 def test_versions() -> None:
     assert forge_web.__version__ == "0.1.0"
     assert forge_sandbox.__version__ == "0.1.0"
@@ -48,7 +53,7 @@ def test_the_server_imports_only_the_sandboxs_shared_modules() -> None:
     shared = {"frames", "protocol", "methods", "mux", "rpc", "streams", "fingerprint"}
     server = Path(__file__).parents[1] / "packages" / "server" / "src"
     pattern = re.compile(r"^(?:from|import) forge_sandbox\.(\w+)", re.MULTILINE)
-    used = {name for f in server.rglob("*.py") for name in pattern.findall(f.read_text())}
+    used = {name for f in server.rglob("*.py") for name in pattern.findall(text(f))}
     assert used and used <= shared, used - shared
 
 
@@ -57,10 +62,10 @@ def test_the_mac_worker_stands_apart() -> None:
     # worker (it runs on someone's Mac) takes nothing from the server or the sandbox.
     packages = Path(__file__).parents[1] / "packages"
     server = re.compile(r"^(?:from|import) forge_macworker\.(\w+)", re.MULTILINE)
-    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(f.read_text())}
+    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(text(f))}
     assert used == {"wire"}, used
     other = re.compile(r"^(?:from|import) (forge_web|forge_sandbox)\b", re.MULTILINE)
-    mac = [f.name for f in (packages / "macworker").rglob("*.py") if other.search(f.read_text())]
+    mac = [f.name for f in (packages / "macworker").rglob("*.py") if other.search(text(f))]
     assert not mac, mac
 
 
@@ -77,10 +82,10 @@ def test_the_host_worker_stands_apart() -> None:
     # from Forge, the server or the sandbox, and the server takes only its wire format.
     packages = Path(__file__).parents[1] / "packages"
     server = re.compile(r"^(?:from|import) forge_hostworker\.(\w+)", re.MULTILINE)
-    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(f.read_text())}
+    used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(text(f))}
     assert used <= {"wire"}, used
     other = re.compile(r"^(?:from|import) (forge_web|forge_sandbox|forge_macworker|forge)\b", re.M)
-    host = [f.name for f in (packages / "hostworker").rglob("*.py") if other.search(f.read_text())]
+    host = [f.name for f in (packages / "hostworker").rglob("*.py") if other.search(text(f))]
     assert not host, host
 
 

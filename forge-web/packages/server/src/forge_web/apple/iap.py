@@ -97,7 +97,8 @@ def verified(jws: str, now: datetime) -> dict[str, Any]:
 def check_chain(
     leaf: x509.Certificate, intermediate: x509.Certificate, root: x509.Certificate, now: datetime
 ) -> None:
-    """Leaf ← intermediate ← one of the trusted roots, all valid now, with Apple's marks."""
+    """The leaf signed by the intermediate, signed by a trusted root; all valid now, and the
+    leaf and the intermediate with Apple's marks."""
     if not any(root == trusted for trusted in TRUSTED_ROOTS):
         raise SignedByNobody("the chain does not end in Apple's root")
     try:
