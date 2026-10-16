@@ -19,6 +19,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 
 from forge import android_template as android
+from forge import windows_template as windows
 from forge.app_manifest import SLUG
 from forge.apple_client import client_files
 
@@ -27,7 +28,7 @@ SUFFIX = ".tmpl"
 NAME = re.compile(SLUG)
 TITLE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$")  # safe in code, JSON, TOML and HTML
 PLACEHOLDER = re.compile(r"@@([a-z_]+)@@")
-FEATURES = ("payments", "apple", "android", "digital_goods")  # `forge app new --payments ...`
+FEATURES = ("payments", "apple", "android", "windows", "digital_goods")  # `forge app new --...`
 APPS_DOMAIN = "apps.example.com"  # Forge Web's domain for hosted apps, until one is given
 OPTIONAL = "+"  # the folder of a feature's own files: templates/<kind>/+<feature>/
 
@@ -123,7 +124,7 @@ def app_files(
     apps_domain: str = APPS_DOMAIN,
 ) -> dict[str, bytes]:
     """The product's files as {relative path: bytes}."""
-    clients = ["web", *(c for c in ("apple", "android") if c in features)]
+    clients = ["web", *(c for c in ("apple", "android", "windows") if c in features)]
     values = {"name": name, "title": title or title_of(name),
               "clients": ", ".join(f'"{c}"' for c in clients)}  # fmt: skip
     files = {
@@ -136,6 +137,8 @@ def app_files(
     if "android" in features:
         files |= android_app(name, values["title"], files["server/openapi.json"], features,
                              apps_domain)  # fmt: skip
+    if "windows" in features:
+        files |= windows_app(name, values["title"], features, apps_domain)
     return files
 
 
@@ -153,6 +156,20 @@ def android_app(
             for path, text in template_files(android.KIND, own).items()}  # fmt: skip
     made[android.WRAPPER] = android.wrapper_jar()
     return {f"android/{path}": data for path, data in made.items()}
+
+
+def windows_app(
+    name: str, title: str, features: Collection[str], apps_domain: str
+) -> dict[str, bytes]:
+    """The product's Windows app (S72), in `windows/`: a client of its server's API."""
+    values = {"name": name, "title": title, "namespace": windows.namespace_of(title),
+              "staging": f"https://{name}.staging.{apps_domain}",
+              "production": f"https://{name}.{apps_domain}"}  # fmt: skip
+    own = [f for f in features if f == "digital_goods"]
+    made = {path: encoded(path, render(text, values, own))
+            for path, text in template_files(windows.KIND, own).items()}  # fmt: skip
+    made |= {f"App/{path}": data for path, data in windows.logos().items()}
+    return {f"windows/{path}": data for path, data in made.items()}
 
 
 def api_tags(snapshot: bytes) -> list[str]:

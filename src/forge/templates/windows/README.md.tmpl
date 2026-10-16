@@ -1,0 +1,25 @@
+# @@title@@ for Windows
+
+A WinUI 3 app on .NET 10, packaged as MSIX for the Microsoft Store, which signs it.
+
+- `App/`: the app: sign-in and account deletion.
+@@if digital_goods@@
+- `App/Store.cs`: digital goods, sold as add-ons in the Microsoft Store (Store policy 10.8),
+  never through a web checkout; the API client leaves the payments operations out.
+@@end@@
+- `Core/`: everything that is not UI, including the client of the server's API. Kiota generates it
+  into `Core/Api` from `../server/openapi.json` on every build (`dotnet tool restore` first), so it
+  always matches the server's snapshot; it is not committed.
+- `Tests/`: the tests of `Core`.
+
+On Windows with the .NET 10 SDK:
+
+```powershell
+dotnet test Tests/Tests.csproj
+dotnet build App/App.csproj -p:Platform=x64
+dotnet publish App/App.csproj -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+    -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false
+```
+
+`Core/Server.cs` says where the server runs: staging while the app is tested, production in the
+Store build. Replace the logos in `App/Assets` with your own before the first submission.
