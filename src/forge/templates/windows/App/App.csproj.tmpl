@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The WinUI 3 app, packaged as one MSIX (the Microsoft Store signs it). -->
+  <!-- The WinUI 3 app, published as a folder of its own (with .NET and the Windows App SDK) that
+       Velopack turns into an installer, a ZIP to run without installing, and updates from the
+       product's website. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
@@ -7,31 +9,30 @@
     <RootNamespace>@@namespace@@</RootNamespace>
     <AssemblyName>@@namespace@@</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>App.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <WindowsPackageType>MSIX</WindowsPackageType>
-    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <!-- Program.cs starts the app, so Velopack runs before any window opens. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\*.png" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Core/Core.csproj" />
-  </ItemGroup>
-
-  <!-- Lets Visual Studio deploy and debug the app as a package. -->
-  <ItemGroup>
-    <ProjectCapability Include="Msix" />
   </ItemGroup>
 </Project>

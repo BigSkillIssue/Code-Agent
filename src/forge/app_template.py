@@ -161,14 +161,15 @@ def android_app(
 def windows_app(
     name: str, title: str, features: Collection[str], apps_domain: str
 ) -> dict[str, bytes]:
-    """The product's Windows app (S72), in `windows/`: a client of its server's API."""
+    """The product's Windows app (S72, S73), in `windows/`: a client of its server's API,
+    downloaded from the product's website."""
     values = {"name": name, "title": title, "namespace": windows.namespace_of(title),
               "staging": f"https://{name}.staging.{apps_domain}",
               "production": f"https://{name}.{apps_domain}"}  # fmt: skip
-    own = [f for f in features if f == "digital_goods"]
+    own = [f for f in features if f == "payments"]  # it sells on the website, not in a store
     made = {path: encoded(path, render(text, values, own))
             for path, text in template_files(windows.KIND, own).items()}  # fmt: skip
-    made |= {f"App/{path}": data for path, data in windows.logos().items()}
+    made[windows.ICON] = windows.icon()
     return {f"windows/{path}": data for path, data in made.items()}
 
 

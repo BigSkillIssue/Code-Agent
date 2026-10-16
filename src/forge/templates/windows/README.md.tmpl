@@ -1,11 +1,13 @@
 # @@title@@ for Windows
 
-A WinUI 3 app on .NET 10, packaged as MSIX for the Microsoft Store, which signs it.
+A WinUI 3 app on .NET 10. People download it from the product's website
+(`https://@@name@@.<apps domain>/downloads`): an installer, or a ZIP to run without installing.
+Both update themselves from the website, which [Velopack](https://velopack.io) makes possible.
 
-- `App/`: the app: sign-in and account deletion.
-@@if digital_goods@@
-- `App/Store.cs`: digital goods, sold as add-ons in the Microsoft Store (Store policy 10.8),
-  never through a web checkout; the API client leaves the payments operations out.
+- `App/`: the app: sign-in, account deletion and updates (`App/Updates.cs`).
+@@if payments@@
+- Plans and prices open the website's pricing page: people buy there, with its order button and
+  their right of withdrawal, and the app sees the purchases on their account.
 @@end@@
 - `Core/`: everything that is not UI, including the client of the server's API. Kiota generates it
   into `Core/Api` from `../server/openapi.json` on every build (`dotnet tool restore` first), so it
@@ -15,11 +17,19 @@ A WinUI 3 app on .NET 10, packaged as MSIX for the Microsoft Store, which signs 
 On Windows with the .NET 10 SDK:
 
 ```powershell
+dotnet tool restore
 dotnet test Tests/Tests.csproj
-dotnet build App/App.csproj -p:Platform=x64
-dotnet publish App/App.csproj -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
-    -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false
+dotnet publish App/App.csproj -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -o publish
+dotnet tool run vpk pack --packId @@namespace@@ --packVersion 1.0.1 --packDir publish `
+    --mainExe @@namespace@@.exe --packTitle "@@title@@" --icon App/App.ico --runtime win-x64 `
+    --outputDir releases
 ```
 
+`releases/` then holds `@@namespace@@-win-Setup.exe` (the installer),
+`@@namespace@@-win-Portable.zip` (the ZIP), and the files the updates need. Forge Web does all of
+this on its Windows machines, signs the files when a signing machine is set up, and puts them on
+the website after an admin's approval. Every version must be higher than the one before.
+
 `Core/Server.cs` says where the server runs: staging while the app is tested, production in the
-Store build. Replace the logos in `App/Assets` with your own before the first submission.
+release build, and where the website offers the downloads. Replace `App/App.ico` with your own
+icon.

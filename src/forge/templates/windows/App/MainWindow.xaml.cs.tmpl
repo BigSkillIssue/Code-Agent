@@ -5,8 +5,8 @@ using @@namespace@@.Core.Api;
 
 namespace @@namespace@@;
 
-/// <summary>Sign-in, and deleting the account (the Store requires that an app which makes
-/// accounts lets people delete them in the app).</summary>
+/// <summary>Sign-in, deleting the account (an app that makes accounts lets people delete them in
+/// the app), and the update the product's website offers.</summary>
 public sealed partial class MainWindow : Window
 {
 #if DEBUG
@@ -14,16 +14,43 @@ public sealed partial class MainWindow : Window
 #else
     private readonly ApiClient client = Server.Client(Server.Production);
 #endif
-@@if digital_goods@@
-    private readonly Store store;
-@@end@@
+    private readonly Updates updates = new();
 
     public MainWindow()
     {
         InitializeComponent();
-@@if digital_goods@@
-        store = new Store(this);
-@@end@@
+        _ = LookForUpdateAsync();
+    }
+
+    private async Task LookForUpdateAsync()
+    {
+        try
+        {
+            var version = await updates.CheckAsync();
+            if (version is not null)
+            {
+                UpdateButton.Content = $"Update to version {version} and restart";
+                UpdateButton.Visibility = Visibility.Visible;
+            }
+        }
+        catch (Exception)
+        {
+            // No update today (offline, or the website is away); the app works on as it is.
+        }
+    }
+
+    private async void OnUpdate(object sender, RoutedEventArgs e)
+    {
+        UpdateButton.IsEnabled = false;
+        try
+        {
+            await updates.ApplyAsync();
+        }
+        catch (Exception)
+        {
+            Status.Text = "The update could not be downloaded; try again later.";
+            UpdateButton.IsEnabled = true;
+        }
     }
 
     private async void OnSignIn(object sender, RoutedEventArgs e)
@@ -33,9 +60,6 @@ public sealed partial class MainWindow : Window
             var user = await Account.SignInAsync(client, Email.Text, Password.Password);
             Status.Text = $"Signed in as {user?.DisplayName}.";
             DeleteButton.IsEnabled = true;
-@@if digital_goods@@
-            BuyPro.IsEnabled = !await store.OwnsAsync(Store.Pro);
-@@end@@
         }
         catch (ApiException error)
         {
@@ -64,11 +88,13 @@ public sealed partial class MainWindow : Window
             Status.Text = "The server cannot be reached; nothing was deleted.";
         }
     }
-@@if digital_goods@@
+@@if payments@@
 
-    private async void OnBuyPro(object sender, RoutedEventArgs e)
+    private async void OnPricing(object sender, RoutedEventArgs e)
     {
-        BuyPro.IsEnabled = !await store.BuyAsync(Store.Pro);
+        // Buying happens on the product's website, with its order button and the right to
+        // withdraw; the app then sees the purchases on the account.
+        await Windows.System.Launcher.LaunchUriAsync(Server.Pricing);
     }
 @@end@@
 }

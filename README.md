@@ -79,8 +79,8 @@ forge apple new NAME       a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 forge app new NAME         a full-stack product: server, database, docs, tests and CI
                            (--payments: it sells through Forge Web's payments relay;
                            --apple, --android, --windows: with native apps;
-                           --digital-goods: sold with StoreKit 2, Google Play Billing
-                           and Microsoft Store add-ons)
+                           --digital-goods: sold with StoreKit 2 and Google Play
+                           Billing; the Windows app is downloaded from the website)
 forge app dev | check      run a product locally / run its fixed checks
 ```
 

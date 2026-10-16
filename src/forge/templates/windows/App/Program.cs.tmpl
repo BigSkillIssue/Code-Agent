@@ -1,0 +1,23 @@
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Velopack;
+
+namespace @@namespace@@;
+
+/// <summary>Starts the app. Velopack goes first: when the installer, an update or the uninstaller
+/// starts the app, it does its work and exits before any window opens.</summary>
+public static class Program
+{
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        VelopackApp.Build().Run();
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+        Application.Start(_ =>
+        {
+            var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+            SynchronizationContext.SetSynchronizationContext(context);
+            _ = new App();
+        });
+    }
+}

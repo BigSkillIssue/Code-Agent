@@ -62,7 +62,7 @@ implement, gate + verify, PROGRESS.md, one commit, push, check CI. Report in Ger
 6. **Stack der erzeugten Produkte** (Standard, für Menschen gut weiterzuentwickeln): Server Python 3.12 +
    FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL 16; Web React + Vite + TypeScript mit typisiertem Client aus
    OpenAPI; Apple Swift/SwiftUI (vorhanden); Android Kotlin + Jetpack Compose; Windows .NET 10 LTS +
-   WinUI 3 (MSIX). **Android vor Windows** (baut unter Linux, billiger).
+   WinUI 3 (Download von der Produkt-Website, S73). **Android vor Windows** (baut unter Linux, billiger).
 
 ## Architektur in einem Bild
 
@@ -206,6 +206,11 @@ Kunde ──▶ Forge Web (Chat, Vorschau, Freigaben, Abrechnung) ──▶ Sand
   `packages/winworker/` (Mac-worker protocol on a Windows machine), `forge_web/stores/msstore.py` (Partner
   Center submission API, Entra ID), `tests/msstore_standin.py`. The Store signs MSIX; direct download later with
   Azure Trusted Signing.
+- [x] **S73 / W39 — Windows ohne Microsoft Store** (Wunsch des Nutzers nach W38: die Apps werden von der
+  Produkt-Website geladen) · Vorlage ohne MSIX und Store-Käufe; Velopack macht einen Installer
+  (`…-Setup.exe`), ein ZIP zum direkten Start und Updates von `https://<app>/downloads/windows`. Forge Web
+  entfernt den Store-Weg (W38b), der Windows-Rechner testet und baut, ein eigener Signier-Rechner (der nie
+  fremden Code ausführt) signiert, nach Admin-Freigabe liefert der Edge jeder App `/downloads` aus Forge Web.
 
 ## Was nur der Nutzer liefern kann (der Agent fragt erst, wenn der Schritt es braucht)
 
@@ -213,7 +218,8 @@ Kunde ──▶ Forge Web (Chat, Vorschau, Freigaben, Abrechnung) ──▶ Sand
   Windows-Rechner/VM für W38; Off-Site-Speicher für Backups.
 - **Domains:** eigene Apps-Domain mit Wildcard-DNS (+ Eintrag in die Public Suffix List).
 - **Konten:** Stripe (mit Connect und Steuer-Registrierungen), Mail-Anbieter mit eigener Absender-Domain,
-  Google Play (Organisation empfohlen), Microsoft Partner Center + Entra-ID-App, Apple (vorhanden geplant).
+  Google Play (Organisation empfohlen), Apple (vorhanden geplant); für Windows optional ein
+  Code-Signing-Zertifikat (z. B. Azure Artifact Signing) auf einem eigenen Signier-Rechner.
 - **Rechtstexte (Anwalt/Steuerberater):** AGB, Datenschutz, Impressum, AV-Vertrag, AUP, Widerrufsbelehrung,
   DSA-Kontaktstelle; Kleinunternehmer/OSS, E-Rechnung (B2B ab 2027/28).
 - **Entscheidungen:** die sechs Grundentscheidungen oben bestätigen oder ändern.

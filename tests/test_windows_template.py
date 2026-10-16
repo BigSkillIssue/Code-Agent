@@ -1,7 +1,8 @@
-"""The Windows app of a full-stack product (S72): WinUI 3 on .NET 10, packaged as MSIX, with a
-client of the server's API that Kiota generates from its snapshot on every build, sign-in and
-account deletion in the app, and Microsoft Store purchases for digital goods. Built for real on
-Windows under the `fullstack` marker."""
+"""The Windows app of a full-stack product (S72, S73): WinUI 3 on .NET 10, downloaded from the
+product's website as an installer or a ZIP that Velopack makes and updates, with a client of the
+server's API that Kiota generates from its snapshot on every build, sign-in and account deletion
+in the app; it sells on the website, not in a store. Built and packed for real on Windows under
+the `fullstack` marker."""
 
 import json
 import os
@@ -12,9 +13,9 @@ from xml.etree import ElementTree
 
 from forge.app_template import app_files
 from forge.cli import main
-from forge.windows_template import LOGOS, namespace_of
+from forge.windows_template import ICON_SIZES, namespace_of
 
-XML = (".csproj", ".slnx", ".props", ".xaml", ".appxmanifest", ".manifest", ".pubxml")
+XML = (".csproj", ".slnx", ".props", ".xaml", ".manifest", ".pubxml")
 
 
 def windows(*features: str) -> dict[str, bytes]:
@@ -30,10 +31,25 @@ def png_size(data: bytes) -> tuple[int, int]:
     return width, height
 
 
+def icon_sizes(data: bytes) -> list[tuple[int, int]]:
+    """The sizes of the PNGs in an ICO, checked against its directory."""
+    reserved, kind, count = struct.unpack("<HHH", data[:6])
+    assert (reserved, kind) == (0, 1)
+    sizes = []
+    for index in range(count):
+        width, height, _, _, planes, bits, length, offset = struct.unpack(
+            "<BBBBHHII", data[6 + 16 * index : 22 + 16 * index]
+        )
+        found = png_size(data[offset : offset + length])
+        assert found == (width or 256, height or 256) and (planes, bits) == (1, 24)
+        sizes.append(found)
+    return sizes
+
+
 def test_every_placeholder_is_filled_and_every_file_parses() -> None:
     files = windows()
     for path, data in files.items():
-        if path.endswith(".png"):
+        if path.endswith(".ico"):
             continue
         text = data.decode()
         assert "@@" not in text, path
@@ -82,28 +98,56 @@ def test_every_version_is_pinned() -> None:
     project = ElementTree.fromstring(windows()["App/App.csproj"])
     assert project.findtext("PropertyGroup/TargetFramework") == "net10.0-windows10.0.19041.0"
     assert project.findtext("PropertyGroup/UseWinUI") == "true"
-    assert project.findtext("PropertyGroup/EnableMsixTooling") == "true"
+    tools = json.loads(windows()[".config/dotnet-tools.json"])["tools"]
+    velopack = {p.get("Include"): p.get("Version") for p in project.iter("PackageReference")}
+    assert tools["vpk"]["version"] == velopack["Velopack"] == "1.2.161"  # the two must match
 
 
-def test_the_msix_names_the_app_and_has_its_logos() -> None:
+def test_the_app_is_downloaded_from_the_website_not_from_a_store() -> None:
     files = windows()
-    manifest = files["App/Package.appxmanifest"].decode()
-    assert 'Name="TallyNotes"' in manifest and "<DisplayName>Tally Notes</DisplayName>" in manifest
-    assert '<rescap:Capability Name="runFullTrust" />' in manifest
-    assert '<Capability Name="internetClient" />' in manifest
-    for path, size in LOGOS.items():
-        assert png_size(files[f"App/{path}"]) == size, path
-        assert path.replace("/", "\\") in manifest or "scale-200" in path or "targetsize" in path
+    project = ElementTree.fromstring(files["App/App.csproj"])
+    assert project.findtext("PropertyGroup/WindowsPackageType") == "None"  # no MSIX
+    assert project.findtext("PropertyGroup/WindowsAppSDKSelfContained") == "true"
+    assert project.findtext("PropertyGroup/SelfContained") == "true"  # runs without installs
+    assert project.findtext("PropertyGroup/ApplicationIcon") == "App.ico"
+    assert not [path for path in files if path.endswith(".appxmanifest") or "Store" in path]
+    assert icon_sizes(files["App/App.ico"]) == [(size, size) for size in ICON_SIZES]
+    server = files["Core/Server.cs"].decode()
+    assert 'Downloads = new("https://tally-notes.apps.forge.test/downloads/windows")' in server
 
 
-def test_digital_goods_are_sold_in_the_microsoft_store_without_a_web_checkout() -> None:
+def test_velopack_starts_first_and_updates_come_from_the_website() -> None:
+    files = windows()
+    assert "DISABLE_XAML_GENERATED_MAIN" in files["App/App.csproj"].decode()
+    program = files["App/Program.cs"].decode()
+    main = program[program.index("static void Main") :]
+    assert main.index("VelopackApp.Build().Run();") < main.index("Application.Start")
+    updates = files["App/Updates.cs"].decode()
+    assert "new(Server.Downloads.ToString())" in updates
+    assert "manager.IsInstalled" in updates and "ApplyUpdatesAndRestart(found)" in updates
+    window = files["App/MainWindow.xaml.cs"].decode()
+    assert "updates.CheckAsync()" in window and "updates.ApplyAsync()" in window
+    assert 'x:Name="UpdateButton"' in files["App/MainWindow.xaml"].decode()
+    ignored = files[".gitignore"].decode()
+    assert "publish/" in ignored and "releases/" in ignored
+
+
+def test_a_paid_app_sells_on_the_website() -> None:
     plain = windows()
-    assert "App/Store.cs" not in plain
-    paid = windows("payments", "digital_goods")
-    store = paid["App/Store.cs"].decode()
-    assert "StoreContext.GetDefault()" in store and "RequestPurchaseAsync" in store
-    assert "InitializeWithWindow.Initialize" in store  # a desktop app names its window
-    assert "--exclude-path &quot;/api/payments/**&quot;" in paid["Core/Core.csproj"].decode()
+    assert "Pricing" not in plain["Core/Server.cs"].decode()
+    for paid in (windows("payments"), windows("payments", "digital_goods")):
+        server = paid["Core/Server.cs"].decode()
+        assert 'Pricing = new("https://tally-notes.apps.forge.test/pricing")' in server
+        assert "Launcher.LaunchUriAsync(Server.Pricing)" in paid["App/MainWindow.xaml.cs"].decode()
+        assert "--exclude-path" not in paid["Core/Core.csproj"].decode()
+        assert "StoreContext" not in b"".join(paid.values()).decode("utf-8", "replace")
+
+
+def test_the_website_links_the_downloads() -> None:
+    layout = "web/src/components/Layout.tsx"
+    with_windows = app_files("tally-notes", features=["windows"])[layout]
+    assert b'<a href="/downloads">Download for Windows</a>' in with_windows
+    assert b'href="/downloads"' not in app_files("tally-notes")[layout]
 
 
 def test_names_become_namespaces() -> None:
@@ -117,6 +161,6 @@ def test_forge_app_new_windows(tmp_path: Path) -> None:
     shop = tmp_path / "shop"
     assert 'clients = ["web", "windows"]' in (shop / "forge.app.toml").read_text(encoding="utf-8")
     assert (shop / "windows" / "App" / "App.csproj").is_file()
-    assert (shop / "windows" / "App" / "Assets" / "StoreLogo.png").read_bytes()[:4] == b"\x89PNG"
+    assert (shop / "windows" / "App" / "App.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"
     if os.name != "nt":
         assert (shop / "windows" / "App.slnx").read_bytes().count(b"\r\n") == 0
