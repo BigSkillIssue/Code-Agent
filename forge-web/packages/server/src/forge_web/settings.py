@@ -281,6 +281,9 @@ class StoreSettings(_Strict):
     windows_timeout_s: float = Field(default=3_600, gt=0)  # one test and package run
     windows_grace_s: float = Field(default=600, gt=0)  # a worker's report may take this longer
     max_package_mb: int = Field(default=1_000, ge=1)
+    # The Microsoft Store (W38b): Partner Center's submission API and Entra ID's sign-in.
+    msstore_api_url: str = "https://manage.devcenter.microsoft.com"
+    msstore_login_url: str = "https://login.microsoftonline.com"
 
 
 class WebSettings(_Strict):

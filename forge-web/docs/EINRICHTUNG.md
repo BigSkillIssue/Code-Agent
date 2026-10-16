@@ -947,3 +947,17 @@ die Tests der App laufen und verpackt sie mit der nächsten Versionsnummer (`1.0
 (`.msixupload`) bleibt auf Forge Web; auf dem Windows-Rechner bleibt nichts. Ein Rechner, der sich
 eine Stunde (`windows_timeout_s`) nicht meldet, lässt den Build scheitern. Abschalten:
 `PATCH /api/admin/stores/windows/workers/<id>` mit `{"enabled": false}`.
+
+**Microsoft Store:** Jeder Kunde reicht seine Windows-App mit seinem eigenen Partner-Center-Konto
+ein. Einmal pro Konto: in Microsoft Entra ID eine App registrieren und ein Client-Secret erzeugen,
+sie im Partner Center unter **Kontoeinstellungen → Benutzerverwaltung → Microsoft Entra-
+Anwendungen** als **Manager** hinzufügen, und Mandanten-ID, Client-ID und Secret in Forge Web
+hinterlegen (`PUT /api/me/msstore-key` mit `tenant_id`, `client_id`, `client_secret`; eine Seite
+dafür gibt es noch nicht). Die App im Partner Center anlegen (Namen reservieren) und ihre Store-ID
+(z. B. `9NBLGGH4R315`) bei der Einreichung angeben; die erste Einreichung mit Store-Eintrag,
+Altersfreigabe und Preisen macht der Kunde im Partner Center, danach geht jedes neue Paket aus
+Forge Web (`POST /api/projects/<id>/windows/submissions`). Wie bei Google Play braucht jede
+Einreichung die Freigabe eines Admins (`GET /api/admin/stores/msstore`,
+`POST /api/admin/stores/msstore/<id>/approve`), außer für vertrauenswürdige Nutzer und Admins. Den
+Stand bei Microsoft (Vorverarbeitung, Zertifizierung, veröffentlicht) zeigt die Liste der
+Einreichungen; sie fragt höchstens einmal pro Minute nach.

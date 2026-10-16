@@ -59,7 +59,8 @@ OWN = {
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
     "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
     "GET /api/me/play-key", "PUT /api/me/play-key", "POST /api/me/play-key/check",
-    "DELETE /api/me/play-key",
+    "DELETE /api/me/play-key", "GET /api/me/msstore-key", "PUT /api/me/msstore-key",
+    "POST /api/me/msstore-key/check", "DELETE /api/me/msstore-key",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -119,6 +120,12 @@ BODIES: dict[str, dict[str, Any]] = {
     "forge_winworker__wire__PollRequest": {"free_slots": 1},
     "NewWorker": {"name": "Sneaky Windows machine"},
     "WorkerChange": {"enabled": False},
+    "SubmissionIn": {"build_id": "0" * 32, "store_id": "9NBLGGH4R315"},
+    "EntraApp": {
+        "tenant_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12,
+        "client_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12,
+        "client_secret": "secret-of-someone",
+    },
     "HostUsage": {"disk_free_gb": 10, "apps": []},
     "ExportIn": {"environment": "staging"},
     "DomainIn": {"domain": "shop.example.org"},

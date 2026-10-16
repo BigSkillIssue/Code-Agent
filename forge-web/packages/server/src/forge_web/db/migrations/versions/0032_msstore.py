@@ -1,0 +1,57 @@
+"""The Microsoft Store: the users' Entra ID apps and the submissions.
+
+Revision ID: 0032
+Revises: 0031
+"""
+
+import sqlalchemy as sa
+from alembic import op
+
+revision = "0032"
+down_revision = "0031"
+
+
+def upgrade() -> None:
+    """Add the tables."""
+    op.create_table(
+        "msstore_keys",
+        sa.Column("user_id", sa.String(32), sa.ForeignKey("users.id", ondelete="CASCADE"),
+                  primary_key=True),
+        sa.Column("tenant_id", sa.String(36), nullable=False),
+        sa.Column("client_id", sa.String(36), nullable=False),
+        sa.Column("secret", sa.Text, nullable=False),
+        sa.Column("created_at", sa.Float, nullable=False),
+        sa.Column("checked_at", sa.Float, nullable=False, server_default="0"),
+        sa.Column("check_ok", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("check_message", sa.Text, nullable=False, server_default=""),
+    )  # fmt: skip
+    op.create_table(
+        "msstore_submissions",
+        sa.Column("id", sa.String(32), primary_key=True),
+        sa.Column("project_id", sa.String(64), sa.ForeignKey("projects.id", ondelete="CASCADE"),
+                  nullable=False),
+        sa.Column("build_id", sa.String(32),
+                  sa.ForeignKey("windows_builds.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("user_id", sa.String(32), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("store_id", sa.String(12), nullable=False),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("submission_id", sa.String(40), nullable=False, server_default=""),
+        sa.Column("store_status", sa.String(40), nullable=False, server_default=""),
+        sa.Column("followed_at", sa.Float, nullable=False, server_default="0"),
+        sa.Column("admin", sa.String(16), nullable=False, server_default=""),
+        sa.Column("admin_id", sa.String(32), nullable=False, server_default=""),
+        sa.Column("admin_approved_at", sa.Float, nullable=False, server_default="0"),
+        sa.Column("error", sa.Text, nullable=False, server_default=""),
+        sa.Column("hint", sa.Text, nullable=False, server_default=""),
+        sa.Column("created_at", sa.Float, nullable=False),
+        sa.Column("updated_at", sa.Float, nullable=False),
+    )  # fmt: skip
+    op.create_index("msstore_submissions_by_project", "msstore_submissions",
+                    ["project_id", "created_at"])  # fmt: skip
+
+
+def downgrade() -> None:
+    """Remove them again."""
+    op.drop_index("msstore_submissions_by_project", "msstore_submissions")
+    op.drop_table("msstore_submissions")
+    op.drop_table("msstore_keys")

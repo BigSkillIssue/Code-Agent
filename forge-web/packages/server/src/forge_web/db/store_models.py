@@ -138,3 +138,46 @@ class WindowsBuild(Base):
     size: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
+
+
+class MsStoreKey(Base):
+    """A user's Entra ID app for the Microsoft Store (W38b): its ids, and the app with its
+    client secret sealed by the vault."""
+
+    __tablename__ = "msstore_keys"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(36))
+    client_id: Mapped[str] = mapped_column(String(36))
+    secret: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[float] = mapped_column(Float)
+    checked_at: Mapped[float] = mapped_column(Float, default=0.0)
+    check_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    check_message: Mapped[str] = mapped_column(Text, default="")
+
+
+class MsSubmission(Base):
+    """One Windows build on its way into the Microsoft Store: who started it, the admin's go,
+    and how it went (waiting, submitting, submitted, failed) with Microsoft's own status."""
+
+    __tablename__ = "msstore_submissions"
+    __table_args__ = (Index("msstore_submissions_by_project", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    build_id: Mapped[str] = mapped_column(ForeignKey("windows_builds.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    store_id: Mapped[str] = mapped_column(String(12))
+    status: Mapped[str] = mapped_column(String(16))
+    submission_id: Mapped[str] = mapped_column(String(40), default="")  # Partner Center's
+    store_status: Mapped[str] = mapped_column(String(40), default="")
+    followed_at: Mapped[float] = mapped_column(Float, default=0.0)
+    admin: Mapped[str] = mapped_column(String(16), default="")  # approved, trusted, admin
+    admin_id: Mapped[str] = mapped_column(String(32), default="")
+    admin_approved_at: Mapped[float] = mapped_column(Float, default=0.0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    hint: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)

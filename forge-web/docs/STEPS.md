@@ -341,7 +341,7 @@ Android before Windows (it builds on Linux and costs less). The templates are bu
     - Build: the Play Developer API (androidpublisher v3) with the admin's service-account JWT (RS256): an edit, the bundle uploaded, a track release, the edit committed; only a build of an approved commit, only after the review gate; the upload-key signing; a personal account is told about the 14-day closed test with 12 testers.
     - Tests: every token is checked by the stand-in; nothing is released without the approval; a personal account is told about the closed test.
     - Verify: `uv run pytest -q tests/test_play_release.py`
-- [ ] **W38 — Windows** (with S72), split in two:
+- [x] **W38 — Windows** (with S72), split in two:
     - Files: `packages/winworker/` (the Mac-worker protocol on a Windows machine), `forge_web/stores/msstore.py`, `pyproject.toml` (workspace), `AGENTS.md` (package rule), `tests/{msstore_standin,test_winworker,test_msstore}.py`
     - Build: a Windows worker that builds MSIX packages; a submission through the Partner Center submission API (Entra ID); the Store signs the MSIX; direct downloads come later with Azure Trusted Signing.
     - Tests: a job goes from the server to the Windows worker and back; every token is checked by the stand-in; nothing is submitted without the approval.
@@ -351,8 +351,8 @@ Android before Windows (it builds on Linux and costs less). The templates are bu
     - Build: `forge-win-worker` takes jobs like the Mac worker (`/api/win/...`, its own tokens): the approved commit packed by the sandbox, `dotnet test` of `windows/Tests`, `dotnet publish` of `windows/App` as an unsigned `.msixupload` with the build's version (1.0.<n>.0), the package sent back and kept on Forge Web; admins add and turn off the machines.
     - Tests: a job goes from the server to the worker and back over HTTP with a stand-in dotnet; versions rise; a failing test or a missing app fails the build; a worker sees only its own running jobs and its job carries no secrets.
     - Verify: `uv run pytest -q tests/test_winworker.py`
-- [ ] **W38b — Microsoft Store submissions**
-    - Files: `forge_web/stores/msstore.py`, `tests/{msstore_standin,test_msstore}.py`
+- [x] **W38b — Microsoft Store submissions**
+    - Files: `forge_web/stores/{msstore,msstore_keys,msstore_release,msstore_api}.py`, `forge_web/db/{store_models.py,migrations/versions/0032_msstore.py}`, `forge_web/{settings,services,startup,app}.py`, `docs/EINRICHTUNG.md`, `tests/{msstore_standin,test_msstore,test_access}.py`
     - Build: the Partner Center submission API with the maker's Entra ID app (client credentials): a new submission, the package uploaded to its blob URL, the submission committed and its status followed; only a built package of an approved commit, only after the review gate.
     - Tests: every token is checked by the stand-in; nothing is submitted without the approval.
     - Verify: `uv run pytest -q tests/test_msstore.py`
