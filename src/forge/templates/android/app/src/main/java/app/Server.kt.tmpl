@@ -1,0 +1,31 @@
+package @@package@@
+
+import @@package@@.api.apis.AccountApi
+import @@package@@.api.apis.AuthApi
+import java.util.concurrent.ConcurrentHashMap
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+
+/** The product's server: its address and one HTTP client that keeps the sign-in cookie. */
+object Server {
+    /** Staging until the app is released; the Play Store build uses BuildConfig.API_PRODUCTION. */
+    val baseUrl: String = BuildConfig.API_STAGING
+
+    private val cookies = ConcurrentHashMap<String, List<Cookie>>()
+
+    val http: OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(object : CookieJar {
+            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+                this@Server.cookies[url.host] = cookies
+            }
+
+            override fun loadForRequest(url: HttpUrl): List<Cookie> =
+                cookies[url.host].orEmpty().filter { it.matches(url) }
+        })
+        .build()
+
+    val auth: AuthApi get() = AuthApi(baseUrl, http)
+    val account: AccountApi get() = AccountApi(baseUrl, http)
+}

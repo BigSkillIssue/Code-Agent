@@ -3,11 +3,7 @@
 version = 1
 name = "@@name@@"
 resource_class = "small"
-@@if apple@@
-clients = ["web", "apple"]
-@@else@@
-clients = ["web"]
-@@end@@
+clients = [@@clients@@]
 
 [[services]]
 name = "api"
@@ -44,5 +40,5 @@ daily_limit = 200
 kind = "relay"
 @@end@@
 @@if digital_goods@@
-digital_goods = true  # the Apple app sells them with StoreKit 2 (App Store guideline 3.1.1)
+digital_goods = true  # sold in the app stores: Apple guideline 3.1.1, Google Play payments policy
 @@end@@

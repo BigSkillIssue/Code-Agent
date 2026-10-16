@@ -410,8 +410,8 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: a product with an Apple client gets a Swift client from swift-openapi-generator against the server's OpenAPI snapshot, pointed at staging; StoreKit 2 when the app sells digital goods (guideline 3.1.1).
     - Tests: the generator config names the snapshot and the staging URL; digital goods switch the Apple client to StoreKit 2 and leave no web checkout in it; on a Mac (`apple` marker) the template builds.
     - Verify: `uv run pytest tests/test_apple_template.py tests/test_app_template.py -q`
-- [ ] **S71 — Android template** (with Forge Web's W37)
-    - Files: `src/forge/android_template.py`, `src/forge/templates/android/**.tmpl`, `src/forge/app_cli.py`, `.github/workflows/ci.yml` (job `fullstack`), `tests/test_android_template.py`
+- [x] **S71 — Android template** (with Forge Web's W37)
+    - Files: `src/forge/android_template.py`, `src/forge/templates/android/**.tmpl` (+ Gradle's `gradle-wrapper.jar`; Play Billing in `+digital_goods/`), `src/forge/app_template.py` (writes `android/`, keeps CRLF of `.bat` files, makes scripts executable), `src/forge/app_cli.py` (`--android`), `src/forge/templates/fullstack/forge.app.toml.tmpl` (`clients` from the features), `packaging/pyinstaller.spec` (the jar), `.github/workflows/ci.yml` (job `fullstack` with JDK 17), `README.md`, `CHANGELOG.md`, `tests/test_android_template.py`, `tests/fullstack/test_server_live.py`
     - Build: Kotlin + Jetpack Compose with a client from the OpenAPI snapshot, Play Billing for digital goods, account deletion in the app, a Gradle wrapper and pinned versions; builds on Linux.
     - Tests: placeholders filled, every file parses; under `fullstack` (JDK and Android SDK) the generated app builds and its tests pass.
     - Verify: `uv run pytest tests/test_android_template.py -q`

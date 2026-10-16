@@ -18,6 +18,7 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
+from forge import android_template as android
 from forge.app_manifest import SLUG
 from forge.apple_client import client_files
 
@@ -26,7 +27,7 @@ SUFFIX = ".tmpl"
 NAME = re.compile(SLUG)
 TITLE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$")  # safe in code, JSON, TOML and HTML
 PLACEHOLDER = re.compile(r"@@([a-z_]+)@@")
-FEATURES = ("payments", "apple", "digital_goods")  # `forge app new --payments --apple ...`
+FEATURES = ("payments", "apple", "android", "digital_goods")  # `forge app new --payments ...`
 APPS_DOMAIN = "apps.example.com"  # Forge Web's domain for hosted apps, until one is given
 OPTIONAL = "+"  # the folder of a feature's own files: templates/<kind>/+<feature>/
 
@@ -77,7 +78,8 @@ def _collect(folder: Traversable, prefix: str, files: dict[str, str]) -> None:
         if entry.is_dir():
             _collect(entry, f"{prefix}{name}/", files)
         elif name.endswith(SUFFIX):
-            files[prefix + name.removesuffix(SUFFIX)] = entry.read_text(encoding="utf-8")
+            # bytes first: reading as text would turn a .bat file's CRLF line ends into LF
+            files[prefix + name.removesuffix(SUFFIX)] = entry.read_bytes().decode("utf-8")
 
 
 def render(text: str, values: dict[str, str], features: Collection[str] = ()) -> str:
@@ -116,7 +118,9 @@ def app_files(
     apps_domain: str = APPS_DOMAIN,
 ) -> dict[str, bytes]:
     """The product's files as {relative path: bytes}."""
-    values = {"name": name, "title": title or title_of(name)}
+    clients = ["web", *(c for c in ("apple", "android") if c in features)]
+    values = {"name": name, "title": title or title_of(name),
+              "clients": ", ".join(f'"{c}"' for c in clients)}  # fmt: skip
     files = {
         path: render(text, values, features).encode()
         for path, text in template_files(kind, features).items()
@@ -124,7 +128,33 @@ def app_files(
     if "apple" in features:
         files |= apple_app(name, values["title"], files["server/openapi.json"], features,
                            apps_domain)  # fmt: skip
+    if "android" in features:
+        files |= android_app(name, values["title"], files["server/openapi.json"], features,
+                             apps_domain)  # fmt: skip
     return files
+
+
+def android_app(
+    name: str, title: str, snapshot: bytes, features: Collection[str], apps_domain: str
+) -> dict[str, bytes]:
+    """The product's Android app (S71), in `android/`: a client of its server's API."""
+    package = android.package_of(name)
+    values = {"name": name, "title": title, "package": package,
+              "staging": f"https://{name}.staging.{apps_domain}",
+              "production": f"https://{name}.{apps_domain}",
+              "app_tags": android.app_tags(api_tags(snapshot))}  # fmt: skip
+    own = [f for f in features if f == "digital_goods"]
+    made = {android.placed(path, package): render(text, values, own).encode()
+            for path, text in template_files(android.KIND, own).items()}  # fmt: skip
+    made[android.WRAPPER] = android.wrapper_jar()
+    return {f"android/{path}": data for path, data in made.items()}
+
+
+def api_tags(snapshot: bytes) -> list[str]:
+    """The tags of the operations in an API snapshot."""
+    paths = json.loads(snapshot)["paths"].values()
+    return sorted({tag for path in paths for operation in path.values()
+                   for tag in operation.get("tags", [])})  # fmt: skip
 
 
 def apple_app(
@@ -133,9 +163,7 @@ def apple_app(
     """The product's Apple app (S70), in `apple/`: a client of its server's API."""
     swift = "".join(part.capitalize() for part in re.split(r"[ -]+", title) if part)[:30]
     swift = swift if swift[:1].isalpha() else f"App{swift}"[:30]
-    paths = json.loads(snapshot)["paths"].values()
-    tags = sorted({tag for path in paths for operation in path.values()
-                   for tag in operation.get("tags", [])})  # fmt: skip
+    tags = api_tags(snapshot)
     urls = (f"https://{name}.staging.{apps_domain}", f"https://{name}.{apps_domain}")
     bundle = "com.example." + name.replace("-", "")
     made = client_files(swift, bundle, urls, tags, "digital_goods" in features)
@@ -159,5 +187,7 @@ def write_app(
         path = folder / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+        if data.startswith(b"#!"):  # a script, such as the Gradle wrapper's
+            path.chmod(path.stat().st_mode | 0o111)
         written.append(path)
     return written

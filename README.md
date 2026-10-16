@@ -78,7 +78,8 @@ forge ollama setup         run locally: pick, download and configure an Ollama m
 forge apple new NAME       a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 forge app new NAME         a full-stack product: server, database, docs, tests and CI
                            (--payments: it sells through Forge Web's payments relay;
-                           --apple: with an Apple app; --digital-goods: sold with StoreKit 2)
+                           --apple, --android: with native apps; --digital-goods: sold
+                           with StoreKit 2 and Google Play Billing)
 forge app dev | check      run a product locally / run its fixed checks
 ```
 

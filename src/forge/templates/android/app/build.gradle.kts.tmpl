@@ -1,0 +1,84 @@
+import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.openapi.generator)
+}
+
+android {
+    namespace = "@@package@@"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "@@package@@"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+        // Every release goes to staging first; the Play Store build talks to production.
+        buildConfigField("String", "API_STAGING", "\"@@staging@@\"")
+        buildConfigField("String", "API_PRODUCTION", "\"@@production@@\"")
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    sourceSets["main"].java.srcDir(layout.buildDirectory.dir("generated/api/src/main/kotlin"))
+}
+
+// The client of the server's API, generated from its snapshot (../server/openapi.json) on every
+// build: change the server, run its snapshot, build this app, and the compiler shows what changed.
+val generateApi by tasks.registering(GenerateTask::class) {
+    generatorName.set("kotlin")
+    inputSpec.set(rootProject.file("../server/openapi.json").path)
+    outputDir.set(layout.buildDirectory.dir("generated/api").get().asFile.path)
+    packageName.set("@@package@@.api")
+    configOptions.set(mapOf(
+        "library" to "jvm-okhttp4",
+        "serializationLibrary" to "moshi",
+        "dateLibrary" to "java8",
+        "omitGradleWrapper" to "true",
+    ))
+    generateApiTests.set(false)
+    generateModelTests.set(false)
+    generateApiDocumentation.set(false)
+    generateModelDocumentation.set(false)
+@@if digital_goods@@
+    // The app sells digital goods with Google Play Billing (Store.kt), never with the web
+    // checkout (Google Play's payments policy): the client leaves out the payments operations.
+    openapiNormalizer.set(mapOf("FILTER" to "tag:@@app_tags@@"))
+@@end@@
+}
+tasks.named("preBuild") { dependsOn(generateApi) }
+
+dependencies {
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.runtime)
+    implementation(libs.okhttp)
+    implementation(libs.moshi.kotlin)
+    implementation(libs.moshi.adapters)
+    implementation(libs.coroutines.android)
+@@if digital_goods@@
+    implementation(libs.billing)
+@@end@@
+    testImplementation(libs.junit)
+}

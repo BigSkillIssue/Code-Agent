@@ -12,8 +12,8 @@ from forge.local.local_executor import LocalExecutor
 from forge.ports import SandboxPolicy
 
 USAGE = """\
-forge app new NAME [--title TITLE] [--payments] [--apple] [--digital-goods] [--apps-domain D]
-                                                 a new product in ./NAME
+forge app new NAME [--title T] [--payments] [--apple] [--android] [--digital-goods]
+                   [--apps-domain D]             a new product in ./NAME
 forge app dev [--database-url URL]               run it (on a throwaway PostgreSQL by default)
 forge app check [--database-url URL] [--json]    the fixed checks; .forge/out/app/checks.json"""
 # The user runs these commands themselves, like a shell command, so they run unsandboxed.
@@ -30,10 +30,11 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
         "--payments", action="store_true", help="new: sell through Forge Web's payments relay"
     )
     parser.add_argument("--apple", action="store_true", help="new: with an Apple app")
+    parser.add_argument("--android", action="store_true", help="new: with an Android app")
     parser.add_argument(
         "--digital-goods",
         action="store_true",
-        help="new: the Apple app sells digital goods with StoreKit 2 (implies --apple --payments)",
+        help="new: the native apps sell digital goods in their stores (implies --payments)",
     )
     parser.add_argument("--apps-domain", help="new: Forge Web's domain for hosted apps")
     parser.add_argument("--database-url", help="dev, check: a throwaway database to use")
@@ -49,9 +50,11 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
 
 def features_of(args: argparse.Namespace) -> list[str]:
     """The optional parts `forge app new` was asked for."""
-    if args.digital_goods:
-        return ["payments", "apple", "digital_goods"]
-    return [f for f, wanted in (("payments", args.payments), ("apple", args.apple)) if wanted]
+    wanted = {"payments": args.payments or args.digital_goods, "apple": args.apple,
+              "android": args.android, "digital_goods": args.digital_goods}  # fmt: skip
+    if args.digital_goods and not (args.apple or args.android):
+        wanted["apple"] = True  # digital goods are sold in an app store
+    return [feature for feature, asked in wanted.items() if asked]
 
 
 def new(

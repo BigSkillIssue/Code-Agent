@@ -1,0 +1,84 @@
+package @@package@@
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import @@package@@.api.models.DeleteAccount
+import @@package@@.api.models.SignIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) { AccountScreen() }
+            }
+        }
+    }
+}
+
+/** Sign in, and delete the account again: both with the server's API. */
+@Composable
+fun AccountScreen() {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var signedIn by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    fun ask(work: () -> Unit) = scope.launch {
+        message = try {
+            withContext(Dispatchers.IO) { work() }
+            ""
+        } catch (error: Exception) {
+            error.message ?: "Something went wrong. Please try again."
+        }
+    }
+
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(text = signedIn?.let { "Signed in as $it" } ?: "Sign in")
+        if (signedIn == null) {
+            OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
+        }
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+        )
+        if (signedIn == null) {
+            Button(enabled = AccountForm.canSignIn(email, password), onClick = {
+                ask { signedIn = Server.auth.signInApiAuthLoginPost(SignIn(email, password)).email }
+            }) { Text("Sign in") }
+        } else {
+            Button(enabled = AccountForm.canDelete(password), onClick = {
+                ask {
+                    Server.account.deleteAccountApiAccountDelete(DeleteAccount(password))
+                    signedIn = null
+                }
+            }) { Text("Delete my account") }
+        }
+        if (message.isNotEmpty()) Text(text = message, color = MaterialTheme.colorScheme.error)
+    }
+}
