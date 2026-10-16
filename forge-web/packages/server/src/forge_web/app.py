@@ -52,6 +52,8 @@ from forge_web.settings_api import settings_router
 from forge_web.sources import sources_router
 from forge_web.startup import start_services, stop_services
 from forge_web.stores.android_api import android_router
+from forge_web.stores.play_api import play_router
+from forge_web.stores.play_keys import play_key_routes
 from forge_web.terminals import terminals_router
 from forge_web.webui import SecurityHeaders, mount_web_ui
 from forge_web.ws import ws_router
@@ -85,7 +87,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         operator_router(), legal_router(), relay_router(), report_router(), notices_router(),
         gdpr_router(), domains_router(), billing_admin_router(), webhook_router(),
         checkout_router(), cancel_router(), legal_texts_router(), connect_router(),
-        payments_router(), iap_router(), android_router(),
+        payments_router(), iap_router(), android_router(), play_router(), play_key_routes(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

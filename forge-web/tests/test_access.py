@@ -58,6 +58,8 @@ OWN = {
     "POST /api/billing/cancel", "POST /api/billing/portal",
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
     "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
+    "GET /api/me/play-key", "PUT /api/me/play-key", "POST /api/me/play-key/check",
+    "DELETE /api/me/play-key",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -70,11 +72,12 @@ SANDBOX_PATHS = (
 # Changing calls that viewers may make too (they change nothing in the project).
 VIEWER_ACTIONS = {"POST /api/projects/{project_id}/preview/{port}/open"}
 # Reads that only the project's owner (a backup of a hosted app's data) or its editors (an
-# Android bundle, for whoever may release it) may make; the world has neither, so the owner
-# hears 404.
+# Android bundle, plain or signed, for whoever may release it) may make; the world has none, so
+# the owner hears 404.
 OWNER_READS = {
     "GET /api/projects/{project_id}/hosting/backups/{backup_id}",
     "GET /api/projects/{project_id}/android/builds/{build_id}/bundle",
+    "GET /api/projects/{project_id}/android/builds/{build_id}/signed",
 }
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
@@ -140,6 +143,8 @@ BODIES: dict[str, dict[str, Any]] = {
         "private_key": "x" * 120,
     },
     "ReleaseIn": {"platforms": ["ios"]},
+    "PlayReleaseIn": {"build_id": "0" * 32},
+    "PlayKeyIn": {"key_file": {}, "account": "organisation"},
     "PrepareIn": {
         "release_id": "0" * 16,
         "contact": {

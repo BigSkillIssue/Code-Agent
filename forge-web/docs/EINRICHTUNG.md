@@ -801,6 +801,29 @@ Ohne `android_image` baut Forge Web keine Android-Apps. Ein Build braucht 6 GB A
 und 4 CPU-Kerne auf dem App-Server und darf eine Stunde dauern; jeder Build bekommt eine höhere
 Versionsnummer (`versionCode`), wie Google Play sie für jedes Hochladen verlangt.
 
+**Google Play:** Jeder Kunde veröffentlicht seine Android-App mit seinem eigenen
+Google-Play-Entwicklerkonto. Am besten ist ein Organisationskonto (mit D-U-N-S-Nummer); ein
+persönliches Konto, das nach dem 13. November 2023 angelegt wurde, muss vor der ersten
+Veröffentlichung in der Produktion 14 Tage lang mit mindestens 12 Testern geschlossen testen
+(Track „alpha“). Einmal pro Konto:
+
+1. In der Play Console die App anlegen, mit der Application-ID aus
+   `android/app/build.gradle.kts` (Forge Web zeigt sie beim Build).
+2. In der Google Cloud Console die „Google Play Android Developer API“ einschalten, ein
+   Dienstkonto anlegen und dafür einen JSON-Schlüssel erstellen.
+3. In der Play Console unter **Nutzer und Berechtigungen** die E-Mail des Dienstkontos einladen,
+   mit dem Recht, Releases zu veröffentlichen.
+4. Die JSON-Datei in Forge Web hinterlegen (`PUT /api/me/play-key` mit `key_file` und
+   `account` = `personal` oder `organisation`; eine Seite dafür gibt es noch nicht).
+
+Forge Web erzeugt für jede App einen Upload-Schlüssel und signiert jedes Bundle selbst; der
+Schlüssel verlässt den Server nie. Google behält die erste Veröffentlichung einer App als
+Entwurf: Store-Eintrag, Einstufung und App-Inhalte füllt der Kunde in der Play Console aus und
+schickt sie dort zur Prüfung; alle weiteren Veröffentlichungen gehen aus Forge Web. Wie ein
+Produktions-Deploy braucht jede Veröffentlichung die Freigabe eines Admins (vertrauenswürdige
+Nutzer und Admins brauchen keine): `GET /api/admin/stores/play` zeigt die wartenden,
+`POST /api/admin/stores/play/<id>/approve` gibt eine frei.
+
 ### 11.8 Prüfen
 
 ```bash

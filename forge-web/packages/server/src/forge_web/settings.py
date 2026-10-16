@@ -269,6 +269,14 @@ class BillingSettings(_Strict):
     connect_fee_percent: float = Field(default=0, ge=0, le=50)
 
 
+class StoreSettings(_Strict):
+    """The app stores beyond Apple's (W37b). Each maker publishes with their own account; these
+    are only where Google's API answers (tests point them at a stand-in)."""
+
+    play_api_url: str = "https://androidpublisher.googleapis.com"
+    play_token_url: str = "https://oauth2.googleapis.com/token"
+
+
 class WebSettings(_Strict):
     """Every setting of one Forge Web server."""
 
@@ -285,6 +293,7 @@ class WebSettings(_Strict):
     apple: AppleSettings = AppleSettings()
     hosting: HostingSettings = HostingSettings()
     billing: BillingSettings = BillingSettings()
+    stores: StoreSettings = StoreSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

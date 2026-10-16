@@ -1,6 +1,16 @@
-"""Tables of the app stores beyond Apple's (W37): the Android builds of a product."""
+"""Tables of the app stores beyond Apple's (W37): Android builds and Google Play releases."""
 
-from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from forge_web.db.models import Base
@@ -26,5 +36,59 @@ class AndroidBuild(Base):
     hint: Mapped[str] = mapped_column(Text, default="")
     log_tail: Mapped[str] = mapped_column(Text, default="")
     size: Mapped[int] = mapped_column(BigInteger, default=0)  # the bundle's bytes
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)
+
+
+class PlayKey(Base):
+    """A user's Google Play service account (W37b): its email, its key file sealed by the vault,
+    and which kind of developer account it publishes for (personal or organisation)."""
+
+    __tablename__ = "play_keys"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    client_email: Mapped[str] = mapped_column(String(320))
+    secret: Mapped[str] = mapped_column(Text)
+    account: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[float] = mapped_column(Float)
+    checked_at: Mapped[float] = mapped_column(Float, default=0.0)
+    check_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    check_message: Mapped[str] = mapped_column(Text, default="")
+
+
+class PlayUploadKey(Base):
+    """An app's upload key for Google Play, made once by Forge Web (the key sealed)."""
+
+    __tablename__ = "play_upload_keys"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    secret: Mapped[str] = mapped_column(Text)
+    certificate: Mapped[str] = mapped_column(Text)  # PEM, for Play Console
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class PlayRelease(Base):
+    """One build on its way to a Google Play track: who started it, the admin's go, and how it
+    went (waiting, releasing, released, draft, failed)."""
+
+    __tablename__ = "play_releases"
+    __table_args__ = (Index("play_releases_by_project", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    build_id: Mapped[str] = mapped_column(ForeignKey("android_builds.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    track: Mapped[str] = mapped_column(String(16))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16))
+    admin: Mapped[str] = mapped_column(String(16), default="")  # approved, trusted, admin
+    admin_id: Mapped[str] = mapped_column(String(32), default="")
+    admin_approved_at: Mapped[float] = mapped_column(Float, default=0.0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    hint: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
