@@ -7,12 +7,13 @@ from pathlib import Path
 
 from forge.app_checks import check_app, report_text, save_report
 from forge.app_dev import run_dev
-from forge.app_template import name_problem, title_of, title_problem, write_app
+from forge.app_template import APPS_DOMAIN, name_problem, title_of, title_problem, write_app
 from forge.local.local_executor import LocalExecutor
 from forge.ports import SandboxPolicy
 
 USAGE = """\
-forge app new NAME [--title TITLE] [--payments]  a new product in ./NAME
+forge app new NAME [--title T] [--payments] [--apple] [--android] [--digital-goods]
+                   [--apps-domain D]             a new product in ./NAME
 forge app dev [--database-url URL]               run it (on a throwaway PostgreSQL by default)
 forge app check [--database-url URL] [--json]    the fixed checks; .forge/out/app/checks.json"""
 # The user runs these commands themselves, like a shell command, so they run unsandboxed.
@@ -28,18 +29,41 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
     parser.add_argument(
         "--payments", action="store_true", help="new: sell through Forge Web's payments relay"
     )
+    parser.add_argument("--apple", action="store_true", help="new: with an Apple app")
+    parser.add_argument("--android", action="store_true", help="new: with an Android app")
+    parser.add_argument(
+        "--digital-goods",
+        action="store_true",
+        help="new: the native apps sell digital goods in their stores (implies --payments)",
+    )
+    parser.add_argument("--apps-domain", help="new: Forge Web's domain for hosted apps")
     parser.add_argument("--database-url", help="dev, check: a throwaway database to use")
     parser.add_argument("--json", action="store_true", help="check: print the report as JSON")
     args = parser.parse_args(rest)
     cwd = (options.cwd or Path.cwd()).resolve()
     if args.action == "new":
-        return new(cwd, args.name, args.title, ["payments"] if args.payments else [])
+        return new(cwd, args.name, args.title, features_of(args), args.apps_domain)
     if args.action == "dev":
         return asyncio.run(dev(cwd, args.database_url))
     return asyncio.run(check(cwd, args.database_url, args.json))
 
 
-def new(cwd: Path, name: str | None, title: str | None, features: list[str] | None = None) -> int:
+def features_of(args: argparse.Namespace) -> list[str]:
+    """The optional parts `forge app new` was asked for."""
+    wanted = {"payments": args.payments or args.digital_goods, "apple": args.apple,
+              "android": args.android, "digital_goods": args.digital_goods}  # fmt: skip
+    if args.digital_goods and not (args.apple or args.android):
+        wanted["apple"] = True  # digital goods are sold in an app store
+    return [feature for feature, asked in wanted.items() if asked]
+
+
+def new(
+    cwd: Path,
+    name: str | None,
+    title: str | None,
+    features: list[str] | None = None,
+    apps_domain: str | None = None,
+) -> int:
     """`forge app new NAME`."""
     if not name:
         print(f"usage: {USAGE.splitlines()[0]}", file=sys.stderr)
@@ -51,7 +75,7 @@ def new(cwd: Path, name: str | None, title: str | None, features: list[str] | No
         return 1
     folder = cwd / name
     try:
-        written = write_app(folder, name, title, features or [])
+        written = write_app(folder, name, title, features or [], apps_domain or APPS_DOMAIN)
     except FileExistsError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
