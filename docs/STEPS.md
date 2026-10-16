@@ -405,8 +405,8 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Build: subscriptions and one-time purchases through Forge Web's payments relay (W35): the app holds only its relay token, never a Stripe key; an end-user cancellation page; a fake relay in the product's own tests; switched on by `payments` in `forge.app.toml`.
     - Tests: the module is written only when the manifest asks for payments; no Stripe key or Stripe package in the generated product; under `fullstack` the product's payment tests pass against its fake relay.
     - Verify: `uv run pytest tests/test_app_template.py -q`; `uv run pytest -m fullstack -q`
-- [ ] **S70 — Apple client for the API**
-    - Files: `src/forge/apple_template.py`, `src/forge/app_template.py`, `tests/test_apple_template.py`, `tests/test_app_template.py`
+- [x] **S70 — Apple client for the API**
+    - Files: `src/forge/apple_client.py` (new: keeps `apple_template.py` under 500 lines), `src/forge/app_template.py`, `src/forge/app_cli.py` (`--apple`, `--digital-goods`, `--apps-domain`), `src/forge/templates/fullstack/{forge.app.toml,README.md}.tmpl`, `README.md`, `CHANGELOG.md`, `tests/test_apple_template.py`, `tests/test_app_template.py`, `tests/apple/test_xcode_live.py`
     - Build: a product with an Apple client gets a Swift client from swift-openapi-generator against the server's OpenAPI snapshot, pointed at staging; StoreKit 2 when the app sells digital goods (guideline 3.1.1).
     - Tests: the generator config names the snapshot and the staging URL; digital goods switch the Apple client to StoreKit 2 and leave no web checkout in it; on a Mac (`apple` marker) the template builds.
     - Verify: `uv run pytest tests/test_apple_template.py tests/test_app_template.py -q`

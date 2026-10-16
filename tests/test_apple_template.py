@@ -1,4 +1,5 @@
-"""`forge apple new`: a SwiftUI app for iPhone, iPad, Mac and Apple Watch (built for real in CI)."""
+"""`forge apple new`: a SwiftUI app for iPhone, iPad, Mac and Apple Watch (built for real in CI),
+and the Apple app of a full-stack product with the client of its server's API (S70)."""
 
 import json
 import plistlib
@@ -8,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from forge.app_template import app_files as product_files
 from forge.apple_template import app_files, bundle_problem, name_problem, write_app
 from forge.cli import main
 from forge.local.xcode_builder import pick_scheme
@@ -118,3 +120,52 @@ def test_forge_apple_new(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert "letter" in capsys.readouterr().err
     assert main(["-C", str(tmp_path), "apple", "new", "Other"]) == 0
     assert "com.example.other" in (tmp_path / "Other" / "project.yml").read_text()
+
+
+def product_apple(*features: str) -> dict[str, str]:
+    """The Apple app of a full-stack product (S70), as text by its path in `apple/`."""
+    files = product_files("shop", features=["apple", *features], apps_domain="apps.forge.test")
+    return {
+        path.removeprefix("apple/"): data.decode()
+        for path, data in files.items()
+        if path.startswith("apple/") and not path.endswith(".png")
+    }
+
+
+def test_a_products_apple_client_is_generated_from_the_snapshot_and_points_at_staging() -> None:
+    app = product_apple()
+    script = app["generate-api.sh"]
+    assert "swift-openapi-generator generate" in script and "../server/openapi.json" in script
+    assert "--config openapi-generator-config.yaml" in script
+    assert "--output-directory Shared/API" in script
+    config = app["openapi-generator-config.yaml"]
+    assert "- types" in config and "- client" in config and "filter:" not in config
+    server = app["Shared/APIServer.swift"]
+    assert 'staging = URL(string: "https://shop.staging.apps.forge.test")!' in server
+    assert 'production = URL(string: "https://shop.apps.forge.test")!' in server
+    spec = app["project.yml"]
+    assert "swift-openapi-runtime" in spec and "swift-openapi-urlsession" in spec
+    assert "swift-openapi-generator" not in spec  # no Xcode plug-in to trust
+    for target in ("Shop_iOS", "Shop_macOS", "Shop_watchOS"):
+        block = spec.split(f"\n  {target}:\n", 1)[1].split("\n  Shop_", 1)[0]
+        assert "- package: OpenAPIRuntime" in block and "- package: OpenAPIURLSession" in block
+    assert "com.apple.security.network.client: true" in spec
+    assert "com.apple.security.network.client" in app["macOS/Shop.entitlements"]
+    assert "swift-openapi-generator" in app["APIGenerator/Package.swift"]
+    assert "Shared/Store.swift" not in app
+
+
+def test_digital_goods_switch_the_apple_app_to_storekit_without_a_web_checkout() -> None:
+    app = product_apple("payments", "digital_goods")
+    store = app["Shared/Store.swift"]
+    assert "import StoreKit" in store and "Transaction.updates" in store
+    assert "product.purchase()" in store and "case .verified" in store
+    config = app["openapi-generator-config.yaml"]
+    tags = config.split("tags: [", 1)[1].split("]", 1)[0].split(", ")
+    assert tags == ["account", "auth", "moderation"]  # the web checkout's tag is left out
+    code = [line for path, text in app.items() if path.endswith(".swift")
+            for line in text.splitlines() if not line.strip().startswith("//")]  # fmt: skip
+    assert not [line for line in code if "checkout" in line.lower() or "/api/" in line]
+    web = product_apple("payments")  # physical goods or services: the web checkout may stay
+    assert "filter:" not in web["openapi-generator-config.yaml"]
+    assert "Shared/Store.swift" not in web

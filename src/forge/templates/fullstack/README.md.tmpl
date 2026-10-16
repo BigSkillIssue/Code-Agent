@@ -20,6 +20,11 @@ tests, docs and CI, and `forge.app.toml`, which tells Forge Web how to host it.
 | `docs/migrations.md` | changing the database without breaking a running release |
 | `forge.app.toml` | what hosting needs: services, database, storage, mail, secret names |
 
+@@if apple@@
+`apple/` holds the Apple app (iPhone, iPad, Mac, Watch): a SwiftUI project from `project.yml`
+with a client of the server's API, generated from `server/openapi.json` (see apple/README.md).
+
+@@end@@
 ## Run it locally
 
 With Docker: `docker compose up`, then open http://localhost:5173.
