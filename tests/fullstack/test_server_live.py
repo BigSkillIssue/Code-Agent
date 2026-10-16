@@ -1,5 +1,6 @@
 """The product from `forge app new`, installed and tested for real: its server's own tests on
-PostgreSQL, the web client's tests and build, and the templates inside Forge's wheel.
+PostgreSQL, the web client's tests and build, and the templates inside Forge's wheel. Each test
+runs for the plain product and for one that sells through the payments relay (S69).
 
 Marked `fullstack` and skipped by default: it needs uv, Node 22 with npm, network access to PyPI
 and npm, and a throwaway PostgreSQL database in FULLSTACK_DATABASE_URL (its schema is dropped).
@@ -43,13 +44,13 @@ def run(command: list[str], cwd: Path, **env: str) -> subprocess.CompletedProces
     return result
 
 
-@pytest.fixture(scope="module")
-def product(tmp_path_factory: pytest.TempPathFactory) -> Path:
+@pytest.fixture(scope="module", params=[(), ("payments",)], ids=["plain", "payments"])
+def product(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
     """A fresh product with its server's packages installed from the lockfile."""
     if shutil.which("uv") is None:
         unavailable("uv is not installed")
     folder = tmp_path_factory.mktemp("fullstack") / "tally"
-    write_app(folder, "tally")
+    write_app(folder, "tally", features=request.param)
     run(["uv", "sync", "--locked"], folder / "server")
     return folder
 
@@ -68,6 +69,7 @@ def test_the_templates_ship_in_the_wheel(tmp_path: Path) -> None:
     names = zipfile.ZipFile(wheel).namelist()
     assert "forge/templates/fullstack/server/app/main.py.tmpl" in names
     assert "forge/templates/fullstack/dot-github/workflows/ci.yml.tmpl" in names
+    assert "forge/templates/fullstack/+payments/server/app/payments.py.tmpl" in names
 
 
 def test_the_web_clients_tests_and_build_pass(product: Path) -> None:

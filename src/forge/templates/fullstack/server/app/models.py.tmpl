@@ -80,3 +80,25 @@ class Block(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+@@if payments@@
+
+
+class Purchase(Base):
+    """Something a user bought through the payments relay (see app/payments.py)."""
+
+    __tablename__ = "purchases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    offer: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[int] = mapped_column()  # in cents
+    currency: Mapped[str] = mapped_column(String(3))
+    interval: Mapped[str | None] = mapped_column(String(10))  # month, year, or None: once
+    checkout_id: Mapped[str] = mapped_column(String(255), default="")
+    subscription_id: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open, paid, expired
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    begin_now_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # the buyer's yes
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+@@end@@

@@ -33,3 +33,9 @@ max_gb = 1
 
 [mail]
 daily_limit = 200
+@@if payments@@
+
+# Customers pay through Forge Web's payments relay (server/app/payments.py).
+[payments]
+kind = "relay"
+@@end@@

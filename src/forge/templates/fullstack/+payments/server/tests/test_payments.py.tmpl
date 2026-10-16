@@ -1,0 +1,119 @@
+"""Payments through the relay: offers, an order only with the box for beginning at once, a paid
+purchase, a subscription cancelled at the end of its period, nothing sold without the relay, and
+no running subscription left behind a deleted account. The relay is tests/fake_relay.py."""
+
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import User
+from app.payments import has_paid
+from conftest import PASSWORD
+from fake_relay import FakeRelay
+
+SignUp = Callable[..., dict[str, Any]]
+
+
+@pytest.fixture
+def relay(app: FastAPI) -> FakeRelay:
+    """The app's payments relay, a fake one."""
+    fake = FakeRelay()
+    app.state.payments = fake
+    return fake
+
+
+def buy(client: TestClient, offer: str) -> dict[str, Any]:
+    """Order an offer, agreeing that the service begins at once."""
+    response = client.post("/api/payments/checkout", json={"offer": offer, "begin_now": True})
+    assert response.status_code == 201, response.text
+    order: dict[str, Any] = response.json()
+    return order
+
+
+def paid(app: FastAPI, email: str, offer: str | None = None) -> bool:
+    with Session(app.state.engine) as db:
+        user = db.scalars(select(User).where(User.email == email)).one()
+        return has_paid(db, user, offer)
+
+
+def test_the_offers_are_public(client: TestClient) -> None:
+    offers = client.get("/api/payments/offers").json()
+    assert {"pro-monthly", "lifetime"} == {o["id"] for o in offers}
+    assert all(o["amount"] > 0 for o in offers)
+
+
+def test_an_order_needs_a_sign_in_and_the_box(
+    client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    order = {"offer": "lifetime", "begin_now": True}
+    assert client.post("/api/payments/checkout", json=order).status_code == 401
+    sign_up(client)
+    without = client.post("/api/payments/checkout", json={"offer": "lifetime"})
+    assert without.status_code == 422
+    unknown = client.post("/api/payments/checkout", json={"offer": "nope", "begin_now": True})
+    assert unknown.status_code == 404
+    assert relay.orders == []
+
+
+def test_a_one_time_purchase_is_paid_through_the_relay(
+    app: FastAPI, client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    order = buy(client, "lifetime")
+    assert order["url"].startswith("https://checkout.stripe.test/")
+    sent = relay.orders[0]
+    assert (sent["mode"], sent["amount"], sent["customer_email"]) == (
+        "payment",
+        4900,
+        "ada@example.com",
+    )
+    assert sent["success_url"] == f"https://app.test/purchases?paid={order['purchase_id']}"
+    assert not paid(app, "ada@example.com")
+    assert client.get("/api/payments/purchases").json()[0]["status"] == "open"
+    relay.pay("cs_1")
+    assert client.get("/api/payments/purchases").json()[0]["status"] == "paid"
+    assert paid(app, "ada@example.com", "lifetime") and not paid(app, "ada@example.com", "x")
+    export = client.get("/api/account/export").json()
+    assert export["purchases"][0]["offer"] == "lifetime"
+
+
+def test_a_subscription_ends_at_the_end_of_its_paid_period(
+    client: TestClient, new_client: Callable[[], TestClient], relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    order = buy(client, "pro-monthly")
+    assert relay.orders[0]["mode"] == "subscription" and relay.orders[0]["interval"] == "month"
+    relay.pay("cs_1")
+    mine = client.get("/api/payments/purchases").json()[0]
+    assert mine["status"] == "paid" and not mine["cancel_at_period_end"]
+    other = new_client()
+    sign_up(other, "grace@example.com")
+    url = f"/api/payments/purchases/{order['purchase_id']}/cancel"
+    assert other.post(url).status_code == 404  # only the buyer cancels
+    ended = client.post(url).json()
+    assert ended["cancel_at_period_end"] and ended["current_period_end"].startswith("2030-")
+    assert relay.subscriptions["sub_1"]["cancel_at_period_end"]
+
+
+def test_nothing_is_sold_without_the_relay(client: TestClient, sign_up: SignUp) -> None:
+    sign_up(client)  # no relay configured, as in a local run
+    response = client.post("/api/payments/checkout", json={"offer": "lifetime", "begin_now": True})
+    assert response.status_code == 503
+    assert client.get("/api/payments/purchases").json() == []
+
+
+def test_deleting_the_account_ends_its_subscriptions(
+    client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    buy(client, "pro-monthly")
+    relay.pay("cs_1")
+    client.get("/api/payments/purchases")  # the purchase learns its subscription
+    gone = client.request("DELETE", "/api/account", json={"password": PASSWORD})
+    assert gone.status_code == 204
+    assert relay.subscriptions["sub_1"]["cancel_at_period_end"]

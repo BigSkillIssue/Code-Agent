@@ -80,5 +80,21 @@ people who want to run the server elsewhere). Hosting
 - checks `/healthz` before and after every release and rolls back when it fails;
 - serves `/impressum`, `/datenschutz` and the "report content" link itself, with the operator's
   details entered in Forge Web.
+@@if payments@@
+- sets `PAYMENTS_RELAY_URL` and `PAYMENTS_RELAY_TOKEN` (see Payments below).
+@@end@@
 
 Every release is reviewed and approved by you before it goes live.
+@@if payments@@
+
+## Payments
+
+Customers pay through Forge Web's payments relay (`server/app/payments.py`): the product never
+holds a Stripe key. The relay opens Stripe Checkout as your own Stripe account (connect it in
+Forge Web under billing), and the server's operator keeps a share of every payment. Edit `OFFERS`
+in `server/app/payments.py` for what is sold, and use `has_paid(db, user, offer)` to unlock it.
+The order button says that it costs money and the buyer agrees that the service begins at once;
+subscriptions are cancelled on the purchases page, in two steps, at the end of the paid period.
+Without `PAYMENTS_RELAY_URL` (a local run) nothing can be bought; the tests use
+`server/tests/fake_relay.py`. Have the texts and the prices checked before you sell anything.
+@@end@@
