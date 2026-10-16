@@ -40,6 +40,8 @@ PUBLIC = {
     "GET /kuendigen", "POST /kuendigen",
     # The legal texts are public: customers read them before they accept them.
     "GET /rechtstexte/{kind}",
+    # Apple's App Store Server Notifications: Apple's signature is the proof, not a session.
+    "POST /api/apple/notifications/{app}",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -326,7 +328,7 @@ async def test_people_are_no_hosts(shared: World) -> None:
 async def test_people_cannot_use_the_app_relays(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "relay"]
-    assert len(routes) == 5  # mail, and four for payments
+    assert len(routes) == 6  # mail, four for payments, and Apple's purchases
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

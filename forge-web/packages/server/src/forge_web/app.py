@@ -10,6 +10,7 @@ from forge_web.admin_api import admin_api_router
 from forge_web.apple.admin import apple_admin_router
 from forge_web.apple.approvals import approvals_router
 from forge_web.apple.asc_keys import asc_key_routes
+from forge_web.apple.iap import iap_router
 from forge_web.apple.listing import listing_routes
 from forge_web.apple.release_api import release_routes
 from forge_web.apple.screens_api import screens_router
@@ -83,7 +84,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         operator_router(), legal_router(), relay_router(), report_router(), notices_router(),
         gdpr_router(), domains_router(), billing_admin_router(), webhook_router(),
         checkout_router(), cancel_router(), legal_texts_router(), connect_router(),
-        payments_router(),
+        payments_router(), iap_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

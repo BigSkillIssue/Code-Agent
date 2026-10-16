@@ -15,7 +15,12 @@ from sqlalchemy import delete, select
 
 from forge_hostworker.wire import HostJob
 from forge_web.audit import audit
-from forge_web.db.billing_models import AppPayments, RelayCheckout
+from forge_web.db.billing_models import (
+    AppleEntitlement,
+    AppleNotification,
+    AppPayments,
+    RelayCheckout,
+)
 from forge_web.db.engine import Database
 from forge_web.db.hosting_models import (
     AbuseNotice,
@@ -42,7 +47,8 @@ log = logging.getLogger(__name__)
 ENVIRONMENTS = ("staging", "production")
 DELETE_TIMEOUT_S = 600.0
 ROWS = (AppUsageSample, AppBackup, AppBackupKey, AppMailLog, AppMail, AppSecret, AppOperator,
-        AbuseNotice, GoLiveApproval, Deploy, AppDomain, AppPayments, RelayCheckout)  # fmt: skip
+        AbuseNotice, GoLiveApproval, Deploy, AppDomain, AppPayments, RelayCheckout,
+        AppleNotification, AppleEntitlement)  # fmt: skip
 
 
 class Removals:

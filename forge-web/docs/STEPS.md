@@ -316,8 +316,8 @@ The apps take money from their own users. The template's payments module (S69) a
     - Build: creators onboard as Stripe Connect Express accounts; the relay acts for exactly one connected account per app token and takes the admin's application fee; the platform key never leaves the server.
     - Tests: an app token reaches only its own account; the fee is on every charge; a suspended app's token is refused; the platform key is never in a response or a log.
     - Verify: `uv run pytest -q tests/test_connect.py tests/test_payments_relay.py`
-- [ ] **W36 — Apple in-app purchases on the server**
-    - Files: `forge_web/apple/iap.py`, `tests/{asc_standin,test_apple_iap}.py`
+- [x] **W36 — Apple in-app purchases on the server**
+    - Files: `forge_web/apple/iap.py`, `forge_web/db/{billing_models.py,migrations/versions/0028_apple_iap.py}`, `forge_web/{app.py,hosting/removal.py}`, `tests/{asc_standin_iap,test_apple_iap,test_access}.py` (the signing stand-in is a file of its own, like `asc_standin_release.py`)
     - Build: App Store Server Notifications v2 (JWS chain checked with `cryptography`); renewals and refunds update the app's entitlements. It connects the Apple path (W22) to the hosted backend.
     - Tests: a valid chain is accepted, a broken or foreign one refused; a renewal extends and a refund removes the entitlement; a repeated notification counts once.
     - Verify: `uv run pytest -q tests/test_apple_iap.py`

@@ -255,3 +255,31 @@ class RelayCheckout(Base):
     reference: Mapped[str] = mapped_column(String(200), default="")
     subscription: Mapped[str] = mapped_column(String(255), default="")  # once Stripe made one
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class AppleNotification(Base):
+    """An App Store Server Notification handled (W36): each counts once, by its UUID."""
+
+    __tablename__ = "apple_notifications"
+
+    uuid: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(40))  # Apple's notificationType
+    received_at: Mapped[float] = mapped_column(Float)
+
+
+class AppleEntitlement(Base):
+    """What an app's customer bought in the app with Apple's in-app purchase (W36)."""
+
+    __tablename__ = "apple_entitlements"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    original_transaction_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    environment: Mapped[str] = mapped_column(String(16))  # staging (sandbox) or production
+    product_id: Mapped[str] = mapped_column(String(200))
+    account_token: Mapped[str] = mapped_column(String(64), default="")  # the app's own user id
+    expires_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: never
+    revoked_at: Mapped[float] = mapped_column(Float, default=0.0)  # refunded or revoked
+    updated_at: Mapped[float] = mapped_column(Float)

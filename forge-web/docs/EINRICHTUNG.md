@@ -509,6 +509,14 @@ Projekts; nur der Server signiert damit.
 5. **Im App Store veröffentlichen**, wenn Apple die Version freigegeben hat – wieder nur auf deinen
    Klick.
 
+**In-App-Käufe einer gehosteten App:** Verkauft die iPhone-App einer gehosteten App digitale
+Inhalte (mit StoreKit 2, wie Apple es verlangt), trägst du in App Store Connect unter **App →
+App-Informationen → App Store-Server-Benachrichtigungen** für Produktion und Sandbox die Adresse
+`https://<deine Forge-Web-Adresse>/api/apple/notifications/<Name der App>` ein, **Version 2**.
+Forge Web nimmt nur Benachrichtigungen an, die Apple signiert hat (geprüft bis zu Apples
+Root-Zertifikat), zählt jede einmal und sagt der App über ihr Zahlungs-Relay, was ihre Kunden
+gekauft haben; Sandbox-Käufe gehen an Staging, echte an die Produktion.
+
 ### 9.9 Wenn etwas nicht geht
 
 | Problem | Lösung |
