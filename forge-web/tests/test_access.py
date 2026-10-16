@@ -55,6 +55,7 @@ OWN = {
     "GET /api/billing/catalog", "GET /api/billing/me", "POST /api/billing/checkout",
     "POST /api/billing/cancel", "POST /api/billing/portal",
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
+    "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -119,6 +120,13 @@ BODIES: dict[str, dict[str, Any]] = {
     "TextIn": {"title": "Terms", "body": "The terms."},
     "AcceptIn": {"kind": "terms", "version": 1},
     "VatIn": {"vat_id": "DE123456789"},
+    "PaymentIn": {
+        "mode": "payment",
+        "name": "Pro",
+        "amount": 990,
+        "success_url": "https://shop.example.org/",
+        "cancel_url": "https://shop.example.org/",
+    },
     "AppStoreKeyIn": {
         "key_id": "ABC123DEFG",
         "issuer_id": "69a6de7e-1111-47e3-e053-5b8c7c11a4d1",
@@ -241,7 +249,7 @@ def rule(method: str, path: str) -> str:
     if path.startswith("/api/host/"):
         return "host"  # the hosts of apps, with their own tokens
     if path.startswith("/api/relay/"):
-        return "relay"  # hosted apps sending mail, with their relay tokens
+        return "relay"  # hosted apps sending mail and taking payments, with their relay tokens
     if "{project_id}" in path or "{chat_id}" in path:
         return "project"
     raise AssertionError(f"{key} has no access rule: add it to PUBLIC or OWN, or to this test")
@@ -258,7 +266,8 @@ def filled(path: str, world: World) -> str:
         "release_id": "0" * 16, "submission_id": "0" * 16, "deploy_id": "0" * 16,
         "host_id": "0" * 16, "app": "nobody",
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
-        "item_id": "pro", "coupon_id": "launch", "kind": "terms",
+        "item_id": "pro", "coupon_id": "launch", "kind": "terms", "checkout_id": "cs_1",
+        "subscription_id": "sub_1",
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -314,10 +323,10 @@ async def test_people_are_no_hosts(shared: World) -> None:
 
 
 @on_shared_loop
-async def test_people_cannot_send_app_mail(shared: World) -> None:
+async def test_people_cannot_use_the_app_relays(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "relay"]
-    assert len(routes) == 1
+    assert len(routes) == 5  # mail, and four for payments
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

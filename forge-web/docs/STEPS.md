@@ -311,8 +311,8 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
 
 The apps take money from their own users. The template's payments module (S69) and the Apple client for the API (S70) are built in Forge on `main`; order: W35 → S69 → S70 → W36.
 
-- [ ] **W35 — Stripe Connect and payments relay**
-    - Files: `forge_web/billing/{connect,relay}.py`, `tests/{stripe_standin_connect,test_connect,test_payments_relay}.py`
+- [x] **W35 — Stripe Connect and payments relay**
+    - Files: `forge_web/billing/{connect,relay,relay_tokens,stripe_client}.py`, `forge_web/db/{billing_models.py,migrations/versions/0027_connect.py}`, `forge_web/hosting/{plan,deploy,removal}.py`, `forge_web/{settings,app}.py`, `frontend/src/{api/billing.ts,lib/texts/billing.ts,pages/Billing.tsx}` (+ test), `tests/{stripe_standin,stripe_standin_connect,test_connect,test_payments_relay,test_access}.py`
     - Build: creators onboard as Stripe Connect Express accounts; the relay acts for exactly one connected account per app token and takes the admin's application fee; the platform key never leaves the server.
     - Tests: an app token reaches only its own account; the fee is on every charge; a suspended app's token is refused; the platform key is never in a response or a log.
     - Verify: `uv run pytest -q tests/test_connect.py tests/test_payments_relay.py`

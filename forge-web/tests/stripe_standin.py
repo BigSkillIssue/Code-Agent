@@ -21,7 +21,7 @@ WEBHOOK_SECRET = "_".join(("whsec", "standin0standin0standin0standin0"))
 MADE = {"/v1/customers": "cus", "/v1/products": "prod", "/v1/prices": "price",
         "/v1/coupons": "coupon", "/v1/promotion_codes": "promo",
         "/v1/checkout/sessions": "cs", "/v1/subscriptions": "sub",
-        "/v1/billing_portal/sessions": "bps"}  # fmt: skip
+        "/v1/billing_portal/sessions": "bps", "/v1/accounts": "acct"}  # fmt: skip
 
 
 class StripeStandIn:

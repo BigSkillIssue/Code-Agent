@@ -39,6 +39,8 @@ from forge_hostworker.wire import (
     app_host,
     seal,
 )
+from forge_web.billing.relay_tokens import TOKEN_SECRET as PAYMENTS_TOKEN
+from forge_web.billing.relay_tokens import payments_token, payments_url
 from forge_web.db.engine import Database
 from forge_web.db.hosting_models import AppSecret, Deploy, HostedApp, HostServer
 from forge_web.db.models import User
@@ -189,8 +191,10 @@ class Deploys:
         row.app = await self.app_name(row, product.manifest.name)
         hosting, mail = self.settings.hosting, product.manifest.mail
         relay = relay_url(self.settings) if mail else ""
+        takes_payments = product.manifest.payments.kind == "relay"
         plan = make_plan(product, row.app, row.environment, row.release, hosting.images,
-                         hosting.apps_domain, relay)  # fmt: skip
+                         hosting.apps_domain, relay,
+                         payments_url(self.settings) if takes_payments else "")  # fmt: skip
         data["mail_limit"] = min(mail.daily_limit, hosting.mail_daily_max) if mail else 0
         missing = await self.missing_secrets(row, plan)
         if missing:
@@ -309,13 +313,17 @@ class Deploys:
         return await self.queue.result(data[key])
 
     async def sealed(self, row: Deploy, data: dict[str, Any]) -> Any:
-        """The release's secrets (with its mail relay token), sealed to its host's key."""
+        """The release's secrets (with its relay tokens), sealed to its host's key."""
         names = {name for service in self.plan_of(data).services for name in service.secrets}
         values = await self.secret_values(row.project_id, row.environment)
         if TOKEN_SECRET in names:
             limit = int(data.get("mail_limit", 0))
             values[TOKEN_SECRET] = await relay_token(
                 self.db, self.vault, row.project_id, row.environment, limit
+            )
+        if PAYMENTS_TOKEN in names:
+            values[PAYMENTS_TOKEN] = await payments_token(
+                self.db, self.vault, row.project_id, row.environment
             )
         missing = sorted(names - set(values))
         if missing:
@@ -338,7 +346,8 @@ class Deploys:
             return {row.name: self.vault.decrypt(row.value) for row in rows}
 
     async def missing_secrets(self, row: Deploy, plan: DeployPlan) -> list[str]:
-        names = {name for service in plan.services for name in service.secrets} - {TOKEN_SECRET}
+        names = {name for service in plan.services for name in service.secrets}
+        names -= {TOKEN_SECRET, PAYMENTS_TOKEN}  # the relays' tokens: made by this server
         return sorted(names - set(await self.secret_values(row.project_id, row.environment)))
 
     async def app_name(self, row: Deploy, wanted: str) -> str:

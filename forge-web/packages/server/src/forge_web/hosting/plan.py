@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from forge_hostworker.wire import DeployPlan, Limits, ServicePlan, app_host
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
+from forge_web.billing import relay_tokens as payments
 from forge_web.containers.driver import SandboxError
 from forge_web.hosting.mail_relay import TOKEN_SECRET, URL_SETTING
 
@@ -37,7 +38,8 @@ LIMITS = {
 }
 MIGRATE = ["alembic", "upgrade", "head"]
 # What hosting sets in every release itself: no secret may take these names.
-HOSTING_SETS = frozenset({"APP_URL", "STORAGE_DIR", URL_SETTING, TOKEN_SECRET})
+HOSTING_SETS = frozenset({"APP_URL", "STORAGE_DIR", URL_SETTING, TOKEN_SECRET,
+                          payments.URL_SETTING, payments.TOKEN_SECRET})  # fmt: skip
 
 
 class PlanProblem(Exception):
@@ -177,13 +179,18 @@ def make_plan(
     images: dict[str, str],
     apps_domain: str,
     relay: str = "",
+    payments_relay: str = "",
 ) -> DeployPlan:
-    """The whole plan for one release of the product (`relay`: this server's mail relay)."""
+    """The whole plan for one release of the product (`relay`, `payments_relay`: this server's
+    mail and payments relays)."""
     manifest = product.manifest
     env = dict(manifest.env)
     extra: tuple[str, ...] = ()
     if manifest.mail is not None and relay:
         env[URL_SETTING], extra = relay, (TOKEN_SECRET,)  # the token is sealed like a secret
+    if manifest.payments.kind == "relay" and payments_relay:
+        env[payments.URL_SETTING] = payments_relay
+        extra = (*extra, payments.TOKEN_SECRET)
     if apps_domain:
         env["APP_URL"] = f"https://{app_host(app, environment, apps_domain)}"
     if manifest.storage is not None:

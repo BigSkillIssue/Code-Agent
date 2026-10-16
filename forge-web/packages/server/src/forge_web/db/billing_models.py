@@ -207,3 +207,51 @@ class VatCheck(Base):
     name: Mapped[str] = mapped_column(Text, default="")  # as VIES registered it
     address: Mapped[str] = mapped_column(Text, default="")
     checked_at: Mapped[float] = mapped_column(Float)
+
+
+class ConnectAccount(Base):
+    """A maker's own Stripe Express account (W35), as Stripe last described it."""
+
+    __tablename__ = "connect_accounts"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    stripe_account: Mapped[str] = mapped_column(String(64), unique=True)
+    charges_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    payouts_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    details_submitted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[float] = mapped_column(Float)
+    checked_at: Mapped[float] = mapped_column(Float)
+
+
+class AppPayments(Base):
+    """The payments relay of a hosted app in one environment: its token (W35)."""
+
+    __tablename__ = "app_payments"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    environment: Mapped[str] = mapped_column(String(16), primary_key=True)
+    token: Mapped[str] = mapped_column(Text)  # encrypted (it is sealed into every release)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class RelayCheckout(Base):
+    """A checkout an app opened through the relay, for one connected account (W35)."""
+
+    __tablename__ = "relay_checkouts"
+    __table_args__ = (Index("relay_checkouts_by_app", "project_id", "environment", "subscription"),)
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)  # Stripe's cs_...
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    environment: Mapped[str] = mapped_column(String(16))
+    stripe_account: Mapped[str] = mapped_column(String(64))
+    mode: Mapped[str] = mapped_column(String(16))  # payment or subscription
+    amount: Mapped[int] = mapped_column(Integer)  # cents, all pieces
+    currency: Mapped[str] = mapped_column(String(3))
+    fee: Mapped[int] = mapped_column(Integer, default=0)  # cents; a subscription's is a percent
+    reference: Mapped[str] = mapped_column(String(200), default="")
+    subscription: Mapped[str] = mapped_column(String(255), default="")  # once Stripe made one
+    created_at: Mapped[float] = mapped_column(Float)

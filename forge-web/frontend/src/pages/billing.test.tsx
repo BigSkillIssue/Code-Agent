@@ -17,6 +17,9 @@ const mine: MyBilling = {
     mac_minutes: 600, hosted_apps: null, storage_mb: 10000, custom_domains: null, store_publishing: true },
 };
 
+const noAccount = { enabled: true, connected: false, charges_enabled: false, payouts_enabled: false,
+  details_submitted: false, fee_percent: 10 };
+
 const mocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../api/billing", () => ({ billing: mocks.api }));
 const legalMocks = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof vi.fn>> }));
@@ -29,6 +32,9 @@ beforeEach(() => {
     checkout: vi.fn(async () => ({ url: "https://checkout.stripe.com/c/pay/cs_1" })),
     cancel: vi.fn(async () => ({ id: "x1", status: "done", received_at: 1_760_000_000, effective_at: 1_900_000_000 })),
     portal: vi.fn(async () => ({ url: "https://billing.stripe.com/p/session/bps_1" })),
+    connect: vi.fn(async () => ({ ...noAccount })),
+    startConnect: vi.fn(async () => ({ url: "https://connect.stripe.com/setup/e/acct_1" })),
+    connectDashboard: vi.fn(async () => ({ url: "https://connect.stripe.com/express/acct_1" })),
   });
   Object.assign(legalMocks.api, {
     me: vi.fn(async () => ({ missing: [], vat: null })),
@@ -130,5 +136,19 @@ describe("the billing page", () => {
     fireEvent.click(screen.getByRole("button", { name: /^(Check|Prüfen)$/ }));
     await waitFor(() => expect(legalMocks.api.vat).toHaveBeenCalledWith("DE 123456789"));
     expect((await screen.findByTestId("vat-result")).textContent).toContain("Muster GmbH");
+  });
+
+  it("connects a maker's own Stripe account for their apps' payments", async () => {
+    open();
+    expect((await screen.findByTestId("connect-state")).textContent).toMatch(/(No Stripe account|Noch kein Stripe-Konto)/);
+    expect(screen.getByText(/10 ?%/)).toBeTruthy(); // the server's share is said before
+    fireEvent.click(screen.getByRole("button", { name: /^(Connect a Stripe account|Stripe-Konto verbinden)$/ }));
+    await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://connect.stripe.com/setup/e/acct_1"));
+    cleanup();
+    mocks.api.connect.mockResolvedValue({ ...noAccount, connected: true, charges_enabled: true, details_submitted: true });
+    open();
+    expect((await screen.findByTestId("connect-state")).textContent).toMatch(/(takes payments|nimmt Zahlungen an)/);
+    fireEvent.click(screen.getByRole("button", { name: /^(Open your Stripe dashboard|Stripe-Übersicht öffnen)$/ }));
+    await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://connect.stripe.com/express/acct_1"));
   });
 });

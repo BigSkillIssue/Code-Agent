@@ -78,9 +78,12 @@ class StripeClient:
                                       transport=self.transport)  # fmt: skip
 
     async def call(self, method: str, path: str, params: Mapping[str, Any] | None = None,
-                   idempotency_key: str = "") -> dict[str, Any]:  # fmt: skip
-        """One API call, tried again on network trouble, 429 and 5xx with the same key."""
+                   idempotency_key: str = "", account: str = "") -> dict[str, Any]:  # fmt: skip
+        """One API call (as a connected account, if named), tried again on network trouble, 429
+        and 5xx with the same key."""
         headers = {"Authorization": f"Bearer {self.secret_key}", "Stripe-Version": VERSION}
+        if account:
+            headers["Stripe-Account"] = account
         if method not in SAFE:
             headers["Idempotency-Key"] = idempotency_key or secrets.token_hex(16)
         pairs = list(form(params or {}))  # names are unique, so a dict keeps them all

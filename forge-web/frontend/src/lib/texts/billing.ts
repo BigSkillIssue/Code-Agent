@@ -103,6 +103,14 @@ export const billingEn = {
   vatCheck: "Check",
   vatValid: "{vat} is valid: {name}",
   vatInvalid: "{vat} is not registered as valid in VIES.",
+  connectTitle: "Payments in your apps",
+  connectHint: "Your apps take their customers' money into a Stripe account of your own; you are the seller. The server keeps {fee}% of every payment.",
+  connectNone: "No Stripe account connected yet.",
+  connectPending: "Stripe is still checking your details; your apps can take payments once it is done.",
+  connectReady: "Your Stripe account takes payments.",
+  connectStart: "Connect a Stripe account",
+  connectContinue: "Complete your details at Stripe",
+  connectDashboard: "Open your Stripe dashboard",
 };
 
 export const billingDe: typeof billingEn = {
@@ -207,4 +215,12 @@ export const billingDe: typeof billingEn = {
   vatCheck: "Prüfen",
   vatValid: "{vat} ist gültig: {name}",
   vatInvalid: "{vat} ist in VIES nicht als gültig eingetragen.",
+  connectTitle: "Zahlungen in deinen Apps",
+  connectHint: "Deine Apps nehmen das Geld ihrer Kundschaft auf ein eigenes Stripe-Konto ein; Verkäufer bist du. Der Server behält {fee} % jeder Zahlung.",
+  connectNone: "Noch kein Stripe-Konto verbunden.",
+  connectPending: "Stripe prüft noch deine Angaben; danach können deine Apps Zahlungen annehmen.",
+  connectReady: "Dein Stripe-Konto nimmt Zahlungen an.",
+  connectStart: "Stripe-Konto verbinden",
+  connectContinue: "Angaben bei Stripe vervollständigen",
+  connectDashboard: "Stripe-Übersicht öffnen",
 };

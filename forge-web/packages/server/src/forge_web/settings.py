@@ -258,6 +258,8 @@ class BillingSettings(_Strict):
         "aup",
     ]
     vies_url: str = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number"
+    # Payments in the apps (W35): the admin's share of every charge, in percent.
+    connect_fee_percent: float = Field(default=0, ge=0, le=50)
 
 
 class WebSettings(_Strict):

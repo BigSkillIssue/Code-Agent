@@ -1,5 +1,6 @@
 // Billing (W31–W33): the admin's Stripe keys and the catalog (plans, an app's one-time price,
-// hosting, add-ons, coupons) that is synced to Stripe; a customer's offers, plan, limits and order.
+// hosting, add-ons, coupons) that is synced to Stripe; a customer's offers, plan, limits and order;
+// a maker's own Stripe account for their apps' payments (W35).
 
 import { api } from "./client";
 
@@ -116,6 +117,16 @@ export interface MyBilling {
   subscriptions: { item_id: string; status: string; interval: string; quantity: number; current_period_end: number }[];
 }
 
+/** A maker's own Stripe account, through which their apps take payments (W35). */
+export interface ConnectState {
+  enabled: boolean;
+  connected: boolean;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+  fee_percent: number;
+}
+
 export const billing = {
   offers: () => api.get<Offer[]>("/api/billing/catalog"),
   me: () => api.get<MyBilling>("/api/billing/me"),
@@ -127,4 +138,7 @@ export const billing = {
       { contract },
     ),
   portal: () => api.post<{ url: string }>("/api/billing/portal", {}),
+  connect: () => api.get<ConnectState>("/api/billing/connect"),
+  startConnect: () => api.post<{ url: string }>("/api/billing/connect", {}),
+  connectDashboard: () => api.post<{ url: string }>("/api/billing/connect/dashboard", {}),
 };

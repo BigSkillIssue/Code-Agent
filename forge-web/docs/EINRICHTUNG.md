@@ -855,6 +855,14 @@ neuen Version fragt Forge Web erneut. Jede Zustimmung wird mit Version und Uhrze
 Welche Texte Pflicht sind, steht unter `[billing]` in `required_texts`. Unternehmen tragen auf der
 Seite Tarif und Abrechnung ihre USt-IdNr. ein; Forge Web prüft sie beim VIES-Dienst der EU.
 
+**Zahlungen in den Apps (Stripe Connect):** Damit die gehosteten Apps deiner Kunden selbst Geld
+einnehmen, schaltest du im Stripe-Dashboard unter **Einstellungen → Connect** Connect ein und
+wählst **Express**-Konten. Deinen Anteil an jeder Zahlung legst du unter `[billing]` fest
+(`connect_fee_percent = 10` heißt 10 %). Jeder Kunde verbindet auf der Seite Tarif und Abrechnung
+sein eigenes Stripe-Konto; Stripe fragt dort nach Identität und Bankkonto, Forge Web sieht davon
+nichts. Eine App, deren `forge.app.toml` `[payments] kind = "relay"` enthält, bekommt beim Deploy
+automatisch ihren Zugang zum Zahlungs-Relay; dein Stripe-Schlüssel kommt nie in eine App.
+
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.

@@ -74,6 +74,7 @@ export function BillingPage() {
           </Section>
         )}
         {mine?.enabled && accepted && <VatSection vat={accepted.vat} />}
+        {mine?.enabled && <ConnectSection />}
       </div>
     </div>
   );
@@ -166,6 +167,32 @@ function CancelSection({ mine }: { mine: MyBilling }) {
             {t("cancelNow")}
           </Button>
         </div>
+      )}
+    </Section>
+  );
+}
+
+/** A maker's own Stripe account, through which their apps take their customers' money. */
+function ConnectSection() {
+  const [state] = useLoaded(useCallback(() => billing.connect(), []));
+  const act = useAction();
+  const open = async (link: () => Promise<{ url: string }>) => {
+    const stripe = { url: "" };
+    if (await act(async () => void (stripe.url = (await link()).url))) window.location.assign(stripe.url);
+  };
+  if (!state) return null;
+  const status = state.charges_enabled ? "connectReady" : state.connected ? "connectPending" : "connectNone";
+  return (
+    <Section title={t("connectTitle")} hint={t("connectHint", { fee: String(state.fee_percent) })}>
+      <p data-testid="connect-state" className={state.charges_enabled ? "text-ok" : "text-muted"}>
+        {t(status)}
+      </p>
+      {state.charges_enabled ? (
+        <Button onClick={() => void open(billing.connectDashboard)}>{t("connectDashboard")}</Button>
+      ) : (
+        <Button kind="primary" onClick={() => void open(billing.startConnect)}>
+          {t(state.connected ? "connectContinue" : "connectStart")}
+        </Button>
       )}
     </Section>
   );
