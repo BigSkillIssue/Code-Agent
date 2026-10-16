@@ -1,0 +1,66 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api, problem } from "../api/client";
+import type { components } from "../api/schema";
+import { useAuth } from "../auth";
+
+type Offer = components["schemas"]["OfferOut"];
+
+/** A price for people: "9.00 EUR a month". */
+export function price(offer: { amount: number; currency: string; interval: string | null }) {
+  const amount = `${(offer.amount / 100).toFixed(2)} ${offer.currency.toUpperCase()}`;
+  return offer.interval ? `${amount} a ${offer.interval}` : `${amount} once`;
+}
+
+/**
+ * What can be bought. The order button says that it costs money, and the box asks the buyer
+ * to agree that the service begins at once (their right of withdrawal then ends). The card is
+ * entered on Stripe's own page, never here.
+ */
+export function Pricing() {
+  const { user } = useAuth();
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [beginNow, setBeginNow] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.GET("/api/payments/offers").then(({ data }) => setOffers(data ?? []));
+  }, []);
+
+  async function order(offer: string) {
+    const { data, error } = await api.POST("/api/payments/checkout", {
+      body: { offer, begin_now: beginNow },
+    });
+    if (error || !data) return setError(problem(error));
+    window.location.assign(data.url);
+  }
+
+  return (
+    <section>
+      <h1>Pricing</h1>
+      <ul className="offers">
+        {offers.map((offer) => (
+          <li key={offer.id}>
+            <strong>{offer.name}</strong> {price(offer)}{" "}
+            {user && (
+              <button type="button" disabled={!beginNow} onClick={() => order(offer.id)}>
+                Order with obligation to pay
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {user ? (
+        <label>
+          <input type="checkbox" checked={beginNow} onChange={(e) => setBeginNow(e.target.checked)} />{" "}
+          I want the service to begin right away, and I know that my right of withdrawal then ends.
+        </label>
+      ) : (
+        <p>
+          <Link to="/signin">Sign in</Link> to order.
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}

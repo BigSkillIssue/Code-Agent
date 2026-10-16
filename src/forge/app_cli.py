@@ -12,9 +12,9 @@ from forge.local.local_executor import LocalExecutor
 from forge.ports import SandboxPolicy
 
 USAGE = """\
-forge app new NAME [--title TITLE]             a new product in ./NAME
-forge app dev [--database-url URL]             run it (on a throwaway PostgreSQL by default)
-forge app check [--database-url URL] [--json]  the fixed checks; .forge/out/app/checks.json"""
+forge app new NAME [--title TITLE] [--payments]  a new product in ./NAME
+forge app dev [--database-url URL]               run it (on a throwaway PostgreSQL by default)
+forge app check [--database-url URL] [--json]    the fixed checks; .forge/out/app/checks.json"""
 # The user runs these commands themselves, like a shell command, so they run unsandboxed.
 LOCAL = SandboxPolicy(mode="full-access", network=True)
 
@@ -25,18 +25,21 @@ def cmd_app(options: argparse.Namespace, rest: list[str]) -> int:
     parser.add_argument("action", choices=["new", "dev", "check"])
     parser.add_argument("name", nargs="?", help="new: the product's name, lowercase (its folder)")
     parser.add_argument("--title", help="new: the name people see (default: from NAME)")
+    parser.add_argument(
+        "--payments", action="store_true", help="new: sell through Forge Web's payments relay"
+    )
     parser.add_argument("--database-url", help="dev, check: a throwaway database to use")
     parser.add_argument("--json", action="store_true", help="check: print the report as JSON")
     args = parser.parse_args(rest)
     cwd = (options.cwd or Path.cwd()).resolve()
     if args.action == "new":
-        return new(cwd, args.name, args.title)
+        return new(cwd, args.name, args.title, ["payments"] if args.payments else [])
     if args.action == "dev":
         return asyncio.run(dev(cwd, args.database_url))
     return asyncio.run(check(cwd, args.database_url, args.json))
 
 
-def new(cwd: Path, name: str | None, title: str | None) -> int:
+def new(cwd: Path, name: str | None, title: str | None, features: list[str] | None = None) -> int:
     """`forge app new NAME`."""
     if not name:
         print(f"usage: {USAGE.splitlines()[0]}", file=sys.stderr)
@@ -48,7 +51,7 @@ def new(cwd: Path, name: str | None, title: str | None) -> int:
         return 1
     folder = cwd / name
     try:
-        written = write_app(folder, name, title)
+        written = write_app(folder, name, title, features or [])
     except FileExistsError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

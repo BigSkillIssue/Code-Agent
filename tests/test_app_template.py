@@ -216,3 +216,88 @@ def test_every_page_links_the_legal_pages(product: Path) -> None:
     assert '<a href="/impressum">' in layout and '<a href="/datenschutz">' in layout
     title = (product / "web" / "index.html").read_text(encoding="utf-8")
     assert "<title>Tally Notes</title>" in title
+
+
+@pytest.fixture(scope="module")
+def paid_product(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A product made by `forge app new shop --payments` (S69)."""
+    folder = tmp_path_factory.mktemp("paid")
+    assert main(["-C", str(folder), "app", "new", "shop", "--payments"]) == 0
+    return folder / "shop"
+
+
+PAYMENT_FILES = [
+    "server/app/payments.py",
+    "server/migrations/versions/0002_payments.py",
+    "server/tests/fake_relay.py",
+    "server/tests/test_payments.py",
+    "web/src/pages/Pricing.tsx",
+    "web/src/pages/Purchases.tsx",
+    "web/src/pages/Payments.test.tsx",
+]
+
+
+def test_the_payments_module_is_written_only_when_asked_for(
+    product: Path, paid_product: Path
+) -> None:
+    for path in PAYMENT_FILES:
+        assert not (product / path).exists(), path
+        assert (paid_product / path).is_file(), path
+    plain, paid = load_manifest(product), load_manifest(paid_product)
+    assert isinstance(plain, AppManifest) and isinstance(paid, AppManifest)
+    assert (plain.payments.kind, paid.payments.kind) == ("none", "relay")
+    main_py = (paid_product / "server" / "app" / "main.py").read_text(encoding="utf-8")
+    assert "app.include_router(payments.router)" in main_py
+    assert "payments" not in (product / "server" / "app" / "main.py").read_text(encoding="utf-8")
+    routes = (paid_product / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert 'path="pricing"' in routes and 'path="purchases"' in routes
+
+
+def test_the_paid_product_holds_no_stripe_key_or_package(paid_product: Path) -> None:
+    text = "\n".join(path.read_text(encoding="utf-8") for path in files_of(paid_product))
+    for secret in ("sk_live_", "sk_test_", "rk_live_", "whsec_", "STRIPE_SECRET"):
+        assert secret not in text, secret
+    server = tomllib.loads((paid_product / "server" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert not [d for d in server["project"]["dependencies"] if d.lower().startswith("stripe")]
+    lock = (paid_product / "server" / "uv.lock").read_text(encoding="utf-8")
+    assert 'name = "stripe"' not in lock
+    web = json.loads((paid_product / "web" / "package.json").read_text(encoding="utf-8"))
+    assert not [name for name in web["dependencies"] | web["devDependencies"] if "stripe" in name]
+    settings = (paid_product / "server" / "app" / "settings.py").read_text(encoding="utf-8")
+    assert "PAYMENTS_RELAY_URL" in settings and "PAYMENTS_RELAY_TOKEN" in settings
+
+
+def test_the_paid_typed_client_matches_its_api_snapshot(paid_product: Path) -> None:
+    schema = json.loads((paid_product / "server" / "openapi.json").read_text(encoding="utf-8"))
+    assert schema["info"]["title"] == "Shop"
+    assert "/api/payments/checkout" in schema["paths"]
+    types = (paid_product / "web" / "src" / "api" / "schema.d.ts").read_text(encoding="utf-8")
+    for path in schema["paths"]:
+        assert f'"{path}": {{' in types, path
+    for name in schema["components"]["schemas"]:
+        assert f"{name}: {{" in types, name
+
+
+def test_every_paid_file_is_filled_in_and_parses(paid_product: Path) -> None:
+    for path in files_of(paid_product):
+        text = path.read_text(encoding="utf-8")
+        assert "@@" not in text, path
+        if path.suffix == ".py":
+            compile(text, str(path), "exec")
+        elif path.suffix == ".json":
+            json.loads(text)
+        elif path.suffix == ".toml":
+            tomllib.loads(text)
+
+
+def test_feature_blocks() -> None:
+    text = "a\n@@if payments@@\npaid\n@@else@@\nfree\n@@end@@\nb\n"
+    assert render(text, {}, ["payments"]) == "a\npaid\nb\n"
+    assert render(text, {}) == "a\nfree\nb\n"
+    assert render("@@if payments@@\nx\n@@end@@\n", {}) == ""
+    with pytest.raises(ValueError):
+        render("@@if paymnts@@\nx\n@@end@@\n", {})  # a feature that does not exist
+    with pytest.raises(ValueError):
+        render("@@if payments@@\nx\n", {})  # never closed
+    with pytest.raises(ValueError):
+        template_files(features=["coffee"])

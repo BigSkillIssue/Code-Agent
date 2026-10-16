@@ -15,6 +15,10 @@ class Settings:
     app_url: str = "http://localhost:5173"  # where the web client runs (links in mails)
     mail_relay_url: str = ""
     mail_relay_token: str = ""
+@@if payments@@
+    payments_relay_url: str = ""  # without it nothing can be bought (see app/payments.py)
+    payments_relay_token: str = ""
+@@end@@
     storage_dir: Path = Path("data")
     session_days: int = 30
     requests_per_minute: int = 300  # per client address
@@ -39,5 +43,9 @@ def load_settings() -> Settings:
         app_url=os.environ.get("APP_URL", Settings.app_url),
         mail_relay_url=os.environ.get("MAIL_RELAY_URL", ""),
         mail_relay_token=os.environ.get("MAIL_RELAY_TOKEN", ""),
+@@if payments@@
+        payments_relay_url=os.environ.get("PAYMENTS_RELAY_URL", ""),
+        payments_relay_token=os.environ.get("PAYMENTS_RELAY_TOKEN", ""),
+@@end@@
         storage_dir=Path(os.environ.get("STORAGE_DIR", "data")),
     )

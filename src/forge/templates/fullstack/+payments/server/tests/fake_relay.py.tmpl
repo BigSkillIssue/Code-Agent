@@ -1,0 +1,62 @@
+"""The payments relay without Forge Web and without Stripe: a checkout is paid when a test says
+so, and a subscription begins with it."""
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from app.payments import RelayError
+
+PERIOD_END = 1_900_000_000  # when a new subscription's paid period ends
+
+
+@dataclass
+class FakeRelay:
+    """Answers like Forge Web's payments relay, and keeps what it was asked."""
+
+    orders: list[dict[str, Any]] = field(default_factory=list)
+    checkouts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    subscriptions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    down: bool = False
+
+    def checkout(self, order: dict[str, Any]) -> dict[str, Any]:
+        """Open a checkout; the customer has not paid yet."""
+        self.refuse_when_down()
+        checkout_id = f"cs_{len(self.checkouts) + 1}"
+        self.orders.append(order)
+        self.checkouts[checkout_id] = {"order": order, "status": "open", "subscription": ""}
+        return {"id": checkout_id, "url": f"https://checkout.stripe.test/{checkout_id}"}
+
+    def pay(self, checkout_id: str) -> None:
+        """The customer paid on Stripe's page."""
+        checkout = self.checkouts[checkout_id]
+        checkout["status"] = "complete"
+        if checkout["order"]["mode"] == "subscription":
+            subscription_id = f"sub_{len(self.subscriptions) + 1}"
+            self.subscriptions[subscription_id] = {"id": subscription_id, "status": "active",
+                                                   "cancel_at_period_end": False,
+                                                   "current_period_end": PERIOD_END}
+            checkout["subscription"] = subscription_id
+
+    def checkout_state(self, checkout_id: str) -> dict[str, Any]:
+        """How the checkout stands."""
+        self.refuse_when_down()
+        checkout = self.checkouts.get(checkout_id)
+        if checkout is None:
+            raise RelayError(404, "this app opened no such checkout")
+        paid = checkout["status"] == "complete"
+        return {"id": checkout_id, "status": checkout["status"],
+                "payment_status": "paid" if paid else "unpaid",
+                "subscription": checkout["subscription"]}
+
+    def cancel(self, subscription_id: str) -> dict[str, Any]:
+        """End a subscription at the end of its paid period."""
+        self.refuse_when_down()
+        subscription = self.subscriptions.get(subscription_id)
+        if subscription is None:
+            raise RelayError(404, "this app opened no such subscription")
+        subscription["cancel_at_period_end"] = True
+        return dict(subscription)
+
+    def refuse_when_down(self) -> None:
+        if self.down:
+            raise RelayError(502, "the payments relay is not reachable")

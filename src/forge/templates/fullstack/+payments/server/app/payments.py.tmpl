@@ -1,0 +1,322 @@
+"""Payments: @@title@@ sells through Forge Web's payments relay and never holds a Stripe key.
+
+Hosting sets PAYMENTS_RELAY_URL and PAYMENTS_RELAY_TOKEN; the relay opens Stripe Checkout as the
+Stripe account of whoever runs this product, who is the seller. Edit OFFERS for what is sold.
+Without the relay (local runs) nothing can be bought, so nothing is ever sold by mistake; the
+tests use a fake relay (tests/fake_relay.py). Customers order with a button that says it costs
+money, agree that the service begins at once (their right of withdrawal then ends), and cancel a
+subscription on the purchases page, in two steps, at the end of its paid period.
+"""
+
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Literal, Protocol
+
+import httpx
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import Purchase, User
+from app.sessions import CurrentUser, Db
+
+log = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+
+@dataclass(frozen=True)
+class Offer:
+    """Something the product sells: once, or every month or year."""
+
+    id: str
+    name: str
+    amount: int  # in cents
+    currency: str = "eur"
+    interval: Literal["month", "year"] | None = None  # None: a one-time purchase
+
+
+OFFERS = {
+    offer.id: offer
+    for offer in (
+        Offer("pro-monthly", "Pro, every month", 900, interval="month"),
+        Offer("lifetime", "Lifetime access", 4900),
+    )
+}
+
+
+class RelayError(Exception):
+    """The relay refused, or could not be reached."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class PaymentsRelay(Protocol):
+    """What the product asks of the payments relay."""
+
+    def checkout(self, order: dict[str, Any]) -> dict[str, Any]:
+        """Open a Stripe Checkout; its id and the page to send the customer to."""
+
+    def checkout_state(self, checkout_id: str) -> dict[str, Any]:
+        """How a checkout ended (and its subscription, if one began)."""
+
+    def cancel(self, subscription_id: str) -> dict[str, Any]:
+        """End a subscription at the end of its paid period."""
+
+
+@dataclass
+class HttpRelay:
+    """Forge Web's payments relay."""
+
+    url: str
+    token: str
+
+    def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """One request; RelayError for anything but success."""
+        headers = {"Authorization": f"Bearer {self.token}"}
+        try:
+            reply = httpx.request(method, self.url + path, json=body, headers=headers, timeout=20)
+        except httpx.HTTPError as error:
+            raise RelayError(502, f"the payments relay is not reachable: {error}") from None
+        if reply.status_code >= 400:
+            raise RelayError(reply.status_code, reply.text[:500])
+        found: dict[str, Any] = reply.json()
+        return found
+
+    def checkout(self, order: dict[str, Any]) -> dict[str, Any]:
+        """Open a Stripe Checkout."""
+        return self.call("POST", "/checkout", order)
+
+    def checkout_state(self, checkout_id: str) -> dict[str, Any]:
+        """How a checkout ended."""
+        return self.call("GET", f"/checkout/{checkout_id}")
+
+    def cancel(self, subscription_id: str) -> dict[str, Any]:
+        """End a subscription at the end of its paid period."""
+        return self.call("POST", f"/subscriptions/{subscription_id}/cancel")
+
+
+class NoRelay:
+    """No relay here (a local run): nothing can be bought."""
+
+    def refuse(self) -> dict[str, Any]:
+        raise RelayError(503, "payments are not set up here (PAYMENTS_RELAY_URL is not set)")
+
+    def checkout(self, order: dict[str, Any]) -> dict[str, Any]:
+        """Refused."""
+        return self.refuse()
+
+    def checkout_state(self, checkout_id: str) -> dict[str, Any]:
+        """Refused."""
+        return self.refuse()
+
+    def cancel(self, subscription_id: str) -> dict[str, Any]:
+        """Refused."""
+        return self.refuse()
+
+
+def make_relay(url: str, token: str) -> PaymentsRelay:
+    """The relay when hosting configured one, else none."""
+    return HttpRelay(url.rstrip("/"), token) if url and token else NoRelay()
+
+
+class OfferOut(BaseModel):
+    """An offer as the clients see it."""
+
+    id: str
+    name: str
+    amount: int
+    currency: str
+    interval: str | None
+
+
+class OrderIn(BaseModel):
+    """An order: which offer, and the box for beginning at once."""
+
+    offer: str = Field(max_length=80)
+    begin_now: bool = False  # the right of withdrawal ends when the service begins
+
+
+class CheckoutOut(BaseModel):
+    """Where to pay for a purchase."""
+
+    purchase_id: int
+    url: str
+
+
+class PurchaseOut(BaseModel):
+    """A purchase as its buyer sees it."""
+
+    id: int
+    offer: str
+    name: str
+    amount: int
+    currency: str
+    interval: str | None
+    status: str  # open, paid or expired
+    cancel_at_period_end: bool
+    current_period_end: datetime | None
+    created_at: datetime
+
+
+def purchase_out(purchase: Purchase) -> PurchaseOut:
+    """The buyer's view of a purchase."""
+    offer = OFFERS.get(purchase.offer)
+    return PurchaseOut(
+        id=purchase.id,
+        offer=purchase.offer,
+        name=offer.name if offer else purchase.offer,
+        amount=purchase.amount,
+        currency=purchase.currency,
+        interval=purchase.interval,
+        status=purchase.status,
+        cancel_at_period_end=purchase.cancel_at_period_end,
+        current_period_end=purchase.current_period_end,
+        created_at=purchase.created_at,
+    )
+
+
+def relay_of(request: Request) -> PaymentsRelay:
+    """The app's payments relay."""
+    relay: PaymentsRelay = request.app.state.payments
+    return relay
+
+
+def refused(error: RelayError) -> HTTPException:
+    """What the client is told when the relay says no."""
+    log.warning("payments relay: %s %s", error.status, error)
+    if error.status in (409, 503):
+        return HTTPException(status_code=503, detail="Payments are not available right now.")
+    return HTTPException(status_code=502, detail="The payment could not be started. Try again.")
+
+
+@router.get("/offers")
+def offers() -> list[OfferOut]:
+    """What can be bought."""
+    return [
+        OfferOut(id=o.id, name=o.name, amount=o.amount, currency=o.currency, interval=o.interval)
+        for o in OFFERS.values()
+    ]
+
+
+@router.post("/checkout", status_code=201)
+def checkout(body: OrderIn, user: CurrentUser, request: Request, db: Db) -> CheckoutOut:
+    """Start paying for an offer; the client sends the customer to the returned page."""
+    offer = OFFERS.get(body.offer)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="There is no such offer.")
+    if not body.begin_now:
+        raise HTTPException(
+            status_code=422, detail="Please agree that the service begins right away."
+        )
+    purchase = Purchase(
+        user_id=user.id,
+        offer=offer.id,
+        amount=offer.amount,
+        currency=offer.currency,
+        interval=offer.interval,
+        begin_now_at=datetime.now(UTC),
+    )
+    db.add(purchase)
+    db.flush()
+    site = request.app.state.settings.app_url
+    order = {
+        "mode": "subscription" if offer.interval else "payment",
+        "name": offer.name,
+        "amount": offer.amount,
+        "currency": offer.currency,
+        "interval": offer.interval,
+        "success_url": f"{site}/purchases?paid={purchase.id}",
+        "cancel_url": f"{site}/pricing",
+        "customer_email": user.email,
+        "reference": str(purchase.id),
+    }
+    try:
+        opened = relay_of(request).checkout(order)
+    except RelayError as error:
+        db.rollback()
+        raise refused(error) from None
+    purchase.checkout_id = str(opened["id"])
+    db.commit()
+    return CheckoutOut(purchase_id=purchase.id, url=str(opened["url"]))
+
+
+@router.get("/purchases")
+def purchases(user: CurrentUser, request: Request, db: Db) -> list[PurchaseOut]:
+    """The user's purchases, open ones checked with the relay first."""
+    mine = select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.id)
+    rows = list(db.scalars(mine))
+    for purchase in rows:
+        if purchase.status == "open" and purchase.checkout_id:
+            try:
+                settle(purchase, relay_of(request).checkout_state(purchase.checkout_id))
+            except RelayError as error:
+                log.warning("payments relay: purchase %s not checked: %s", purchase.id, error)
+    db.commit()
+    return [purchase_out(p) for p in rows]
+
+
+def settle(purchase: Purchase, state: dict[str, Any]) -> None:
+    """Take over how the checkout ended."""
+    paid = state.get("payment_status") in ("paid", "no_payment_required")  # free trials too
+    if state.get("status") == "complete" and paid:
+        purchase.status = "paid"
+        purchase.subscription_id = str(state.get("subscription") or "")
+    elif state.get("status") == "expired":
+        purchase.status = "expired"
+
+
+@router.post("/purchases/{purchase_id}/cancel")
+def cancel(purchase_id: int, user: CurrentUser, request: Request, db: Db) -> PurchaseOut:
+    """End a subscription at the end of the period that is paid for."""
+    purchase = db.get(Purchase, purchase_id)
+    if purchase is None or purchase.user_id != user.id or not purchase.subscription_id:
+        raise HTTPException(status_code=404, detail="You have no such subscription.")
+    if not purchase.cancel_at_period_end:
+        try:
+            ended = relay_of(request).cancel(purchase.subscription_id)
+        except RelayError as error:
+            raise refused(error) from None
+        purchase.cancel_at_period_end = True
+        purchase.current_period_end = period_end(ended)
+        db.commit()
+    return purchase_out(purchase)
+
+
+def period_end(subscription: dict[str, Any]) -> datetime | None:
+    """When a subscription's paid period ends."""
+    end = subscription.get("current_period_end") or 0
+    return datetime.fromtimestamp(end, UTC) if end else None
+
+
+def has_paid(db: Session, user: User, offer_id: str | None = None) -> bool:
+    """Whether the user paid (for this offer, or for any): use it to unlock what was bought."""
+    query = select(Purchase.id).where(Purchase.user_id == user.id, Purchase.status == "paid")
+    if offer_id is not None:
+        query = query.where(Purchase.offer == offer_id)
+    return db.scalars(query).first() is not None
+
+
+def end_subscriptions(relay: PaymentsRelay, db: Session, user: User) -> None:
+    """End the user's running subscriptions (their account is being deleted)."""
+    running = db.scalars(
+        select(Purchase).where(
+            Purchase.user_id == user.id,
+            Purchase.subscription_id != "",
+            Purchase.cancel_at_period_end.is_(False),
+        )
+    )
+    for purchase in running:
+        try:
+            relay.cancel(purchase.subscription_id)
+        except RelayError as error:  # the owner sees it in the log and in Stripe
+            log.error("subscription %s was not ended: %s", purchase.subscription_id, error)
+
+
+def export_rows(db: Session, user: User) -> list[dict[str, Any]]:
+    """The user's purchases for their data export."""
+    rows = db.scalars(select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.id))
+    return [purchase_out(p).model_dump(mode="json") for p in rows]
