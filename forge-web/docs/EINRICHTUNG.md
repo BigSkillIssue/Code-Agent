@@ -838,6 +838,13 @@ sie wirkt. Was Forge Web nicht selbst zuordnen kann, landet per Mail bei den Adm
 „Zahlungsart und Rechnungen“ schaltest du in Stripe unter **Einstellungen → Billing →
 Kundenportal** das Portal ein.
 
+Bleibt eine Rechnung offen (Stripe meldet `invoice.payment_failed`; diese Ereignisse und
+`invoice.paid` im Webhook mit auswählen), schreibt Forge Web dem Kunden und hält nach 14 Tagen
+seine gehosteten Apps an. 14 Tage später legt es einen Export an und kündigt das Löschen an; erst
+30 Tage danach, und nur wenn der Export da ist, werden die Apps gelöscht. Konto und Projekte
+bleiben. Wird bezahlt, laufen die Apps wieder. Die Fristen stehen unter `[billing]`
+(`grace_days`, `notice_after_days`, `delete_after_days`).
+
 Forge Web nimmt nur Ereignisse an, die Stripe signiert hat und die höchstens fünf Minuten alt
 sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der Stripe es erzeugt
 hat.

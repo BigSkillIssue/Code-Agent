@@ -151,3 +151,17 @@ class Cancellation(Base):
     status: Mapped[str] = mapped_column(String(16))  # done, or manual (an admin looks at it)
     effective_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: an admin confirms it
     sender: Mapped[str] = mapped_column(String(64), default="")  # a hash of the address, for limits
+
+
+class DunningCase(Base):
+    """A customer's unpaid bill and how far dunning has gone (W33b2)."""
+
+    __tablename__ = "billing_dunning"
+    __table_args__ = (Index("billing_dunning_open", "user_id", "closed_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    opened_at: Mapped[float] = mapped_column(Float)
+    stage: Mapped[str] = mapped_column(String(16))  # grace, suspended, noticed, deleted
+    stage_at: Mapped[float] = mapped_column(Float)  # when it reached its stage
+    closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # paid, or done

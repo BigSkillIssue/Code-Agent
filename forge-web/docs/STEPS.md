@@ -296,8 +296,8 @@ Strangers pay only once the legal texts exist (from the admin's lawyer and tax a
     - Build: the §312k cancellation button (two steps, without signing in at `/kuendigen`, and without signing in again on the billing page) and its confirmation mail; Stripe's Customer Portal.
     - Tests: cancelling takes two steps without signing in again and sends the mail; an unmatched cancellation goes to the admins; the portal opens.
     - Verify: `uv run pytest -q tests/test_cancel.py tests/test_access.py`
-- [ ] **W33b2 — Dunning**
-    - Files: `forge_web/billing/dunning.py`, `tests/test_dunning.py`
+- [x] **W33b2 — Dunning**
+    - Files: `forge_web/billing/dunning.py`, `forge_web/hosting/{suspension,admin}.py`, `forge_web/db/{billing_models.py,migrations/versions/0025_dunning.py}`, `forge_web/{settings,services,startup}.py`, `tests/test_dunning.py`
     - Build: unpaid → grace period → suspended → deleted after notice and an export.
     - Tests: every dunning stage at its date; nothing is deleted before the notice and the export.
     - Verify: `uv run pytest -q tests/test_dunning.py`

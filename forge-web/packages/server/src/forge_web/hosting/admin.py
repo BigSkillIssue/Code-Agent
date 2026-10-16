@@ -34,6 +34,7 @@ from forge_web.hosting.deploy import view
 from forge_web.hosting.gdpr import start_deleting
 from forge_web.hosting.hosts import ONLINE_S, create_host
 from forge_web.hosting.ops import said
+from forge_web.hosting.suspension import live_in, set_suspended
 from forge_web.services import Services, services_of
 
 log = logging.getLogger(__name__)
@@ -276,16 +277,9 @@ async def suspend_app(
 ) -> list[str]:
     """Suspend an app (stop it where it is live, so the edge drops it) or let it run again; the
     environments it was stopped or started in. Also used when a notice is upheld (`abuse.py`)."""
-    async with services.db.session() as session, session.begin():
-        hosted = await session.get(HostedApp, project_id)
-        if hosted is None:
-            raise HTTPException(404, "no such app")
-        hosted.suspended, hosted.suspended_at = suspended, time.time()
-        hosted.suspended_reason = reason.strip() if suspended else ""
-    sent = []
-    for environment in await live_environments(services, project_id):
-        await send(services, hosted, environment, "stop" if suspended else "start")
-        sent.append(environment)
+    sent = await set_suspended(services.db, services.hosts, project_id, reason, suspended)
+    if sent is None:
+        raise HTTPException(404, "no such app")
     return sent
 
 
@@ -321,10 +315,7 @@ async def hosted_or_404(services: Services, project_id: str) -> HostedApp:
 
 async def live_environments(services: Services, project_id: str) -> list[str]:
     """The environments in which the project has a live release."""
-    async with services.db.session() as session:
-        found = await session.scalars(select(Deploy.environment).where(
-            Deploy.project_id == project_id, Deploy.status == "live"))  # fmt: skip
-        return sorted(set(found))
+    return await live_in(services.db, project_id)
 
 
 async def send(services: Services, hosted: HostedApp, environment: str, kind: str) -> str:

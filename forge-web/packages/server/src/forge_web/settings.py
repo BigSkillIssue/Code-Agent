@@ -242,12 +242,14 @@ class BillingSettings(_Strict):
 
     enabled: bool = False
     allow_live: bool = False  # test keys only until the legal texts are there (W34)
-    free_plan: str = (
-        ""  # a catalog plan for customers without a subscription; "": the server's limits
-    )
-    usd_per_eur: float = Field(
-        default=1.08, gt=0
-    )  # plans set AI budgets in EUR, the gateway counts USD
+    # A catalog plan for customers without a subscription ("": the server's own limits).
+    free_plan: str = ""
+    # Plans set AI budgets in EUR; the gateway counts USD.
+    usd_per_eur: float = Field(default=1.08, gt=0)
+    # Dunning (W33b2): unpaid -> grace -> hosted apps suspended -> notice and export -> deleted.
+    grace_days: float = Field(default=14, gt=0)
+    notice_after_days: float = Field(default=14, gt=0)  # after the suspension
+    delete_after_days: float = Field(default=30, gt=0)  # after the notice, once exported
 
 
 class WebSettings(_Strict):
