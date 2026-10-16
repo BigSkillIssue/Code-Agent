@@ -1,0 +1,19 @@
+# @@title@@ for Android
+
+Kotlin and Jetpack Compose, made with `forge app new --android`. It builds on Linux, macOS and
+Windows with the Gradle wrapper: `./gradlew assembleDebug testDebugUnitTest` (needs JDK 17 or
+newer and the Android SDK; set `ANDROID_HOME`).
+
+- The client of the server's API is generated from `../server/openapi.json` on every build
+  (openapi-generator, `app/build.gradle.kts`): change the server, write its snapshot, build this
+  app, and the compiler shows every place the change touches.
+- `Server.kt` says where the server runs: staging until the app is released, then production.
+- Signing in and deleting the account work in the app, as Google Play requires.
+- Every version is pinned in `gradle/libs.versions.toml`; the wrapper pins Gradle and checks its
+  download (`gradle/wrapper/gradle-wrapper.properties`).
+- The application id is `@@package@@`. Use your own (reverse domain) before the first upload.
+@@if digital_goods@@
+- The app sells digital goods with Google Play Billing (`Store.kt`), as Google Play requires; its
+  API client leaves out the web checkout. Create the products named in `Store.PRODUCT_IDS` in the
+  Play Console.
+@@end@@

@@ -301,3 +301,17 @@ def test_feature_blocks() -> None:
         render("@@if payments@@\nx\n", {})  # never closed
     with pytest.raises(ValueError):
         template_files(features=["coffee"])
+
+
+def test_an_apple_app_is_written_only_when_asked_for(tmp_path: Path, product: Path) -> None:
+    assert not (product / "apple").exists()
+    assert main(["-C", str(tmp_path), "app", "new", "shop", "--digital-goods"]) == 0
+    shop = tmp_path / "shop"
+    manifest = load_manifest(shop)
+    assert isinstance(manifest, AppManifest)
+    assert manifest.clients == ["web", "apple"]
+    assert (manifest.payments.kind, manifest.payments.digital_goods) == ("relay", True)
+    assert (shop / "apple" / "project.yml").is_file() and (shop / "apple" / "Shared").is_dir()
+    assert (shop / "server" / "app" / "payments.py").is_file()  # the web still sells
+    server = (shop / "apple" / "Shared" / "APIServer.swift").read_text(encoding="utf-8")
+    assert "https://shop.staging.apps.example.com" in server  # until --apps-domain is given

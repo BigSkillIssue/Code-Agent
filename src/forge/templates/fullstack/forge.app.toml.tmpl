@@ -3,7 +3,7 @@
 version = 1
 name = "@@name@@"
 resource_class = "small"
-clients = ["web"]
+clients = [@@clients@@]
 
 [[services]]
 name = "api"
@@ -38,4 +38,7 @@ daily_limit = 200
 # Customers pay through Forge Web's payments relay (server/app/payments.py).
 [payments]
 kind = "relay"
+@@end@@
+@@if digital_goods@@
+digital_goods = true  # sold in the app stores: Apple guideline 3.1.1, Google Play payments policy
 @@end@@

@@ -56,10 +56,11 @@ jobs:
 
   fullstack:
     # A product from `forge app new` installed from its lockfiles and tested for real: the server's
-    # own tests on PostgreSQL, the web client's tests and build (the gate jobs skip these tests:
-    # they need PyPI, npm and a database).
+    # own tests on PostgreSQL, the web client's tests and build, and the Android app's build and
+    # tests with the runner's Android SDK (the gate jobs skip these tests: they need PyPI, npm,
+    # Maven, a JDK, the Android SDK and a database).
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -77,10 +78,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
       - name: Install
         run: |
           uv sync
           ls /usr/lib/postgresql/*/bin/initdb || sudo apt-get install -y postgresql
+          echo "Android SDK: $ANDROID_HOME"
       - name: Full-stack tests
         env:
           FULLSTACK_DATABASE_URL: postgresql://postgres:ci@localhost:5432/fullstack

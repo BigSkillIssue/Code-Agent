@@ -71,6 +71,14 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   never a Stripe key; the order button says it costs money, the buyer agrees that the service
   begins at once, subscriptions are cancelled in two steps on the purchases page, and a deleted
   account leaves no subscription running. The product's own tests use a fake relay.
+- **Apple app for a product:** `forge app new NAME --apple` adds the SwiftUI app with a client of
+  the server's API, generated from `server/openapi.json` by Apple's swift-openapi-generator
+  (`apple/generate-api.sh`, run as a command so Xcode never has to trust a plug-in) and pointed
+  at staging; with `--digital-goods` it sells with StoreKit 2 and its client has no web checkout.
+- **Android app for a product:** `forge app new NAME --android` adds a Kotlin and Jetpack Compose
+  app whose API client openapi-generator writes from `server/openapi.json` on every build, with
+  sign-in and account deletion in the app, a Gradle wrapper and pinned versions; it builds on
+  Linux. With `--digital-goods` it sells with Google Play Billing and its client has no web checkout.
 
 ## 1.0.0 - 2026-10-05
 

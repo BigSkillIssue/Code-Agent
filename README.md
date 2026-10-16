@@ -78,7 +78,9 @@ forge mcp add NAME -- CMD  add an MCP server (also: add-json, list, get, remove)
 forge ollama setup         run locally: pick, download and configure an Ollama model
 forge apple new NAME       a SwiftUI app for iPhone, iPad, Mac and Apple Watch
 forge app new NAME         a full-stack product: server, database, docs, tests and CI
-                           (--payments: it sells through Forge Web's payments relay)
+                           (--payments: it sells through Forge Web's payments relay;
+                           --apple, --android: with native apps; --digital-goods: sold
+                           with StoreKit 2 and Google Play Billing)
 forge app dev | check      run a product locally / run its fixed checks
 ```
 

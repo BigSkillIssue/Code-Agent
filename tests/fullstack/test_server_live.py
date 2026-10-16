@@ -1,6 +1,7 @@
 """The product from `forge app new`, installed and tested for real: its server's own tests on
 PostgreSQL, the web client's tests and build, and the templates inside Forge's wheel. Each test
-runs for the plain product and for one that sells through the payments relay (S69).
+runs for the plain product and for one that sells through the payments relay (S69); the
+product's Android app is built and tested with Gradle (S71).
 
 Marked `fullstack` and skipped by default: it needs uv, Node 22 with npm, network access to PyPI
 and npm, and a throwaway PostgreSQL database in FULLSTACK_DATABASE_URL (its schema is dropped).
@@ -70,6 +71,7 @@ def test_the_templates_ship_in_the_wheel(tmp_path: Path) -> None:
     assert "forge/templates/fullstack/server/app/main.py.tmpl" in names
     assert "forge/templates/fullstack/dot-github/workflows/ci.yml.tmpl" in names
     assert "forge/templates/fullstack/+payments/server/app/payments.py.tmpl" in names
+    assert "forge/templates/android/gradle/wrapper/gradle-wrapper.jar" in names
 
 
 def test_the_web_clients_tests_and_build_pass(product: Path) -> None:
@@ -115,3 +117,23 @@ def test_forge_app_check_passes_on_a_throwaway_database(product: Path) -> None:
         return report.commit
 
     assert len(asyncio.run(check())) == 40
+
+
+@pytest.fixture(scope="module", params=[(), ("payments", "digital_goods")], ids=["plain", "store"])
+def android_app(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
+    """The Android app of a fresh product (S71), plain or selling digital goods."""
+    folder = tmp_path_factory.mktemp("android") / "tally"
+    write_app(folder, "tally", features=("android", *request.param))
+    return folder / "android"
+
+
+def test_the_android_app_builds_and_its_tests_pass(android_app: Path) -> None:
+    if not (os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")):
+        unavailable("the Android SDK is not installed (ANDROID_HOME)")
+    if shutil.which("java") is None:
+        unavailable("no JDK is installed (17 or newer)")
+    gradlew = android_app / ("gradlew.bat" if os.name == "nt" else "gradlew")
+    run([str(gradlew), "--no-daemon", "assembleDebug", "testDebugUnitTest"], android_app)
+    assert (android_app / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk").is_file()
+    results = (android_app / "app" / "build" / "test-results" / "testDebugUnitTest").glob("*.xml")
+    assert any('failures="0"' in path.read_text(encoding="utf-8") for path in results)

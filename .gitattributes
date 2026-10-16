@@ -1,0 +1,4 @@
+# Template files are text with LF line ends whatever the platform (app_template writes the
+# CRLF a Windows batch file needs); the Gradle wrapper is binary.
+src/forge/templates/** text=auto eol=lf
+src/forge/templates/**/*.jar binary
