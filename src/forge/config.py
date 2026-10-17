@@ -196,10 +196,15 @@ class HookConfig(_Strict):
     command: str
 
 
+Effort = Literal["auto", "low", "medium", "high"]
+EFFORTS: tuple[Effort, ...] = ("auto", "low", "medium", "high")
+
+
 class ForgeConfig(_Strict):
     """The complete Forge configuration (docs/CONTRACTS.md, Config schema)."""
 
     profile: str = "default"
+    effort: Effort = "auto"  # how hard reasoning models think (S74); auto: the model's default
     providers: dict[str, ProviderConfig] = {}
     models: dict[str, ModelOverride] = {}
     roles: dict[str, list[str]] = Field(default_factory=lambda: dict(DEFAULT_ROLES))

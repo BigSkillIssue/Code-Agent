@@ -12,6 +12,7 @@ from forge import __version__
 from forge.app_cli import cmd_app
 from forge.apple_template import bundle_problem, name_problem, write_app
 from forge.config import (
+    EFFORTS,
     ConfigError,
     ForgeConfig,
     find_project_root,
@@ -70,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--team", action="store_const", const="team", dest="mode", help="a team on a task board"
     )
     parser.add_argument(
+        "--effort",
+        choices=EFFORTS,
+        help="how hard reasoning models think; auto (default) keeps the model's own default",
+    )
+    parser.add_argument(
         "--apple",
         action="store_true",
         help="check Apple's guidelines at the request, the plan and the built app; you approve it",
@@ -114,6 +120,8 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
         cfg.apple.review = True
     if options.app:
         cfg.app.review = True
+    if options.effort:
+        cfg.effort = options.effort
     for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
         print(f"warning: {warning}", file=sys.stderr)
     if options.fake is None:

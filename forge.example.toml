@@ -1,4 +1,5 @@
 profile = "default"                    # selected profile, overridable with -p
+effort = "auto"                        # auto | low | medium | high: how hard reasoning models think (S74)
 
 [providers.openai]
 kind = "openai_compat"                 # openai_compat | anthropic | google | litellm

@@ -483,6 +483,7 @@ class HookOutcome(BaseModel):
 
 ```toml
 profile = "default"                    # selected profile, overridable with -p
+effort = "auto"                        # auto | low | medium | high: how hard reasoning models think (S74)
 
 [providers.openai]
 kind = "openai_compat"                 # openai_compat | anthropic | google | litellm
@@ -551,7 +552,7 @@ approval = { policy = "never" }
 limits = { max_cost_usd = 1.0 }
 ```
 
-Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. A project config may **not** set `providers.*`, `mcp_servers.*`, `hooks.*`, `release.*` or `browser.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning. An untrusted project may make `sandbox`, `approval`, `permissions.allow` and `limits` only stricter than the user's own, and no project, trusted or not, drops the user's `permissions.deny` and `ask` rules (security review after S73).
+Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. `effort` also has `/effort` and `--effort`, which set it for one session (`SessionState.effort_override`); it reaches `ChatRequest.reasoning_effort` only for models whose `Capabilities.reasoning` is true, and `auto` sends nothing (S74). A project config may **not** set `providers.*`, `mcp_servers.*`, `hooks.*`, `release.*` or `browser.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning. An untrusted project may make `sandbox`, `approval`, `permissions.allow` and `limits` only stricter than the user's own, and no project, trusted or not, drops the user's `permissions.deny` and `ask` rules (security review after S73).
 
 ## App manifest — `src/forge/app_manifest.py`
 

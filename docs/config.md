@@ -15,6 +15,7 @@ and `[limits]` may only be stricter than your own, and no project file drops you
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `profile` | str | `"default"` | Profile to apply from `[profiles.*]` (`-p` overrides it). |
+| `effort` | `auto` \| `low` \| `medium` \| `high` | `"auto"` | How hard reasoning models think: `auto` (the model's default), `low`, `medium` or `high`; `/effort` and `--effort` change it for a session. |
 | `providers` | table of ProviderConfig | `{}` | Model endpoints by name; see `[providers.<name>]`. Common providers have presets. |
 | `models` | table of ModelOverride | `{}` | Capability and price overrides per `"provider/model"`. |
 | `roles` | table of list of str | - | Model fallback chain per role: `coder = ["anthropic/claude-sonnet", "openai/gpt-5"]`. |

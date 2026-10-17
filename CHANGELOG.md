@@ -86,6 +86,11 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   installer and a ZIP to run without installing, and both update themselves from the website. A
   paid product sells on its website; there is no Microsoft Store.
 
+Phase 9 (S74-S77), like Claude:
+
+- **Effort:** `effort = "low" | "medium" | "high"` (default `auto`, the model's own) sets how
+  hard reasoning models think; `/effort` and `--effort` change it for one session.
+
 ## 1.0.0 - 2026-10-05
 
 The first release: everything planned in `docs/STEPS.md` (S01-S48).

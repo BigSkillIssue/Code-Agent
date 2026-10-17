@@ -45,6 +45,7 @@ and `[limits]` may only be stricter than your own, and no project file drops you
 
 DOCS: dict[str, str] = {
     "profile": "Profile to apply from `[profiles.*]` (`-p` overrides it).",
+    "effort": "How hard reasoning models think: `auto` (the model's default), `low`, `medium` or `high`; `/effort` and `--effort` change it for a session.",
     "providers": "Model endpoints by name; see `[providers.<name>]`. Common providers have presets.",
     "models": 'Capability and price overrides per `"provider/model"`.',
     "roles": 'Model fallback chain per role: `coder = ["anthropic/claude-sonnet", "openai/gpt-5"]`.',
