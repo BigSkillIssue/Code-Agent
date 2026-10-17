@@ -1,12 +1,12 @@
-"""The routes of Windows builds (W38a).
+"""The routes of Windows builds (W38a, W39).
 
 - `/api/win/...`: the Windows workers' API, with their own tokens instead of a sign-in: a worker
-  asks for a job (long poll), fetches the packed commit, sends the package and reports. It only
-  ever sees its own running jobs.
+  asks for a job (long poll), fetches its input (the packed commit, or the published app on a
+  signing machine), sends what it made and reports. It only ever sees its own running jobs.
 - `/api/projects/{id}/windows/builds`: a project's builds; an editor starts one of the newest
-  approved commit, and downloads its package.
-- `/api/admin/stores/windows/workers`: the admins add Windows machines (the token is shown once)
-  and turn them off.
+  approved commit, and downloads its installer to try it.
+- `/api/admin/stores/windows/workers`: the admins add Windows machines (the token is shown once),
+  mark the signing machines, and turn machines off.
 """
 
 from collections.abc import Awaitable
@@ -34,17 +34,19 @@ SHOWN = 20
 
 
 class NewWorker(BaseModel):
-    """A Windows machine to add."""
+    """A Windows machine to add: a build machine, or a signing machine (it never builds)."""
 
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
+    signs: bool = False
 
 
 class WorkerChange(BaseModel):
-    """Turn a Windows machine on or off."""
+    """Turn a Windows machine on or off, or make it a signing machine or not."""
 
     model_config = ConfigDict(extra="forbid")
-    enabled: bool
+    enabled: bool | None = None
+    signs: bool | None = None
 
 
 async def current_worker(request: Request) -> WinWorker:
@@ -84,13 +86,16 @@ def worker_routes(router: APIRouter) -> None:
 
     @router.post("/api/win/poll")
     async def poll(body: PollRequest, worker: Worker, request: Request) -> PollAnswer:
-        return PollAnswer(job=await services_of(request).windows.claim(worker.id, POLL_WAIT_S))
+        return PollAnswer(job=await services_of(request).windows.claim(worker, POLL_WAIT_S))
 
     @router.get("/api/win/jobs/{job_id}/source")
     async def source(job_id: str, worker: Worker, request: Request) -> FileResponse:
         builds = services_of(request).windows
         row = await refused_unless(builds.running(worker.id, job_id))
-        return FileResponse(builds.source(row), media_type="application/gzip")
+        path = builds.job_input(row)
+        if not path.is_file():
+            raise HTTPException(409, "this job's input is gone")
+        return FileResponse(path, media_type="application/octet-stream")
 
     @router.post("/api/win/jobs/{job_id}/package")
     async def package(job_id: str, worker: Worker, request: Request) -> dict[str, int]:
@@ -144,14 +149,14 @@ def project_routes(router: APIRouter) -> None:
     async def download(
         project_id: str, build_id: str, request: Request, user: CurrentUser
     ) -> FileResponse:
-        services = await allowed(request, user, project_id, "editor")  # who may submit it
+        services = await allowed(request, user, project_id, "editor")  # who may publish it
         async with services.db.session() as session:
             row = await session.get(WindowsBuild, build_id)
         if row is None or row.project_id != project_id:
             raise HTTPException(404, "no such build")
-        path = services.windows.package(row)
-        if row.status != "built" or not path.is_file():
-            raise HTTPException(409, "this build has no package")
+        path = services.windows.release(row) / row.file_name
+        if row.status != "built" or not row.file_name or not path.is_file():
+            raise HTTPException(409, "this build has no installer")
         return FileResponse(path, media_type="application/octet-stream", filename=row.file_name)
 
 
@@ -184,9 +189,10 @@ def admin_routes(router: APIRouter) -> None:
     @router.post(workers_url)
     async def add(body: NewWorker, request: Request, admin: AdminUser) -> dict[str, Any]:
         services = services_of(request)
-        row, token = await create_worker(services.db, body.name.strip())
+        row, token = await create_worker(services.db, body.name.strip(), body.signs)
         await audit(services.db, "stores.windows_worker_added", user_id=admin.id,
-                    target=row.id, ip=client_ip(request), name=row.name)  # fmt: skip
+                    target=row.id, ip=client_ip(request), name=row.name,
+                    signs=row.signs)  # fmt: skip
         return worker_view(row) | {"token": token}  # shown this once
 
     @router.patch(workers_url + "/{worker_id}")
@@ -198,7 +204,9 @@ def admin_routes(router: APIRouter) -> None:
             row = await session.get(WinWorker, worker_id)
             if row is None:
                 raise HTTPException(404, "no such Windows worker")
-            row.enabled = body.enabled
+            row.enabled = row.enabled if body.enabled is None else body.enabled
+            row.signs = row.signs if body.signs is None else body.signs
         await audit(services.db, "stores.windows_worker_changed", user_id=admin.id,
-                    target=worker_id, ip=client_ip(request), enabled=body.enabled)  # fmt: skip
+                    target=worker_id, ip=client_ip(request), enabled=row.enabled,
+                    signs=row.signs)  # fmt: skip
         return worker_view(row)

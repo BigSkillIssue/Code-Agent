@@ -270,20 +270,19 @@ class BillingSettings(_Strict):
 
 
 class StoreSettings(_Strict):
-    """The app stores beyond Apple's (W37, W38). Each maker publishes with their own account;
-    Google's addresses are only here for tests, which point them at a stand-in."""
+    """The app stores beyond Apple's (W37) and Windows apps (W38, W39). Each maker publishes
+    with their own account; Google's addresses are only here for tests, which point them at a
+    stand-in."""
 
     play_api_url: str = "https://androidpublisher.googleapis.com"
     play_token_url: str = "https://oauth2.googleapis.com/token"
-    # Windows apps (W38a): tested and packaged on the admin's Windows machines
-    # (`forge-win-worker`), which connect to this server like the Macs do.
+    # Windows apps (W38a, W39): tested, packed and signed on the admin's Windows machines
+    # (`forge-win-worker`), which connect to this server like the Macs do, then offered for
+    # download on the products' websites.
     windows_enabled: bool = False
-    windows_timeout_s: float = Field(default=3_600, gt=0)  # one test and package run
+    windows_timeout_s: float = Field(default=3_600, gt=0)  # one build or pack job
     windows_grace_s: float = Field(default=600, gt=0)  # a worker's report may take this longer
-    max_package_mb: int = Field(default=1_000, ge=1)
-    # The Microsoft Store (W38b): Partner Center's submission API and Entra ID's sign-in.
-    msstore_api_url: str = "https://manage.devcenter.microsoft.com"
-    msstore_login_url: str = "https://login.microsoftonline.com"
+    max_package_mb: int = Field(default=1_000, ge=1)  # what a job may send
 
 
 class WebSettings(_Strict):

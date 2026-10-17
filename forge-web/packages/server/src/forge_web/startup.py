@@ -44,7 +44,6 @@ from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
 from forge_web.stores.android import AndroidBuilds
-from forge_web.stores.msstore_release import StoreSubmissions
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
 from forge_web.vault import Vault, load_master_key
@@ -152,7 +151,6 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     android = AndroidBuilds(db, settings, hosts, runs.call, deploys.packing)
     play = PlayReleases(db, vault, settings, android)
     windows = WindowsBuilds(db, settings, runs.call, deploys.packing)
-    msstore = StoreSubmissions(db, vault, settings, windows)
     backups = Backups(db, vault, settings, hosts)
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
@@ -167,7 +165,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
-        android=android, play=play, windows=windows, msstore=msstore,
+        android=android, play=play, windows=windows,
     )  # fmt: skip
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
@@ -176,7 +174,6 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     await android.start()  # and Android builds and Play releases
     await play.start()
     await windows.start()
-    await msstore.start()
     await removals.start()  # and so do deletions of apps
     if settings.billing.enabled:
         billing.events.start()  # Stripe's events that wait
@@ -276,7 +273,6 @@ async def stop_services(services: Services) -> None:
     await services.removals.close()
     await services.alerts.close()
     await services.backups.close()
-    await services.msstore.close()
     await services.windows.close()
     await services.play.close()
     await services.android.close()

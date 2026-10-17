@@ -3,11 +3,13 @@
 Caddy gets certificates on demand, but only for hosts this worker says are live apps (its
 `ask` endpoint). Production apps answer at `<app>.<apps domain>`, staging at
 `<app>.staging.<apps domain>`, and each also at the customer's own domains that Forge Web
-verified (W30). The legal pages (`/impressum`, `/datenschutz`) and the
-"report content" page (`/melden`) are served from Forge Web for every app, before the app's
-own routes, so an app cannot remove or replace them. Everything else goes to the app's
-services by their routes, the longest first. Once an app is deleted from this host, or an own
-domain is given up, the edge also removes its certificate and key from Caddy's storage.
+verified (W30). The legal pages (`/impressum`, `/datenschutz`), the
+"report content" page (`/melden`) and the downloads page (`/downloads`) are served from Forge
+Web for every app, and the Windows app's files (`/downloads/windows/...`, W39) from this host's
+own copy, all before the app's own routes, so an app can neither remove nor replace them.
+Everything else goes to the app's services by their routes, the longest first. Once an app is
+deleted from this host, or an own domain is given up, the edge also removes its certificate and
+key from Caddy's storage.
 """
 
 import asyncio
@@ -23,11 +25,12 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from forge_hostworker.docker import Docker
+from forge_hostworker.downloads import MANIFEST, Downloads
 from forge_hostworker.lifecycle import saved_domains
 from forge_hostworker.runner import HostRunner, network, service_container
 from forge_hostworker.wire import DeployPlan, app_host
 
-LEGAL_PATHS = ("/impressum", "/datenschutz", "/melden")
+LEGAL_PATHS = ("/impressum", "/datenschutz", "/melden", "/downloads")
 ASK_PORT = 47201
 CADDY_ADMIN = "http://127.0.0.1:2019"
 CADDY_DATA = Path("/var/lib/caddy/.local/share/caddy")  # caddy-api's storage (Debian's package)
@@ -53,9 +56,12 @@ class LiveApp:
     host: str
     upstreams: tuple[Upstream, ...]
     domains: tuple[str, ...] = ()  # the customer's own, verified by Forge Web
+    downloads: str = ""  # the folder with the Windows app's files, when it offers them
 
 
-async def live_apps(runner: HostRunner, docker: Docker, apps_domain: str) -> list[LiveApp]:
+async def live_apps(
+    runner: HostRunner, docker: Docker, apps_domain: str, downloads: Downloads | None = None
+) -> list[LiveApp]:
     """Every app with a live release on this host, with its services' addresses."""
     found: list[LiveApp] = []
     for folder in folders(runner.data_dir / "apps"):
@@ -68,7 +74,9 @@ async def live_apps(runner: HostRunner, docker: Docker, apps_domain: str) -> lis
         if upstreams:
             host = app_host(app, environment, apps_domain)
             own = tuple(saved_domains(folder))
-            found.append(LiveApp(app, environment, host, tuple(upstreams), own))
+            offered = downloads.offered(app) if downloads is not None else None
+            found.append(LiveApp(app, environment, host, tuple(upstreams), own,
+                                 str(offered) if offered else ""))  # fmt: skip
     return found
 
 
@@ -127,7 +135,7 @@ def app_route(app: LiveApp, legal_host: str, legal_tls: bool, legal_path: str) -
         }],
         "terminal": True,
     }  # fmt: skip
-    own = [
+    own = [*download_routes(app.downloads)] + [
         {
             "match": [
                 {"path": ["/*"] if u.route == "/" else [u.route, f"{u.route.rstrip('/')}/*"]}
@@ -146,6 +154,21 @@ def app_route(app: LiveApp, legal_host: str, legal_tls: bool, legal_path: str) -
     }
 
 
+def download_routes(folder: str) -> list[dict[str, Any]]:
+    """`/downloads/...`: the Windows app's files from this host's copy (else nothing there)."""
+    missing = {"handler": "static_response", "status_code": 404}
+    files = [
+        {"handler": "rewrite", "strip_path_prefix": "/downloads/windows"},
+        {"handler": "headers", "response": {"set": {"Cache-Control": ["no-cache"]}}},
+        {"handler": "file_server", "root": folder, "hide": [MANIFEST]},
+    ]  # fmt: skip
+    return [
+        {"match": [{"path": ["/downloads/windows/*"]}], "handle": files if folder else [missing],
+         "terminal": True},
+        {"match": [{"path": ["/downloads/*"]}], "handle": [missing], "terminal": True},
+    ]  # fmt: skip
+
+
 class Edge:
     """Keeps Caddy's configuration in step with the live apps and answers its TLS questions."""
 
@@ -158,6 +181,7 @@ class Edge:
         *,
         admin: str = CADDY_ADMIN,
         certificates: Path | None = None,
+        downloads: Downloads | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.runner = runner
@@ -167,10 +191,16 @@ class Edge:
         self.http = httpx.AsyncClient(base_url=admin, timeout=30, transport=transport)
         self.hosts: set[str] = set()
         self.certificates = certificates  # Caddy's storage, where deleted apps' certificates go
+        self.downloads = downloads  # the Windows apps' files (W39), fetched from Forge Web
 
     async def refresh(self) -> list[LiveApp]:
-        """Load the current apps into Caddy."""
-        apps = await live_apps(self.runner, self.docker, self.apps_domain)
+        """Load the current apps into Caddy (their downloads fetched first)."""
+        if self.downloads is not None:
+            try:
+                await self.downloads.sync()
+            except (httpx.HTTPError, OSError, ValueError) as error:
+                log.warning("the downloads could not be brought up to date: %s", error)
+        apps = await live_apps(self.runner, self.docker, self.apps_domain, self.downloads)
         config = caddy_config(apps, self.legal_base)
         reply = await self.http.post("/load", content=json.dumps(config),
                                      headers={"Content-Type": "application/json"})  # fmt: skip

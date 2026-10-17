@@ -1,7 +1,10 @@
 """The worker's side of the server connection: ask for jobs, fetch, run, report.
 
 Like the Mac worker, it only ever connects out (HTTPS to the server), so the Windows machine
-needs no open port. While a slot is free it asks for a job; each job runs in its own task.
+needs no open port. While a slot is free it asks for a job; each job runs in its own task. A
+signing machine (one with a signing command) takes only pack jobs, and a build machine only
+build jobs and unsigned pack jobs: the server hands them out that way, and the worker refuses
+any other.
 """
 
 import asyncio
@@ -13,7 +16,7 @@ from pathlib import Path
 import httpx
 
 from forge_winworker import __version__
-from forge_winworker.build import PACKAGE, SOURCE, msix_job
+from forge_winworker.build import APP_ZIP, SOURCE, UPLOAD, build_job, pack_job
 from forge_winworker.runners import Runner
 from forge_winworker.wire import JobOffer, JobResult, PollAnswer, PollRequest
 
@@ -30,6 +33,7 @@ class WorkerClient:
         runner: Runner,
         *,
         slots: int = 1,
+        sign_template: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         headers = {"Authorization": f"Bearer {token}", "X-Forge-Win-Worker": __version__}
@@ -37,6 +41,7 @@ class WorkerClient:
                                       timeout=httpx.Timeout(90, connect=30),
                                       transport=transport)  # fmt: skip
         self.runner, self.slots, self.busy = runner, slots, 0
+        self.sign_template = sign_template  # set on a signing machine only
         self.tasks: set[asyncio.Task[None]] = set()
         self.room = asyncio.Condition()
 
@@ -111,17 +116,17 @@ class WorkerClient:
                     await asyncio.wait_for(self.room.wait(), 5)
 
     async def handle(self, offer: JobOffer) -> None:
-        """Fetch the commit, run the job, send the package and the report."""
+        """Fetch the job's input, run the job, send what it made and the report."""
         folder: Path | None = None
         try:
+            refusal = self.refusal(offer)
+            if refusal:
+                raise ValueError(refusal)
             folder = await self.runner.prepare(offer.id)
-            await self.download(offer.id, folder / SOURCE)
-            if offer.msix is None:
-                raise ValueError("an msix job came without its parameters")
-            result = await asyncio.wait_for(msix_job(folder, offer.msix, self.runner.run),
-                                            offer.timeout_s)  # fmt: skip
+            await self.download(offer.id, folder / (APP_ZIP if offer.pack else SOURCE))
+            result = await asyncio.wait_for(self.run(offer, folder), offer.timeout_s)
             if result.ok:
-                await self.upload(offer.id, folder / PACKAGE)
+                await self.upload(offer.id, folder / UPLOAD)
         except TimeoutError:
             result = JobResult(ok=False, error="the job took longer than its time limit")
         except Exception as err:  # the server must hear about every job it handed out
@@ -135,6 +140,21 @@ class WorkerClient:
             if folder is not None:
                 await self.runner.remove(folder)
 
+    def refusal(self, offer: JobOffer) -> str:
+        """Why this machine does not take the job ("" when it does)."""
+        if self.sign_template and offer.build is not None:
+            return "this is a signing machine: it never builds a product's code"
+        if not self.sign_template and offer.pack is not None:
+            return "this machine has no signing command (--sign-template): it signs nothing"
+        return ""
+
+    async def run(self, offer: JobOffer, folder: Path) -> JobResult:
+        """The job itself."""
+        if offer.build is not None:
+            return await build_job(folder, offer.build, self.runner.run)
+        assert offer.pack is not None  # the offer's validator: one or the other
+        return await pack_job(folder, offer.pack, self.runner.run, self.sign_template)
+
     async def download(self, job_id: str, target: Path) -> None:
         """The job's packed commit."""
         async with self.http.stream("GET", f"/api/win/jobs/{job_id}/source") as reply:
@@ -144,7 +164,7 @@ class WorkerClient:
                     out.write(chunk)
 
     async def upload(self, job_id: str, package: Path) -> None:
-        """The package a job made (it does not stay on this machine)."""
+        """What a job made (it does not stay on this machine)."""
         reply = await self.http.post(f"/api/win/jobs/{job_id}/package", content=chunks(package),
                                      headers={"Content-Type": "application/octet-stream"},
                                      timeout=httpx.Timeout(3600, connect=30))  # fmt: skip

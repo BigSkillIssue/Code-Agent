@@ -1,7 +1,7 @@
 [project]
 name = "forge-winworker"
-version = "0.1.0"
-description = "Forge Web's Windows build worker: tests the products' Windows apps and packages them as MSIX for the Microsoft Store, on a Windows machine of its own."
+version = "0.2.0"
+description = "Forge Web's Windows worker: tests the products' Windows apps and packs them with Velopack for their websites, on a Windows machine of its own; a signing machine signs them."
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [

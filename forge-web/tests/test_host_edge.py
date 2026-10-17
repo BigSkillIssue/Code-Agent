@@ -133,9 +133,13 @@ def test_the_edges_legal_pages_win_over_the_apps_routes() -> None:
     )
     config = caddy_config([app], LEGAL, ask_port=47201)
     routes = subroutes(config, "shop.apps.example")
-    legal, api, web = routes
+    legal, files, reserved, api, web = routes
     assert legal["match"] == [{"path": list(LEGAL_PATHS)}]
-    assert {"/impressum", "/datenschutz", "/melden"} <= set(LEGAL_PATHS)
+    # An app with no Windows downloads gets nothing under /downloads, not even its own pages.
+    assert files["match"] == [{"path": ["/downloads/windows/*"]}]
+    assert files["handle"] == reserved["handle"] == [{"handler": "static_response",
+                                                      "status_code": 404}]  # fmt: skip
+    assert {"/impressum", "/datenschutz", "/melden", "/downloads"} <= set(LEGAL_PATHS)
     proxy = legal["handle"][0]
     assert proxy["upstreams"] == [{"dial": "forge.example.com:443"}]
     assert proxy["transport"]["tls"] == {}
@@ -151,10 +155,22 @@ def test_the_edges_legal_pages_win_over_the_apps_routes() -> None:
     assert config["admin"]["listen"] == "127.0.0.1:2019"
 
 
+def test_the_edge_serves_an_apps_windows_downloads_from_its_own_copy() -> None:
+    app = LiveApp("shop", "production", "shop.apps.example", (Upstream("/", "10.88.1.3:8080"),),
+                  downloads="/var/lib/caddy/forge-downloads/shop/windows")  # fmt: skip
+    files = subroutes(caddy_config([app], LEGAL), "shop.apps.example")[1]
+    rewrite, headers, server = files["handle"]
+    assert rewrite == {"handler": "rewrite", "strip_path_prefix": "/downloads/windows"}
+    assert headers["response"]["set"]["Cache-Control"] == ["no-cache"]  # updates show at once
+    assert server == {"handler": "file_server", "hide": [".files.json"],
+                      "root": "/var/lib/caddy/forge-downloads/shop/windows"}  # fmt: skip
+
+
 async def test_the_longest_route_comes_first_from_a_real_release(tmp_path: Path) -> None:
     edge, _, _, caddy = await edge_with_live_shop(tmp_path)
     routes = subroutes(caddy.loaded[-1], "shop.staging.apps.example")
-    assert [r["match"][0]["path"][0] for r in routes] == ["/impressum", "/api", "/*"]
+    assert [r["match"][0]["path"][0] for r in routes] == [
+        "/impressum", "/downloads/windows/*", "/downloads/*", "/api", "/*"]  # fmt: skip
     await edge.close()
 
 

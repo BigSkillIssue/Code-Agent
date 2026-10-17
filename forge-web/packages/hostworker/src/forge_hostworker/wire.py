@@ -383,3 +383,24 @@ def decrypt_file(key: bytes, source: Path, target: Path) -> None:
     with target.open("wb") as out:
         for chunk in decrypt_chunks(key, source):
             out.write(chunk)
+
+
+class DownloadFile(BaseModel):
+    """One file an app's website offers for download (W39), with its size and SHA-256."""
+
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
+    size: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9A-F]{64}$")
+
+
+class AppDownloads(BaseModel):
+    """The files one app on this host offers (its Windows app's newest published release)."""
+
+    app: str = Field(pattern=SLUG)
+    files: list[DownloadFile] = Field(max_length=10)
+
+
+class DownloadsList(BaseModel):
+    """What every app on this host offers: `GET /api/host/downloads`."""
+
+    apps: list[AppDownloads] = Field(default_factory=list)

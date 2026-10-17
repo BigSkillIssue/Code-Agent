@@ -31,7 +31,6 @@ from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
 from forge_web.stores.android import AndroidBuilds
-from forge_web.stores.msstore_release import StoreSubmissions
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
 from forge_web.vault import Vault
@@ -69,7 +68,6 @@ class Services:
     android: AndroidBuilds
     play: PlayReleases
     windows: WindowsBuilds
-    msstore: StoreSubmissions
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

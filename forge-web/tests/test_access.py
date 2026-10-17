@@ -34,6 +34,8 @@ PUBLIC = {
     # The legal pages of hosted apps, which every visitor of an app sees through its edge.
     "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz", "GET /legal/{app}/melden",
     "POST /legal/{app}/melden",
+    # The page that offers a hosted app's Windows downloads (the files come from its host).
+    "GET /legal/{app}/downloads",
     # Stripe's webhooks: the signature is the proof, not a session.
     "POST /api/billing/stripe/webhook",
     # The cancellation button (§312k BGB) must work without signing in.
@@ -59,8 +61,7 @@ OWN = {
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
     "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
     "GET /api/me/play-key", "PUT /api/me/play-key", "POST /api/me/play-key/check",
-    "DELETE /api/me/play-key", "GET /api/me/msstore-key", "PUT /api/me/msstore-key",
-    "POST /api/me/msstore-key/check", "DELETE /api/me/msstore-key",
+    "DELETE /api/me/play-key",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -120,12 +121,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "forge_winworker__wire__PollRequest": {"free_slots": 1},
     "NewWorker": {"name": "Sneaky Windows machine"},
     "WorkerChange": {"enabled": False},
-    "SubmissionIn": {"build_id": "0" * 32, "store_id": "9NBLGGH4R315"},
-    "EntraApp": {
-        "tenant_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12,
-        "client_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12,
-        "client_secret": "secret-of-someone",
-    },
+    "WindowsReleaseIn": {"build_id": "0" * 32},
     "HostUsage": {"disk_free_gb": 10, "apps": []},
     "ExportIn": {"environment": "staging"},
     "DomainIn": {"domain": "shop.example.org"},
@@ -340,7 +336,7 @@ async def test_people_are_no_macs(shared: World) -> None:
 async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
-    assert len(routes) == 7  # poll, source, secrets, backup, bundle, metrics, result
+    assert len(routes) == 9  # poll, source, secrets, backup, bundle, metrics, result, downloads
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

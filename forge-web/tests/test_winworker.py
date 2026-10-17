@@ -1,13 +1,18 @@
-"""Windows builds (W38a): a job goes from the server to a Windows worker (the real
-`forge-win-worker` client, over HTTP) and back: the approved commit is packed, the app's tests
-run, the package is sent and kept, the version rises with every build, a failing test fails the
-build, and a worker only ever sees its own running jobs. dotnet is a stand-in that writes what
-`dotnet test` and `dotnet publish` would."""
+"""Windows builds (W38a, W39): jobs go from the server to the Windows machines (the real
+`forge-win-worker` client, over HTTP) and back. A build machine tests and publishes the app and
+packs it with Velopack; with a signing machine, the build machine sends the published app and
+the signing machine packs and signs it, and never builds. The release is checked and kept, the
+version rises with every build, a failing test fails the build, a worker only ever sees its own
+running jobs, and the worker's token never reaches a job. dotnet and vpk are stand-ins that write
+what the real ones would."""
 
 import asyncio
 import contextlib
-import shutil
+import hashlib
+import json
+import os
 import tarfile
+import zipfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
@@ -16,47 +21,86 @@ import httpx
 import pytest
 
 from forge_web.stores import windows_api
-from forge_winworker.build import counted, set_version, unpack
+from forge_web.stores.windows_files import (
+    ReleaseProblem,
+    check_release,
+    signature_size,
+    unpack_release,
+)
+from forge_winworker.build import SourceError, assembly_name, counted, safe_parts, unpack
 from forge_winworker.client import WorkerClient
-from forge_winworker.runners import DirectRunner
-from forge_winworker.wire import JobOffer, MsixParams
+from forge_winworker.runners import DirectRunner, job_environment
+from forge_winworker.wire import BuildParams, JobOffer, PackParams
 from support import LiveServer
 from test_hosting_deploy import app_project, approve_head, git, settings_for, short_polls, until
 
 __all__ = ["short_polls"]
-MANIFEST = '<Package><Identity Name="Shop" Publisher="CN=Shop" Version="1.0.0.0" /></Package>\n'
-WINDOWS = {"windows/App/App.csproj": "<Project />\n", "windows/Tests/Tests.csproj": "<Project />\n",
-           "windows/App/Package.appxmanifest": MANIFEST}  # fmt: skip
+PROJECT = "<Project><PropertyGroup><AssemblyName>Shop</AssemblyName></PropertyGroup></Project>\n"
+WINDOWS = {"windows/App/App.csproj": PROJECT, "windows/Tests/Tests.csproj": "<Project />\n"}
 TRX = (
     '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary>'
     '<Counters total="{n}" passed="{passed}" failed="{failed}" /></ResultSummary></TestRun>'
 )
 
 
-class FakeDotnet(DirectRunner):
-    """Runs no dotnet: `test` writes a TRX file, `publish` an .msixupload, as dotnet would."""
+def program(signed: bool) -> bytes:
+    """A Windows program's headers (PE32+), with or without an Authenticode signature."""
+    head = bytearray(1024)
+    head[0:2], pe = b"MZ", 0x80
+    head[0x3C:0x40] = pe.to_bytes(4, "little")
+    head[pe : pe + 4] = b"PE\0\0"
+    optional = pe + 24
+    head[optional : optional + 2] = (0x20B).to_bytes(2, "little")
+    head[optional + 108 : optional + 112] = (16).to_bytes(4, "little")  # data directories
+    security = optional + 112 + 8 * 4
+    head[security + 4 : security + 8] = (2048 if signed else 0).to_bytes(4, "little")
+    return bytes(head)
+
+
+def velopack_release(out: Path, pack_id: str, version: str, signed: bool) -> None:
+    """What `vpk pack` writes."""
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{pack_id}-win-Setup.exe").write_bytes(program(signed) + b"setup")
+    (out / f"{pack_id}-win-Portable.zip").write_bytes(b"PK\x05\x06" + b"\0" * 18)
+    package = out / f"{pack_id}-{version}-full.nupkg"
+    package.write_bytes(b"PK the full package " + version.encode())
+    asset = {"PackageId": pack_id, "Version": version, "Type": "Full",
+             "FileName": package.name, "Size": package.stat().st_size,
+             "SHA256": hashlib.sha256(package.read_bytes()).hexdigest().upper()}  # fmt: skip
+    (out / "releases.win.json").write_text(json.dumps({"Assets": [asset]}), encoding="utf-8")
+
+
+class FakeTools(DirectRunner):
+    """Runs no dotnet or vpk: `test` writes a TRX file, `publish` the app's .exe, `vpk pack`
+    the release (its installer signed when a signing command was given)."""
 
     def __init__(self, work: Path) -> None:
         super().__init__(work)
         self.failing = False
-        self.versions: list[str] = []  # the manifest's version at each publish
+        self.signs = True  # whether the signing command really signs
         self.commands: list[list[str]] = []
+        self.environments: list[dict[str, str]] = []
 
     async def run(self, command: list[str], cwd: Path) -> tuple[int, str]:
         self.commands.append(command)
+        self.environments.append(job_environment())
         if command[:2] == ["dotnet", "test"]:
             results = Path(command[command.index("--results-directory") + 1])
             results.mkdir(parents=True, exist_ok=True)
             failed = 1 if self.failing else 0
             (results / "run.trx").write_text(TRX.format(n=3, passed=3 - failed, failed=failed))
             return (1, "Failed AccountTests.SignIn") if self.failing else (0, "Passed!")
-        out = Path(next(a for a in command if a.startswith("-p:AppxPackageDir=")).split("=", 1)[1])
-        manifest = (cwd / "windows/App/Package.appxmanifest").read_text(encoding="utf-8")
-        self.versions.append(manifest.split('Version="')[1].split('"')[0])
-        made = out / "Shop_x64_Test" / f"Shop_{self.versions[-1]}_x64.msixupload"
-        made.parent.mkdir(parents=True, exist_ok=True)
-        made.write_bytes(b"PK\x03\x04 an msixupload " + self.versions[-1].encode())
-        return 0, "Build succeeded."
+        if command[:2] == ["dotnet", "publish"]:
+            out = Path(command[command.index("-o") + 1])
+            out.mkdir(parents=True)
+            (out / "Shop.exe").write_bytes(program(False))
+            (out / "Shop.dll").write_bytes(b"the app")
+            return 0, "Build succeeded."
+        value = {command[i]: command[i + 1] for i in range(2, len(command) - 1, 2)}
+        signed = "--signTemplate" in value and self.signs
+        velopack_release(Path(value["--outputDir"]), value["--packId"], value["--packVersion"],
+                         signed)  # fmt: skip
+        return 0, f"vpk packed {value['--packId']}"
 
 
 @pytest.fixture
@@ -78,16 +122,20 @@ def short_worker_polls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(windows_api, "POLL_WAIT_S", 1.0)
 
 
-async def worker_token(client: httpx.AsyncClient, name: str = "win-1") -> str:
-    made = await client.post("/api/admin/stores/windows/workers", json={"name": name})
+async def worker_token(client: httpx.AsyncClient, name: str = "win-1", signs: bool = False) -> str:
+    made = await client.post(
+        "/api/admin/stores/windows/workers", json={"name": name, "signs": signs}
+    )
     assert made.status_code == 200, made.text
     return str(made.json()["token"])
 
 
 @contextlib.asynccontextmanager
-async def worker_online(url: str, token: str, runner: FakeDotnet) -> AsyncIterator[None]:
+async def worker_online(
+    url: str, token: str, runner: FakeTools, sign_template: str = ""
+) -> AsyncIterator[None]:
     """The real worker client, taking jobs while the block runs."""
-    worker = WorkerClient(url, token, runner)
+    worker = WorkerClient(url, token, runner, sign_template=sign_template)
     stop = asyncio.Event()
     serving = asyncio.create_task(worker.serve(stop))
     try:
@@ -123,33 +171,63 @@ async def finished(client: httpx.AsyncClient, project_id: str, build_id: str) ->
     return row if row["status"] in ("built", "failed") else None
 
 
-async def test_a_job_goes_to_the_windows_worker_and_back(
-    server: LiveServer, client: httpx.AsyncClient, tmp_path: Path
+RELEASE = {"Shop-win-Setup.exe", "Shop-win-Portable.zip", "releases.win.json"}
+
+
+async def test_a_build_is_tested_packed_and_kept(
+    server: LiveServer, client: httpx.AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runner = FakeDotnet(tmp_path / "worker")
+    monkeypatch.setenv("WIN_WORKER_TOKEN", "fww_never_in_a_job")
+    runner = FakeTools(tmp_path / "worker")
     async with worker_online(server.url, await worker_token(client), runner):
         project_id = await windows_project(server, client)
         first = await started(client, project_id)
         done = await until(lambda: finished(client, project_id, first["id"]))
         assert done["status"] == "built", done["error"]
-        assert (done["version"], done["tests_passed"]) == ("1.0.1.0", 3)
-        assert done["file_name"] == "Shop_1.0.1.0_x64.msixupload"
+        assert (done["version"], done["tests_passed"], done["signed"]) == ("1.0.1", 3, False)
+        assert set(done["files"]) == RELEASE | {"Shop-1.0.1-full.nupkg"}
         url = f"/api/projects/{project_id}/windows/builds/{first['id']}/package"
-        package = await client.get(url)
-        assert package.status_code == 200 and package.content.endswith(b"1.0.1.0")
+        setup = await client.get(url)
+        assert setup.status_code == 200 and setup.content.startswith(b"MZ")
         second = await started(client, project_id)
         again = await until(lambda: finished(client, project_id, second["id"]))
-        assert again["version"] == "1.0.2.0" and runner.versions == ["1.0.1.0", "1.0.2.0"]
+        assert again["version"] == "1.0.2" and "Shop-1.0.2-full.nupkg" in again["files"]
     publish = next(c for c in runner.commands if c[:2] == ["dotnet", "publish"])
-    assert "-p:UapAppxPackageBuildMode=StoreUpload" in publish
-    assert "-p:AppxPackageSigningEnabled=false" in publish  # the Store signs it
+    assert "-p:Version=1.0.1" in publish
+    pack = next(c for c in runner.commands if c[:2] == ["vpk", "pack"])
+    assert "--signTemplate" not in pack and pack[pack.index("--packTitle") + 1] == "Shop"
+    assert all("WIN_WORKER_TOKEN" not in env for env in runner.environments)
     assert not list((tmp_path / "worker" / "jobs").iterdir())  # nothing stays on the machine
+
+
+async def test_a_signing_machine_packs_and_signs_and_never_builds(
+    server: LiveServer, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    builder, signer = FakeTools(tmp_path / "builder"), FakeTools(tmp_path / "signer")
+    build_token = await worker_token(client, "build")
+    sign_token = await worker_token(client, "sign", signs=True)
+    template = "signtool sign /fd sha256 {{file}}"
+    async with (worker_online(server.url, build_token, builder),
+                worker_online(server.url, sign_token, signer, template)):  # fmt: skip
+        project_id = await windows_project(server, client)
+        build = await started(client, project_id)
+        assert build["signed"] is True  # a signing machine is there
+        done = await until(lambda: finished(client, project_id, build["id"]))
+        assert done["status"] == "built" and done["signed"] is True, done["error"]
+        assert done["log_tail"] == "(the signing machine keeps its log)"
+        signer.signs = False  # a signing command that signs nothing is found out
+        broken = await started(client, project_id)
+        failed = await until(lambda: finished(client, project_id, broken["id"]))
+        assert failed["status"] == "failed" and "not signed" in failed["error"]
+    assert not any(c[0] == "vpk" for c in builder.commands)  # the build machine packs nothing
+    assert all(c[0] == "vpk" for c in signer.commands)  # and the signing machine builds nothing
+    assert signer.commands[0][signer.commands[0].index("--signTemplate") + 1] == template
 
 
 async def test_a_failing_test_or_a_missing_app_fails_the_build(
     server: LiveServer, client: httpx.AsyncClient, tmp_path: Path
 ) -> None:
-    runner = FakeDotnet(tmp_path / "worker")
+    runner = FakeTools(tmp_path / "worker")
     runner.failing = True
     async with worker_online(server.url, await worker_token(client), runner):
         project_id = await windows_project(server, client)
@@ -170,6 +248,7 @@ async def test_a_worker_sees_only_its_own_running_jobs(
 ) -> None:
     project_id = await windows_project(server, client)
     mine, other = await worker_token(client, "mine"), await worker_token(client, "other")
+    signer = await worker_token(client, "signer", signs=True)
     build = await started(client, project_id)
     async with httpx.AsyncClient(base_url=server.url, timeout=30) as raw:
 
@@ -179,10 +258,12 @@ async def test_a_worker_sees_only_its_own_running_jobs(
 
         assert (await as_worker("fww_x_y", "POST", "/api/win/poll",
                                 json={"free_slots": 1})).status_code == 401  # fmt: skip
+        assert await poll_job(as_worker, signer) is None  # a signing machine gets no build
         polled = await until(lambda: poll_job(as_worker, mine))
         offer = JobOffer.model_validate(polled)
-        assert offer.id == build["id"] and offer.msix == MsixParams(version="1.0.1.0")
-        assert set(polled) == {"id", "kind", "project", "msix", "timeout_s"}  # no secrets
+        assert offer.id == build["id"] and offer.kind == "build"
+        assert offer.build == BuildParams(version="1.0.1", title="Shop", pack=False)
+        assert set(polled) == {"id", "kind", "project", "build", "pack", "timeout_s"}  # no secrets
         source = f"/api/win/jobs/{offer.id}/source"
         assert (await as_worker(other, "GET", source)).status_code == 409
         assert (await as_worker(mine, "GET", source)).status_code == 200
@@ -190,7 +271,9 @@ async def test_a_worker_sees_only_its_own_running_jobs(
         late = await as_worker(other, "POST", result, content=b'{"ok": true}')
         assert late.status_code == 409
     rows = (await client.get("/api/admin/stores/windows/workers")).json()
-    assert {r["name"] for r in rows} == {"mine", "other"} and "token" not in rows[0]
+    assert {(r["name"], r["signs"]) for r in rows} == {("mine", False), ("other", False),
+                                                       ("signer", True)}  # fmt: skip
+    assert "token" not in rows[0]
 
 
 async def poll_job(as_worker: Any, token: str) -> dict[str, Any] | None:
@@ -200,20 +283,68 @@ async def poll_job(as_worker: Any, token: str) -> dict[str, Any] | None:
     return dict(job) if job else None
 
 
-def test_the_build_steps_on_their_own(tmp_path: Path) -> None:
+async def test_each_machine_refuses_the_other_kind_of_job(tmp_path: Path) -> None:
+    pack = PackParams(version="1.0.1", title="Shop", pack_id="Shop")
+    build = BuildParams(version="1.0.1", title="Shop")
+    offers = {"build": JobOffer(id="a" * 32, kind="build", project="b" * 32, build=build,
+                                timeout_s=60),
+              "pack": JobOffer(id="c" * 32, kind="pack", project="b" * 32, pack=pack,
+                               timeout_s=60)}  # fmt: skip
+    builder = WorkerClient("http://x", "fww_a_b", FakeTools(tmp_path))
+    signer = WorkerClient("http://x", "fww_a_b", FakeTools(tmp_path), sign_template="s {{file}}")
+    assert builder.refusal(offers["build"]) == "" and "signs nothing" in builder.refusal(
+        offers["pack"]
+    )
+    assert signer.refusal(offers["pack"]) == "" and "never builds" in signer.refusal(
+        offers["build"]
+    )
+    for worker in (builder, signer):
+        await worker.http.aclose()
+
+
+def test_the_steps_and_checks_on_their_own(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     archive = tmp_path / "source.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
-        manifest = tmp_path / "m"
-        manifest.write_text(MANIFEST, encoding="utf-8")
-        tar.add(manifest, "windows/App/Package.appxmanifest")
+        project = tmp_path / "p"
+        project.write_text(PROJECT, encoding="utf-8")
+        tar.add(project, "windows/App/App.csproj")
     unpack(archive, tmp_path / "src")
-    target = tmp_path / "src" / "windows/App/Package.appxmanifest"
-    set_version(target, "1.0.7.0")
-    assert 'Version="1.0.7.0"' in target.read_text(encoding="utf-8")
+    assert assembly_name(tmp_path / "src" / "windows/App/App.csproj") == "Shop"
+    (tmp_path / "bad.csproj").write_text("<AssemblyName>..\\evil</AssemblyName>")
+    with pytest.raises(SourceError):
+        assembly_name(tmp_path / "bad.csproj")
     results = tmp_path / "results"
     results.mkdir()
     (results / "a.trx").write_text(TRX.format(n=5, passed=4, failed=1))
     assert counted(results) == (4, 1)
+    assert safe_parts("app/sub/Shop.dll") == ("sub", "Shop.dll")
+    for bad in ("app/../x", "/app/x", "app\\x", "app/CON.txt", "app/a:b", "other/x"):
+        with pytest.raises(SourceError):
+            safe_parts(bad)
     with pytest.raises(ValueError):
-        MsixParams(version="1.0.7.1")  # the Store wants the last part 0
-    shutil.rmtree(tmp_path / "src")
+        BuildParams(version="1.0.7.0", title="Shop")  # three parts, as Velopack wants
+    with pytest.raises(ValueError):
+        PackParams(version="1.0.7", title="Shop", pack_id="../Shop")
+    monkeypatch.setenv("WIN_WORKER_TOKEN", "fww_secret")
+    assert "WIN_WORKER_TOKEN" not in job_environment() and os.environ["WIN_WORKER_TOKEN"]
+
+
+def test_a_release_must_be_what_it_says(tmp_path: Path) -> None:
+    velopack_release(tmp_path, "Shop", "1.0.3", signed=False)
+    files = {p.name: {"size": p.stat().st_size,
+                      "sha256": hashlib.sha256(p.read_bytes()).hexdigest().upper()}
+             for p in tmp_path.iterdir()}  # fmt: skip
+    check_release(tmp_path, files, "Shop", "1.0.3", signed=False)
+    with pytest.raises(ReleaseProblem, match="not signed"):
+        check_release(tmp_path, files, "Shop", "1.0.3", signed=True)
+    wrong = files | {"Shop-1.0.3-full.nupkg": {"size": 1, "sha256": "0" * 64}}
+    with pytest.raises(ReleaseProblem, match="does not match"):
+        check_release(tmp_path, wrong, "Shop", "1.0.3", signed=False)
+    assert signature_size(tmp_path / "Shop-win-Setup.exe") == 0
+    (tmp_path / "signed.exe").write_bytes(program(True))
+    assert signature_size(tmp_path / "signed.exe") == 2048
+    upload = tmp_path / "upload.zip"
+    with zipfile.ZipFile(upload, "w") as archive:
+        archive.writestr("../escape.exe", b"MZ")
+    with pytest.raises(ReleaseProblem, match="should not have"):
+        unpack_release(upload, tmp_path / "kept", "Shop", "1.0.3", False, 10**9)

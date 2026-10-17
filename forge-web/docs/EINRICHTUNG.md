@@ -916,48 +916,69 @@ sind; jedes wird einmal gespeichert und in der Reihenfolge verarbeitet, in der S
 hat.
 
 
-## 13. Windows-Apps: einen Windows-Rechner anschließen (optional)
+## 13. Windows-Apps: zum Herunterladen auf der Website der App (optional)
 
-Hat ein Produkt eine Windows-App (`forge app new --windows`), testet ein Windows-Rechner sie und
-verpackt sie als MSIX für den Microsoft Store (der Store signiert sie). Der Rechner verbindet sich
-selbst mit Forge Web, wie ein Mac; er braucht keinen offenen Port.
+Hat ein Produkt eine Windows-App (`forge app new --windows`), laden die Leute sie von der Website
+der App: `https://<app>.<Apps-Domain>/downloads` bietet einen **Installer** (`…-win-Setup.exe`,
+installiert ohne Administratorrechte) und ein **ZIP ohne Installation**. Beide aktualisieren sich
+selbst von derselben Website (Velopack). Einen Microsoft Store gibt es nicht.
 
-Die Builds übersetzen den Code der Produkte auf diesem Rechner. Nimm deshalb eine **Windows-VM, die
-nur dafür da ist** (Windows 11, 8 GB RAM, 4 Kerne, 100 GB Platte), und setze sie regelmäßig auf
-einen sauberen Snapshot zurück. Auf ihr:
+Dafür gibt es zwei Arten von Windows-Rechnern. Beide verbinden sich selbst mit Forge Web, wie ein
+Mac, und brauchen keinen offenen Port:
 
-1. Das **.NET 10 SDK** installieren (`winget install Microsoft.DotNet.SDK.10`) und Python 3.12.
+- Ein **Build-Rechner** testet und übersetzt den Code der Produkte. Weil das fremder Code ist, nimm
+  eine **Windows-VM, die nur dafür da ist** (Windows 11, 8 GB RAM, 4 Kerne, 100 GB Platte), und
+  setze sie regelmäßig auf einen sauberen Snapshot zurück.
+- Ein **Signier-Rechner** (optional) signiert die fertigen Programme mit deinem
+  Code-Signing-Zertifikat. Er führt **nie** Code eines Produkts aus, deshalb ist dein
+  Signierschlüssel dort sicher. Nimm dafür eine **zweite** VM, nicht den Build-Rechner. Ohne
+  Signier-Rechner verpackt der Build-Rechner die Apps unsigniert; dann warnt Windows SmartScreen
+  beim ersten Start („Der Computer wurde durch Windows geschützt“), und die Download-Seite sagt das.
+
+Auf jedem der Rechner:
+
+1. Das **.NET 10 SDK** installieren (`winget install Microsoft.DotNet.SDK.10`), Python 3.12 und
+   **Velopack** (`dotnet tool install -g vpk --version 1.2.161`).
 2. Den Dienst installieren: `pip install forge-winworker` (aus dem Wheel dieses Repositorys,
    `uv build --package forge-winworker`).
 3. `forge-win-worker check` muss „this machine is ready“ melden.
 4. In Forge Web unter `[stores]` `windows_enabled = true` setzen und mit
-   `POST /api/admin/stores/windows/workers` (`{"name": "win-1"}`) einen Rechner anlegen; die
-   Antwort zeigt den Schlüssel **einmal**. Lege ihn in eine Datei, die nur der Dienst lesen kann.
-5. Starten:
+   `POST /api/admin/stores/windows/workers` einen Rechner anlegen: `{"name": "win-1"}` für einen
+   Build-Rechner, `{"name": "sign-1", "signs": true}` für einen Signier-Rechner. Die Antwort zeigt
+   den Schlüssel **einmal**. Lege ihn in eine Datei, die nur der Dienst lesen kann.
+5. Starten, als Build-Rechner:
 
    ```powershell
    forge-win-worker run --server https://forge.example.com --token-file C:\forge\win-token --direct
    ```
 
-   `--direct` sagt, dass die Builds auf dem Rechner selbst laufen; ohne startet der Dienst nicht.
-   Als Dienst dauerhaft: mit der Aufgabenplanung beim Start ausführen lassen.
+   oder als Signier-Rechner, mit dem Befehl, der eine Datei signiert (`{{file}}` steht für sie),
+   z. B. mit Azure Artifact Signing:
 
-Ein Build (`POST /api/projects/<id>/windows/builds`) nimmt den neuesten freigegebenen Commit, lässt
-die Tests der App laufen und verpackt sie mit der nächsten Versionsnummer (`1.0.<n>.0`). Das Paket
-(`.msixupload`) bleibt auf Forge Web; auf dem Windows-Rechner bleibt nichts. Ein Rechner, der sich
-eine Stunde (`windows_timeout_s`) nicht meldet, lässt den Build scheitern. Abschalten:
-`PATCH /api/admin/stores/windows/workers/<id>` mit `{"enabled": false}`.
+   ```powershell
+   forge-win-worker run --server https://forge.example.com --token-file C:\forge\sign-token `
+       --sign-template "signtool sign /fd sha256 /tr http://timestamp.acs.microsoft.com /td sha256 /dlib C:\forge\Azure.CodeSigning.Dlib.dll /dmdf C:\forge\signing.json {{file}}"
+   ```
 
-**Microsoft Store:** Jeder Kunde reicht seine Windows-App mit seinem eigenen Partner-Center-Konto
-ein. Einmal pro Konto: in Microsoft Entra ID eine App registrieren und ein Client-Secret erzeugen,
-sie im Partner Center unter **Kontoeinstellungen → Benutzerverwaltung → Microsoft Entra-
-Anwendungen** als **Manager** hinzufügen, und Mandanten-ID, Client-ID und Secret in Forge Web
-hinterlegen (`PUT /api/me/msstore-key` mit `tenant_id`, `client_id`, `client_secret`; eine Seite
-dafür gibt es noch nicht). Die App im Partner Center anlegen (Namen reservieren) und ihre Store-ID
-(z. B. `9NBLGGH4R315`) bei der Einreichung angeben; die erste Einreichung mit Store-Eintrag,
-Altersfreigabe und Preisen macht der Kunde im Partner Center, danach geht jedes neue Paket aus
-Forge Web (`POST /api/projects/<id>/windows/submissions`). Wie bei Google Play braucht jede
-Einreichung die Freigabe eines Admins (`GET /api/admin/stores/msstore`,
-`POST /api/admin/stores/msstore/<id>/approve`), außer für vertrauenswürdige Nutzer und Admins. Den
-Stand bei Microsoft (Vorverarbeitung, Zertifizierung, veröffentlicht) zeigt die Liste der
-Einreichungen; sie fragt höchstens einmal pro Minute nach.
+   `--direct` und `--sign-template` schließen sich aus: ein Rechner baut oder signiert. Als Dienst
+   dauerhaft: mit der Aufgabenplanung beim Start ausführen lassen.
+
+Ein Build (`POST /api/projects/<id>/windows/builds`) nimmt den neuesten freigegebenen Commit mit der
+nächsten Versionsnummer (`1.0.<n>`). Der Build-Rechner lässt die Tests laufen und übersetzt die
+App; gibt es einen Signier-Rechner, verpackt und signiert der sie, sonst verpackt der Build-Rechner
+sie unsigniert. Forge Web prüft, was ankommt (nur die erwarteten Dateien, die Prüfsumme in der
+Update-Liste, bei signierten Builds die Signatur des Installers), und behält es; auf den
+Windows-Rechnern bleibt nichts. Ein Rechner, der sich eine Stunde (`windows_timeout_s`) nicht
+meldet, lässt den Build scheitern. Abschalten: `PATCH /api/admin/stores/windows/workers/<id>` mit
+`{"enabled": false}`.
+
+**Auf die Website:** Ist die App in Produktion live, bietet `POST /api/projects/<id>/windows/releases`
+(`{"build_id": "..."}`) einen fertigen Build zum Herunterladen an. Wie ein Produktions-Deploy
+braucht das die Freigabe eines Admins (`GET /api/admin/stores/windows/releases`,
+`POST /api/admin/stores/windows/releases/<id>/approve`), außer für vertrauenswürdige Nutzer und
+Admins. Eine neue Version ersetzt die alte; `…/releases/<id>/withdraw` nimmt eine Version vom Netz
+(Admins mit `POST /api/admin/stores/windows/releases/<id>/withdraw`). Der App-Server holt die
+Dateien selbst bei Forge Web ab, prüft ihre Prüfsummen und liefert sie aus
+(`/var/lib/caddy/forge-downloads`, anders mit `forge-host-worker run --downloads`); auf der Domain
+von Forge Web liegt nie ein Programm eines Kunden. Eine Seite dafür in der Weboberfläche gibt es
+noch nicht.

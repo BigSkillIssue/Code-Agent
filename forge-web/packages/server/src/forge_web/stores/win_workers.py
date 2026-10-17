@@ -1,5 +1,5 @@
-"""Windows workers (W38a): their tokens (shown once, stored as a hash, like the Macs') and how a
-request proves to be one."""
+"""Windows workers (W38a, W39): build and signing machines, their tokens (shown once, stored as
+a hash, like the Macs') and how a request proves to be one."""
 
 import hmac
 import secrets
@@ -14,16 +14,17 @@ from forge_winworker.wire import TOKEN_PREFIX
 
 def worker_view(row: WinWorker) -> dict[str, Any]:
     """A worker as the admin page shows it (never its token)."""
-    return {"id": row.id, "name": row.name, "enabled": row.enabled, "version": row.version,
+    return {"id": row.id, "name": row.name, "enabled": row.enabled, "signs": row.signs,
+            "version": row.version,
             "last_seen": row.last_seen, "online": time.time() - row.last_seen < ONLINE_S,
             "created_at": row.created_at}  # fmt: skip
 
 
-async def create_worker(db: Database, name: str) -> tuple[WinWorker, str]:
+async def create_worker(db: Database, name: str, signs: bool = False) -> tuple[WinWorker, str]:
     """A new worker and its token (`fww_<id>_<secret>`); the token is not stored."""
     worker_id, secret = secrets.token_hex(8), secrets.token_urlsafe(32)
     row = WinWorker(id=worker_id, name=name, token_hash=secret_hash(secret), enabled=True,
-                    created_at=time.time())  # fmt: skip
+                    signs=signs, created_at=time.time())  # fmt: skip
     async with db.session() as session, session.begin():
         session.add(row)
     return row, f"{TOKEN_PREFIX}_{worker_id}_{secret}"
