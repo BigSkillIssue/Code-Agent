@@ -3,8 +3,9 @@ anyone can use, a decision with a statement of reasons, and word to the person w
 app stores ask apps with user content to let people report it and block others.
 
 When the app gets content of its own (posts, comments, …), register how a moderator removes it:
-`REMOVERS["post"] = remove_post`, where `remove_post(db, content_id)` hides or deletes it. Only
-content with a remover can be reported, so a decision to remove it always removes it."""
+`REMOVERS["post"] = remove_post`, where `remove_post(db, content_id)` hides or deletes it.
+Anything can be reported (the notice form must always work), but a decision to remove content
+needs its remover, so "removed" always means removed."""
 
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -76,8 +77,6 @@ def moderator(user: User) -> User:
 @router.post("/reports", status_code=201)
 def send_report(body: NewReport, user: OptionalUser, db: Db) -> ReportOut:
     """Report content; signed in or not."""
-    if body.content_type not in REMOVERS:
-        raise HTTPException(status_code=422, detail="This kind of content cannot be reported.")
     report = Report(
         reporter_id=user.id if user else None,
         content_type=body.content_type,

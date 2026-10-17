@@ -34,9 +34,9 @@ def test_anyone_can_report(client: TestClient, removed: list[str]) -> None:
     assert response.json()["status"] == "open"
 
 
-def test_only_content_a_moderator_can_remove_can_be_reported(client: TestClient) -> None:
+def test_anything_can_be_reported(client: TestClient) -> None:
     response = client.post("/api/reports", json=REPORT)  # no remover for posts registered
-    assert response.status_code == 422
+    assert response.status_code == 201  # the notice form always works
 
 
 def test_only_moderators_see_reports(client: TestClient, sign_up: SignUp) -> None:
