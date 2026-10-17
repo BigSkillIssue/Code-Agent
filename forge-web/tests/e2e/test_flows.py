@@ -34,11 +34,8 @@ async def new_project_and_chat(page: Any, name: str) -> None:
 async def test_a_chat_edit_needs_approval_and_shows_its_diff(page: Any, server: LiveServer) -> None:
     await sign_in(page, server)
     await new_project_and_chat(page, "E2E")
-    await (
-        page.locator("select")
-        .filter(has_text="Vor Änderungen fragen")
-        .select_option(label="Vor Änderungen fragen")
-    )
+    await page.get_by_role("combobox", name="Modus").click()  # Forge's own Select (W43)
+    await page.get_by_role("option", name="Vor Änderungen fragen").click()
     await page.locator("textarea").fill("Schreib eine hello.py")
     await page.locator("textarea").press("Enter")
     allow = page.get_by_role("button", name="Erlauben", exact=True)

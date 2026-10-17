@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogItem } from "../api/billing";
 import { useStore } from "../state/store";
 import { BillingTab } from "./AdminBilling";
+import { choose } from "../components/choose";
 
 const pro: CatalogItem = {
   id: "pro", kind: "plan", name: "Pro", description: "", currency: "eur", amounts: { month: 2900, year: 29000 },
@@ -87,7 +88,7 @@ describe("the billing panel", () => {
     fireEvent.change(screen.getByLabelText(/^Code/), { target: { value: "launch_25" } });
     fireEvent.change(screen.getByLabelText(/^Name$/), { target: { value: "Launch" } });
     fireEvent.change(screen.getByLabelText(/(Percent off|Prozent Rabatt)/), { target: { value: "25" } });
-    fireEvent.change(screen.getByLabelText(/^(For|Gilt für)$/), { target: { value: "repeating" } });
+    await choose(screen.getByLabelText(/^(For|Gilt für)$/), /(some months|Monate)/);
     fireEvent.click(screen.getByRole("button", { name: /^(Add the coupon|Gutschein anlegen)$/ }));
     await waitFor(() =>
       expect(mocks.api.putCoupon).toHaveBeenCalledWith(
@@ -105,7 +106,7 @@ describe("the billing panel", () => {
     expect(texts.textContent).toMatch(/(not published yet|noch nicht veröffentlicht)/); // the other three
     const body = (await screen.findByLabelText(/^(Text \(plain|Text \(reiner)/)) as HTMLTextAreaElement;
     expect(body.value).toBe("Version 2"); // the current version, to change
-    fireEvent.change(screen.getByLabelText(/^Text$/), { target: { value: "privacy" } });
+    await choose(screen.getByLabelText(/^Text$/), /^(Privacy policy|Datenschutzerklärung)$/);
     fireEvent.change(screen.getByLabelText(/^(Title|Titel)$/), { target: { value: " Datenschutz " } });
     fireEvent.change(screen.getByLabelText(/^(Text \(plain|Text \(reiner)/), { target: { value: "Wir speichern wenig." } });
     fireEvent.click(screen.getByRole("button", { name: /^(Publish as a new version|Als neue Version veröffentlichen)$/ }));

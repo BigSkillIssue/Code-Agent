@@ -5,6 +5,7 @@ import { type FormEvent, useCallback, useState } from "react";
 import { account, admin, type ServerSettings } from "../api/account";
 import { t } from "../lib/i18n";
 import { Button, date, money, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 export function ServerKeysTab() {
   const [keys, reload] = useLoaded(useCallback(() => admin.keys(), []));
@@ -39,13 +40,12 @@ export function ServerKeysTab() {
         ))}
       </ul>
       <form className="flex flex-wrap items-end gap-2" onSubmit={add}>
-        <select aria-label={t("provider")} className="rounded-md border border-line bg-bg px-2 py-1.5" value={provider} onChange={(e) => setProvider(e.target.value)}>
-          {(providers ?? [{ name: "anthropic" }]).map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <Select
+          ariaLabel={t("provider")}
+          value={provider}
+          onChange={setProvider}
+          options={(providers ?? [{ name: "anthropic" }]).map((p) => ({ value: p.name, label: p.name }))}
+        />
         <div className="w-40">
           <TextInput label={t("name")} value={name} onChange={setName} />
         </div>
@@ -126,14 +126,17 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
   return (
     <form onSubmit={save} className="space-y-4" data-testid="server-settings">
       <Section title={t("signUpAndSignIn")}>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("signUpMode")}</span>
-          <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={edited.signup} onChange={(e) => set("signup", e.target.value as ServerSettings["signup"])}>
-            <option value="invite">{t("signUpInvite")}</option>
-            <option value="approval">{t("signUpApproval")}</option>
-            <option value="open">{t("signUpOpen")}</option>
-          </select>
-        </label>
+        <Select
+          label={t("signUpMode")}
+          className="max-w-sm"
+          value={edited.signup}
+          onChange={(v) => set("signup", v)}
+          options={[
+            { value: "invite", label: t("signUpInvite") },
+            { value: "approval", label: t("signUpApproval") },
+            { value: "open", label: t("signUpOpen") },
+          ]}
+        />
         <TextInput label={t("allowedDomains")} value={domains} onChange={setDomains} placeholder="example.com, firma.de" />
         <Check label={t("passwordAccounts")} checked={edited.passwords} onChange={(v) => set("passwords", v)} />
         <Check label={t("adminTwoFactor")} checked={edited.admin_two_factor} onChange={(v) => set("admin_two_factor", v)} />
@@ -149,14 +152,17 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
         </div>
       </Section>
       <Section title={t("serverKeys")}>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("serverKeysFor")}</span>
-          <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={edited.server_keys_for} onChange={(e) => set("server_keys_for", e.target.value as ServerSettings["server_keys_for"])}>
-            <option value="admins">{t("forAdmins")}</option>
-            <option value="granted">{t("forGranted")}</option>
-            <option value="everyone">{t("forEveryone")}</option>
-          </select>
-        </label>
+        <Select
+          label={t("serverKeysFor")}
+          className="max-w-sm"
+          value={edited.server_keys_for}
+          onChange={(v) => set("server_keys_for", v)}
+          options={[
+            { value: "admins", label: t("forAdmins") },
+            { value: "granted", label: t("forGranted") },
+            { value: "everyone", label: t("forEveryone") },
+          ]}
+        />
         {number("monthly_limit_usd", t("defaultMonthlyLimit"))}
       </Section>
       <Button type="submit" kind="primary">

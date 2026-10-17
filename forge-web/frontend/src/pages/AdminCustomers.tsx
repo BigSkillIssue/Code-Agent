@@ -8,6 +8,7 @@ import { billingAdmin } from "../api/billing";
 import { type CustomerDetail, customersAdmin } from "../api/customers";
 import { t, type TextKey } from "../lib/i18n";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const STAGES: Record<string, TextKey> = {
   grace: "stageGrace",
@@ -134,16 +135,13 @@ function GiftForm({ shown, change }: { shown: CustomerDetail; change: Change }) 
         </p>
       )}
       <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("giftPlan")}</span>
-          <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={chosen} onChange={(e) => setPlan(e.target.value)}>
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label={t("giftPlan")}
+          className="min-w-40"
+          value={chosen}
+          onChange={setPlan}
+          options={plans.map((p) => ({ value: p.id, label: p.name }))}
+        />
         <TextInput label={t("giftUntil")} type="date" value={until} onChange={setUntil} />
         <TextInput label={t("giftNote")} value={note} onChange={setNote} />
         <Button type="submit" kind="primary" disabled={!chosen}>

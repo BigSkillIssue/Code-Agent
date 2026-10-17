@@ -5,6 +5,7 @@ import { type FormEvent, useCallback, useState } from "react";
 import { account } from "../api/account";
 import { t } from "../lib/i18n";
 import { Button, date, money, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 export function KeysSection() {
   const [keys, reload] = useLoaded(useCallback(() => account.keys(), []));
@@ -34,20 +35,13 @@ export function KeysSection() {
         ))}
       </ul>
       <form className="flex flex-wrap items-end gap-2" onSubmit={add}>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("provider")}</span>
-          <select
-            className="rounded-md border border-line bg-bg px-2 py-1.5"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-          >
-            {(providers ?? [{ name: "anthropic" }]).map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label={t("provider")}
+          className="min-w-40"
+          value={provider}
+          onChange={setProvider}
+          options={(providers ?? [{ name: "anthropic" }]).map((p) => ({ value: p.name, label: p.name }))}
+        />
         <div className="min-w-48 flex-1">
           <TextInput label={t("apiKey")} type="password" value={key} onChange={setKey} />
         </div>

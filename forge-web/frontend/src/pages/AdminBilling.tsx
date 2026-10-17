@@ -15,6 +15,7 @@ import {
 import { t, type TextKey } from "../lib/i18n";
 import { LegalTextsSection } from "./Legal";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const KINDS: Record<ItemKind, { text: TextKey; intervals: Interval[] }> = {
   plan: { text: "kindPlan", intervals: ["month", "year"] },
@@ -178,15 +179,13 @@ function ItemForm({ item, onSaved }: { item: CatalogItem | null; onSaved: () => 
       <div className="grid gap-2 sm:grid-cols-3">
         <TextInput label={t("itemId")} value={itemId} onChange={setItemId} />
         <TextInput label={t("itemName")} value={name} onChange={setName} />
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("itemKind")}</span>
-          <select className="w-full rounded-md border border-line bg-bg px-2 py-1.5" value={kind}
-            disabled={Boolean(item)} onChange={(e) => setKind(e.target.value as ItemKind)}>
-            {(Object.keys(KINDS) as ItemKind[]).map((k) => (
-              <option key={k} value={k}>{t(KINDS[k].text)}</option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label={t("itemKind")}
+          value={kind}
+          disabled={Boolean(item)}
+          onChange={setKind}
+          options={(Object.keys(KINDS) as ItemKind[]).map((k) => ({ value: k, label: t(KINDS[k].text) }))}
+        />
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {intervals.map((interval) => (
@@ -269,15 +268,16 @@ function CouponsSection() {
         <TextInput label={t("couponCode")} value={code} onChange={setCode} />
         <TextInput label={t("couponName")} value={name} onChange={setName} />
         <TextInput label={t("couponPercent")} value={percent} onChange={setPercent} />
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("couponDuration")}</span>
-          <select className="w-full rounded-md border border-line bg-bg px-2 py-1.5" value={duration}
-            onChange={(e) => setDuration(e.target.value as typeof duration)}>
-            <option value="once">{t("durationOnce")}</option>
-            <option value="repeating">{t("durationRepeating")}</option>
-            <option value="forever">{t("durationForever")}</option>
-          </select>
-        </label>
+        <Select
+          label={t("couponDuration")}
+          value={duration}
+          onChange={setDuration}
+          options={[
+            { value: "once", label: t("durationOnce") },
+            { value: "repeating", label: t("durationRepeating") },
+            { value: "forever", label: t("durationForever") },
+          ]}
+        />
         {duration === "repeating" && <TextInput label={t("couponMonths")} value={months} onChange={setMonths} />}
         <Button type="submit" disabled={!code.trim() || !name.trim() || !(Number(percent) > 0)}>
           {t("couponSave")}

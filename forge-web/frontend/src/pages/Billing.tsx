@@ -1,18 +1,24 @@
-// A customer's plan and billing (W33a2): what they may use, the offers, and the order. The order
-// is placed here, with the price, the interval and the trial in view, the waiver of the right of
-// withdrawal (§356 (5) BGB) and a button that says the order costs money (§312j BGB); the card
-// goes to Stripe's own page, never to this server. The legal texts are accepted first (W34).
+// A customer's plan and billing (W33a2): what they may use, the plans and extras (chosen as on
+// Claude's plan page, `Plans.tsx`, W43), cancelling, the VAT ID and the maker's own Stripe account.
+// The legal texts are accepted before an order (W34).
 
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { billing, type Entitlements, type Interval, type MyBilling, type Offer } from "../api/billing";
+import { billing, type Entitlements, type MyBilling } from "../api/billing";
 import { legal } from "../api/legal";
 import { t, type TextKey } from "../lib/i18n";
+import { Select } from "../components/Select";
 import { LegalConsent, VatSection } from "./Legal";
 import { Button, date, Section, useAction, useLoaded } from "./parts";
+import { Extras, type Order, OrderDialog, PlanPicker } from "./Plans";
 
-const money = (cents: number, currency: string) => `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
-const PRICE_TEXT: Record<Interval, TextKey> = { month: "perMonth", year: "perYear", once: "once" };
+const STATUS: Record<string, TextKey> = {
+  active: "subActive",
+  trialing: "subTrialing",
+  past_due: "subPastDue",
+  canceled: "subCanceled",
+  incomplete: "subIncomplete",
+};
 const LIMIT_ROWS: [keyof Entitlements, TextKey][] = [
   ["projects", "limitProjects"],
   ["hosted_apps", "limitHostedApps"],
@@ -32,14 +38,17 @@ export function BillingPage() {
   const [mine] = useLoaded(useCallback(() => billing.me(), []));
   const [offers] = useLoaded(useCallback(() => billing.offers(), []));
   const [accepted, reloadAccepted] = useLoaded(useCallback(() => legal.me(), []));
+  const [ordering, setOrdering] = useState<Order | null>(null);
   const ready = accepted !== null && accepted.missing.length === 0;
   const [query] = useSearchParams();
-  const plan = mine?.entitlements.source.startsWith("plan:")
-    ? (offers?.find((o) => `plan:${o.id}` === mine.entitlements.source)?.name ?? mine.entitlements.source.slice(5))
-    : t("myPlanServer");
+  const current = mine?.entitlements.source.startsWith("plan:") ? mine.entitlements.source.slice(5) : "";
+  const named = (id: string) => offers?.find((o) => o.id === id)?.name ?? id;
+  const plan = current ? named(current) : t("myPlanServer");
+  const plans = (offers ?? []).filter((o) => o.kind === "plan");
+  const extras = (offers ?? []).filter((o) => o.kind !== "plan");
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-8" data-testid="billing">
+      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-8" data-testid="billing">
         <h1 className="text-xl font-semibold">{t("billingTitle")}</h1>
         {query.get("paid") && <p className="rounded-md border border-ok p-3 text-sm">{t("orderPaid")}</p>}
         {query.get("cancelled") && <p className="rounded-md border border-line p-3 text-sm">{t("orderCancelled")}</p>}
@@ -55,7 +64,7 @@ export function BillingPage() {
             </ul>
             {mine.subscriptions.map((s) => (
               <p key={`${s.item_id}-${s.status}`} className="text-muted">
-                {t("subscriptionLine", { item: s.item_id, status: s.status })}
+                {t("subscriptionLine", { item: named(s.item_id), status: t(STATUS[s.status] ?? "subOther") })}
               </p>
             ))}
             {offers?.some((o) => o.kind === "app_once") &&
@@ -66,19 +75,13 @@ export function BillingPage() {
               ))}
           </Section>
         )}
-        {mine?.enabled && mine.subscriptions.length > 0 && <CancelSection mine={mine} />}
         {mine?.enabled && accepted && accepted.missing.length > 0 && (
           <LegalConsent missing={accepted.missing} onAccepted={reloadAccepted} />
         )}
-        {mine?.enabled && offers && offers.length > 0 && (
-          <Section title={t("offersTitle")}>
-            <ul className="space-y-3">
-              {offers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} ready={ready} apps={mine.apps} />
-              ))}
-            </ul>
-          </Section>
-        )}
+        {mine?.enabled && plans.length > 0 && <PlanPicker plans={plans} current={current} onOrder={setOrdering} />}
+        {mine?.enabled && extras.length > 0 && <Extras extras={extras} onOrder={setOrdering} />}
+        {mine && ordering && <OrderDialog order={ordering} apps={mine.apps} ready={ready} onClose={() => setOrdering(null)} />}
+        {mine?.enabled && mine.subscriptions.length > 0 && <CancelSection mine={mine} named={named} />}
         {mine?.enabled && accepted && <VatSection vat={accepted.vat} />}
         {mine?.enabled && <ConnectSection />}
       </div>
@@ -86,69 +89,8 @@ export function BillingPage() {
   );
 }
 
-function OfferCard({ offer, ready, apps }: { offer: Offer; ready: boolean; apps: MyBilling["apps"] }) {
-  const intervals = (Object.keys(offer.amounts) as Interval[]).filter((i) => offer.amounts[i]);
-  const [interval, choose] = useState<Interval>(intervals[0] ?? "month");
-  const [waiver, setWaiver] = useState(false);
-  const perApp = offer.kind === "app_once"; // paid once for one of one's own apps (W40b)
-  const open = apps.filter((a) => !a.unlocked);
-  const [app, setApp] = useState(open[0]?.project_id ?? "");
-  const act = useAction();
-  const order = async () => {
-    const stripe = { url: "" };
-    const opened = await act(async () => {
-      const made = perApp ? billing.checkout(offer.id, interval, waiver, app) : billing.checkout(offer.id, interval, waiver);
-      stripe.url = (await made).url;
-    });
-    if (opened) window.location.assign(stripe.url); // Stripe's own page takes the card
-  };
-  return (
-    <li className="rounded-lg border border-line p-3" data-testid="offer">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span className="font-medium">{offer.name}</span>
-        {offer.trial_days > 0 && <span className="text-ok">{t("trialFor", { days: String(offer.trial_days) })}</span>}
-      </div>
-      {offer.description && <p className="text-muted">{offer.description}</p>}
-      <div className="mt-2 flex flex-wrap gap-3">
-        {intervals.map((i) => (
-          <label key={i} className="flex items-center gap-1">
-            {intervals.length > 1 && (
-              <input type="radio" name={`interval-${offer.id}`} checked={interval === i} onChange={() => choose(i)} />
-            )}
-            {t(PRICE_TEXT[i], { price: money(offer.amounts[i] ?? 0, offer.currency) })}
-          </label>
-        ))}
-      </div>
-      {perApp &&
-        (open.length > 0 ? (
-          <label className="mt-2 flex items-center gap-2">
-            {t("appChoose")}
-            <select className="rounded border border-line bg-transparent p-1" value={app} onChange={(e) => setApp(e.target.value)}>
-              {open.map((a) => (
-                <option key={a.project_id} value={a.project_id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p className="mt-2 text-muted">{t("appNoneLeft")}</p>
-        ))}
-      <label className="mt-2 flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={waiver} onChange={(e) => setWaiver(e.target.checked)} />
-        <span>{t("waiverBox")}</span>
-      </label>
-      <div className="mt-2">
-        <Button kind="primary" disabled={!waiver || !ready || (perApp && !app)} onClick={() => void order()}>
-          {t("orderButton")}
-        </Button>
-      </div>
-    </li>
-  );
-}
-
 /** The cancellation button (§312k BGB) in two steps, and Stripe's portal for payments. */
-function CancelSection({ mine }: { mine: MyBilling }) {
+function CancelSection({ mine, named }: { mine: MyBilling; named: (id: string) => string }) {
   const [asked, setAsked] = useState(false);
   const [contract, setContract] = useState("");
   const [done, setDone] = useState("");
@@ -177,17 +119,13 @@ function CancelSection({ mine }: { mine: MyBilling }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t("cancelWhich")}</span>
-            <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={contract} onChange={(e) => setContract(e.target.value)}>
-              <option value="">{t("cancelAll")}</option>
-              {contracts.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label={t("cancelWhich")}
+            className="min-w-48"
+            value={contract}
+            onChange={setContract}
+            options={[{ value: "", label: t("cancelAll") }, ...contracts.map((c) => ({ value: c, label: named(c) }))]}
+          />
           <Button kind="danger" onClick={() => void cancelNow()}>
             {t("cancelNow")}
           </Button>

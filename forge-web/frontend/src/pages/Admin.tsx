@@ -12,6 +12,7 @@ import { CustomersTab } from "./AdminCustomers";
 import { HostingTab } from "./AdminHosting";
 import { AuditTab, ServerKeysTab, ServerSettingsTab, UsageTab } from "./AdminServer";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const TABS = ["users", "invites", "serverKeys", "usage", "serverSettings", "appleBuilds", "hostingTab", "billingTab", "customersTab", "auditLog"] as const;
 type Tab = (typeof TABS)[number];
@@ -94,15 +95,13 @@ function UsersTab() {
                 )}
               </td>
               <td className="py-2">
-                <select
-                  aria-label={t("role")}
-                  className="rounded border border-line bg-bg px-1"
+                <Select
+                  compact
+                  ariaLabel={t("role")}
                   value={u.role}
-                  onChange={(event) => change(() => admin.updateUser(u.id, { role: event.target.value }))}
-                >
-                  <option value="member">{t("roleMember")}</option>
-                  <option value="admin">{t("roleAdmin")}</option>
-                </select>
+                  onChange={(role) => change(() => admin.updateUser(u.id, { role }))}
+                  options={[{ value: "member", label: t("roleMember") }, { value: "admin", label: t("roleAdmin") }]}
+                />
               </td>
               <td className="py-2">{t(STATUS[u.status])}</td>
               <td className="py-2">
@@ -199,10 +198,12 @@ function InvitesTab() {
         <div className="min-w-48 flex-1">
           <TextInput label={t("emailOptional")} value={email} onChange={setEmail} />
         </div>
-        <select aria-label={t("role")} className="rounded-md border border-line bg-bg px-2 py-1.5" value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="member">{t("roleMember")}</option>
-          <option value="admin">{t("roleAdmin")}</option>
-        </select>
+        <Select
+          ariaLabel={t("role")}
+          value={role}
+          onChange={setRole}
+          options={[{ value: "member", label: t("roleMember") }, { value: "admin", label: t("roleAdmin") }]}
+        />
         <Button type="submit" kind="primary">
           {t("createInvite")}
         </Button>

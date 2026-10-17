@@ -7,6 +7,7 @@ import { type FormEvent, useCallback, useState } from "react";
 import { LEGAL_KINDS, type LegalKind, type LegalText, legal, legalAdmin, type MissingText, type VatResult } from "../api/legal";
 import { t, type TextKey } from "../lib/i18n";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const KIND_TEXT: Record<LegalKind, TextKey> = {
   terms: "legalTerms",
@@ -62,20 +63,13 @@ function TextForm(props: {
   };
   return (
     <form onSubmit={publish} className="space-y-2">
-      <label className="block">
-        <span className="mb-1 block text-xs text-muted">{t("legalWhich")}</span>
-        <select
-          className="rounded-md border border-line bg-bg px-2 py-1.5"
-          value={props.kind}
-          onChange={(e) => props.setKind(e.target.value as LegalKind)}
-        >
-          {LEGAL_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {t(KIND_TEXT[k])}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label={t("legalWhich")}
+        className="max-w-sm"
+        value={props.kind}
+        onChange={props.setKind}
+        options={LEGAL_KINDS.map((k) => ({ value: k, label: t(KIND_TEXT[k]) }))}
+      />
       <TextInput label={t("legalTextTitle")} value={title} onChange={setTitle} />
       <label className="block">
         <span className="mb-1 block text-xs text-muted">{t("legalTextBody")}</span>

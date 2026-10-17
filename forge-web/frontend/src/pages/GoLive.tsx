@@ -13,6 +13,7 @@ import { AppData } from "./AppData";
 import { Domains } from "./Domains";
 import { OperatorForm } from "./OperatorForm";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const STEP_TEXT: Record<DeployStep, TextKey> = {
   pack: "deployStepPack",
@@ -260,17 +261,15 @@ function Secrets(props: {
           </ul>
         )}
         <div className="grid gap-3 sm:grid-cols-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t("secretFor")}</span>
-            <select
-              className="w-full rounded-md border border-line bg-bg px-2 py-1.5"
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value as Environment)}
-            >
-              <option value="staging">{t("envStaging")}</option>
-              <option value="production">{t("envProduction")}</option>
-            </select>
-          </label>
+          <Select
+            label={t("secretFor")}
+            value={environment}
+            onChange={setEnvironment}
+            options={[
+              { value: "staging", label: t("envStaging") },
+              { value: "production", label: t("envProduction") },
+            ]}
+          />
           <TextInput label={t("secretName")} value={name} placeholder="MAPS_KEY" onChange={setName} />
           <TextInput label={t("secretValue")} value={value} type="password" onChange={setValue} />
         </div>

@@ -69,7 +69,11 @@ describe("the customers panel", () => {
     const shown = await screen.findByTestId("customer-detail");
     expect(shown.textContent).toContain("plan:pro");
     const gift = within(shown).getByTestId("gift");
-    await waitFor(() => expect([...gift.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Pro"]));
+    const plan = within(gift).getByRole("combobox", { name: /^(Plan|Tarif)$/ });
+    await waitFor(() => expect(plan.textContent).toBe("Pro")); // plans only, the add-on is not offered
+    fireEvent.click(plan);
+    expect(within(gift).getAllByRole("option").map((o) => o.textContent)).toEqual(["Pro"]);
+    fireEvent.click(plan);
     fireEvent.change(within(gift).getByLabelText(/(Note for the admins|Notiz für die Admins)/), { target: { value: " partner " } });
     fireEvent.click(within(gift).getByRole("button", { name: /^(Give the plan|Tarif schenken)$/ }));
     await waitFor(() => expect(mocks.api.give).toHaveBeenCalledWith("u1", "pro", 0, "partner"));

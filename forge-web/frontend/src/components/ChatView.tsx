@@ -8,6 +8,7 @@ import { useStore } from "../state/store";
 import { buildTranscript } from "../state/transcript";
 import { ProjectPanel } from "../panels/ProjectPanel";
 import { Composer } from "./Composer";
+import { Select } from "./Select";
 import { TodoPanel } from "./TodoPanel";
 import { Transcript } from "./Transcript";
 
@@ -33,21 +34,23 @@ function ModelPicker({ chat, onChange }: { chat: Chat; onChange: (model: string)
   }, [models, loadModels]);
   const known = (models ?? []).some((m) => m.id === chat.model);
   return (
-    <select
-      aria-label={t("model")}
-      className="max-w-[11rem] min-w-0 rounded-md border border-line bg-card px-2 py-1 text-sm"
+    <Select
+      compact
+      ariaLabel={t("model")}
+      className="max-w-[12rem] min-w-0"
       value={chat.model}
       disabled={!chat.mine}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="">{t("defaultModel")}</option>
-      {!known && chat.model && <option value={chat.model}>{chat.model}</option>}
-      {(models ?? []).map((m) => (
-        <option key={m.id} value={m.id}>
-          {m.model} ({m.key === "own" ? t("ownKey") : t("serverKey")})
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={[
+        { value: "", label: t("defaultModel") },
+        ...(!known && chat.model ? [{ value: chat.model, label: chat.model }] : []),
+        ...(models ?? []).map((m) => ({
+          value: m.id,
+          label: m.model,
+          description: m.key === "own" ? t("ownKey") : t("serverKey"),
+        })),
+      ]}
+    />
   );
 }
 
@@ -118,19 +121,15 @@ export function ChatView({ chat }: { chat: Chat }) {
               {chat.state === "waiting" ? t("waiting") : t("working")}
             </span>
           )}
-          <select
-            aria-label={t("mode")}
-            className="min-w-0 rounded-md border border-line bg-card px-2 py-1 text-sm"
+          <Select
+            compact
+            ariaLabel={t("mode")}
+            className="min-w-0"
             value={chat.mode}
             disabled={!chat.mine}
-            onChange={(e) => void guard(() => updateChat(chat, { mode: e.target.value as ChatMode }))}
-          >
-            {MODES.map((mode) => (
-              <option key={mode.value} value={mode.value}>
-                {mode.label}
-              </option>
-            ))}
-          </select>
+            onChange={(mode) => void guard(() => updateChat(chat, { mode }))}
+            options={MODES}
+          />
           <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />
           {project?.kind === "app" && (
             <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded p-1 text-muted hover:text-accent">

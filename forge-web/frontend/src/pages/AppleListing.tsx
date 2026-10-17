@@ -9,6 +9,7 @@ import { appleListing, bytes, CATEGORIES, type Frequency, LIMITS, type StoreList
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 type TextField = "name" | "subtitle" | "description" | "keywords" | "promotional_text" | "whats_new";
 const FREQUENCIES: Frequency[] = ["NONE", "INFREQUENT", "FREQUENT"];
@@ -134,21 +135,16 @@ function Texts({ listing, change }: Part) {
 
 function Category(props: { label: string; value: string | null; optional?: boolean; onChange: (value: string | null) => void }) {
   return (
-    <label className="block text-xs text-muted">
-      {props.label}
-      <select
-        className="mt-1 block rounded-md border border-line bg-bg px-2 py-1.5 text-sm text-fg"
-        value={props.value ?? ""}
-        onChange={(event) => props.onChange(event.target.value || null)}
-      >
-        {props.optional && <option value="">{t("listingNoCategory")}</option>}
-        {CATEGORIES.map((c) => (
-          <option key={c} value={c}>
-            {c.replaceAll("_", " ").toLowerCase()}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Select
+      label={props.label}
+      className="max-w-xs"
+      value={props.value ?? ""}
+      onChange={(value) => props.onChange(value || null)}
+      options={[
+        ...(props.optional ? [{ value: "", label: t("listingNoCategory") }] : []),
+        ...CATEGORIES.map((c) => ({ value: c, label: c.replaceAll("_", " ").toLowerCase() })),
+      ]}
+    />
   );
 }
 
@@ -180,13 +176,13 @@ function Ratings({ listing, change }: Part) {
             {typeof value === "boolean" ? (
               <input type="checkbox" checked={value} onChange={(event) => set(question, event.target.checked)} />
             ) : (
-              <select className="rounded-md border border-line bg-bg px-1 py-0.5" value={value} onChange={(event) => set(question, event.target.value as Frequency)}>
-                {FREQUENCIES.map((f) => (
-                  <option key={f} value={f}>
-                    {t(`frequency${f}` as TextKey)}
-                  </option>
-                ))}
-              </select>
+              <Select
+                compact
+                ariaLabel={question.replaceAll("_", " ")}
+                value={value as Frequency}
+                onChange={(f) => set(question, f)}
+                options={FREQUENCIES.map((f) => ({ value: f, label: t(`frequency${f}` as TextKey) }))}
+              />
             )}
           </label>
         ))}

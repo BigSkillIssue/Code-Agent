@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Commit, GitFile, GitStatus, ProjectApi } from "../api/project";
 import { PatchView } from "../components/cards/DiffView";
 import { t } from "../lib/i18n";
+import { Select } from "../components/Select";
 
 interface Props {
   api: ProjectApi;
@@ -89,27 +90,19 @@ export function Changes({ api, canEdit, refreshKey, onError }: Props) {
     <div className="flex h-full flex-col overflow-y-auto text-sm" data-testid="changes">
       <div className="flex items-center gap-2 border-b border-line px-2 py-1.5">
         <GitBranch className="size-4 text-muted" />
-        <select
-          aria-label={t("branch")}
-          className="min-w-0 flex-1 rounded border border-line bg-card px-1 py-0.5 text-sm"
+        <Select
+          compact
+          ariaLabel={t("branch")}
+          className="min-w-0 flex-1"
           value={status?.branch ?? ""}
           disabled={!canEdit || busy}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === "\u0000new") {
-              const name = window.prompt(t("branchPrompt"))?.trim();
-              if (name) void act(() => api.switchBranch(name, true));
-            } else void act(() => api.switchBranch(value, false));
-          }}
-        >
-          {branches.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-          {status?.branch && !branches.includes(status.branch) && <option value={status.branch}>{status.branch}</option>}
-          {canEdit && <option value={"\u0000new"}>{t("newBranch")}</option>}
-        </select>
+          onChange={(name) => void act(() => api.switchBranch(name, false))}
+          options={[
+            ...branches.map((name) => ({ value: name, label: name })),
+            ...(status?.branch && !branches.includes(status.branch) ? [{ value: status.branch, label: status.branch }] : []),
+          ]}
+          footer={canEdit && <NewBranch onCreate={(name) => void act(() => api.switchBranch(name, true))} />}
+        />
         {status && (status.ahead > 0 || status.behind > 0) && (
           <span className="text-xs text-muted">
             {status.ahead} {t("ahead")} · {status.behind} {t("behind")}
@@ -264,5 +257,27 @@ export function Changes({ api, canEdit, refreshKey, onError }: Props) {
         </ul>
       </details>
     </div>
+  );
+}
+
+/** A field under the branch list that makes a new branch from the current one. */
+function NewBranch({ onCreate }: { onCreate: (name: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (name.trim()) onCreate(name.trim());
+        setName("");
+      }}
+    >
+      <input
+        aria-label={t("newBranch")}
+        placeholder={t("branchPrompt")}
+        className="w-full rounded-md border border-line bg-bg px-2 py-1 text-sm"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+      />
+    </form>
   );
 }

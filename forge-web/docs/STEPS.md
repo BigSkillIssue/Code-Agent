@@ -391,3 +391,13 @@ Asked for after W39 (the user's answers of 2026-10-17): fix the billing leftover
     - Build: an unverified domain no longer blocks another project from claiming it (the first to verify keeps it); every admin check asks the two-factor rule; removing a git credential and withdrawing an invite are audited; Anthropic's cache writes are priced as Anthropic prices them.
     - Tests: one for each.
     - Verify: `uv run pytest -q tests/test_domains.py tests/test_gateway.py tests/test_admin_powers.py tests/test_access.py`
+
+## Phase I · Like Claude: controls, one chat per project, a team that manages itself, attachments, preview
+
+Asked for after the screenshots of 2026-10-17: no native select fields, a plan picker like Claude's, one shared chat per project (older extra chats deleted), an agent that compacts its own context and keeps the program organised in Markdown, more pressure towards several agents that talk to each other (e.g. database and API), an effort setting, images and files in the chat, and a browser preview like Claude Code. The agent's part is built in Forge (S74–S77 on `main`) and arrives through the sync.
+
+- [x] **W43 — Forge's own choice fields and a Claude-like plan picker**
+    - Files: `frontend/src/components/{Select,Segmented,choose}.tsx`, every page with a `<select>` (`ChatView`, `Billing`, `Settings`, `SettingsAccess`, `Admin`, `AdminServer`, `AdminApple`, `AdminBilling`, `AdminCustomers`, `Legal`, `AppleListing`, `GoLive`, `panels/Changes`), `frontend/src/pages/Plans.tsx`, `frontend/src/lib/texts/billing.ts`, their tests
+    - Build: a `Select` (button and list, icons and descriptions, ticked choice, keyboard, a field for a new entry) and a `Segmented` pill switch replace all 19 native selects; the branch picker makes a new branch in a field under its list instead of a browser prompt. Plans are cards side by side with a monthly/yearly switch and the saving, the price per month, what the plan includes (from its limits) and one button; the current plan is marked; extras are a short list; ordering opens a dialog with the price, the trial, the app for an app's price, the waiver and the button that says the order costs money.
+    - Tests: the Select by mouse and keyboard; the plan cards, the switch, the dialog, the current plan, the features; every page test picks through the new Select.
+    - Verify: `cd frontend && npx vitest run src/components/select.test.tsx src/pages/billing.test.tsx`

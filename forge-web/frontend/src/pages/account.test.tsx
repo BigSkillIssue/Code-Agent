@@ -6,6 +6,7 @@ import { useStore } from "../state/store";
 import { AdminPage } from "./Admin";
 import { changedSettings } from "./AdminServer";
 import { grouped, SettingsPage } from "./Settings";
+import { choose } from "../components/choose";
 
 const me: Me = {
   id: "u1", email: "ada@example.com", name: "Ada", role: "admin", default_model: "",
@@ -69,8 +70,7 @@ describe("settings page", () => {
     inRouter(<SettingsPage />);
     const profile = (await screen.findByText(/^(Profile|Profil)$/)).closest("section")!;
     fireEvent.change(within(profile).getByRole("textbox"), { target: { value: "Ada L." } });
-    await within(profile).findByRole("option", { name: "anthropic/claude-sonnet-4-5" });
-    fireEvent.change(within(profile).getByRole("combobox"), { target: { value: "anthropic/claude-sonnet-4-5" } });
+    await choose(within(profile).getByRole("combobox"), /anthropic\/claude-sonnet-4-5/);
     fireEvent.click(within(profile).getByRole("button", { name: /^(Save|Speichern)$/ }));
     await waitFor(() =>
       expect(mocks.account.update).toHaveBeenCalledWith({ name: "Ada L.", default_model: "anthropic/claude-sonnet-4-5" }),
@@ -109,7 +109,7 @@ describe("admin page", () => {
     expect((await screen.findByTestId("reset-link")).textContent).toContain("token=xyz");
     fireEvent.click(within(bob).getByRole("checkbox"));
     await waitFor(() => expect(mocks.admin.setGrant).toHaveBeenCalledWith("u2", true, null));
-    fireEvent.change(within(bob).getByRole("combobox", { name: /^(Role|Rolle)$/ }), { target: { value: "admin" } });
+    await choose(within(bob).getByRole("combobox", { name: /^(Role|Rolle)$/ }), /^Admin/);
     await waitFor(() => expect(mocks.admin.updateUser).toHaveBeenCalledWith("u2", { role: "admin" }));
   });
 
@@ -117,7 +117,7 @@ describe("admin page", () => {
     inRouter(<AdminPage />);
     fireEvent.click(await screen.findByRole("tab", { name: /^(Settings|Einstellungen)$/ }));
     const form = await screen.findByTestId("server-settings");
-    fireEvent.change(within(form).getAllByRole("combobox")[0], { target: { value: "open" } });
+    await choose(within(form).getAllByRole("combobox")[0], /^(Anyone|Jede Person)$/);
     fireEvent.change(within(form).getByLabelText(/email domains|E-Mail-Domains/), { target: { value: "example.com, firma.de" } });
     fireEvent.click(within(form).getByRole("button", { name: /^(Save|Speichern)$/ }));
     await waitFor(() =>

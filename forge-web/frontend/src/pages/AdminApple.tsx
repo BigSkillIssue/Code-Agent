@@ -7,6 +7,7 @@ import { type AppleJob, appleAdmin, type AppleUser, type Mac } from "../api/appl
 import { t, type TextKey } from "../lib/i18n";
 import { changedSettings } from "./AdminServer";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+import { Select } from "../components/Select";
 
 const JOB_STATUS: Record<AppleJob["status"], TextKey> = {
   queued: "jobQueued",
@@ -48,14 +49,17 @@ function SettingsFields({ saved, onSaved }: { saved: ServerSettings; onSaved: ()
           <input type="checkbox" checked={edited.apple_enabled} onChange={(e) => set("apple_enabled", e.target.checked)} />
           {t("appleEnabled")}
         </label>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("appleAllowed")}</span>
-          <select className="rounded-md border border-line bg-bg px-2 py-1.5" value={edited.apple_allowed} onChange={(e) => set("apple_allowed", e.target.value as ServerSettings["apple_allowed"])}>
-            <option value="admins">{t("forAdmins")}</option>
-            <option value="granted">{t("forGranted")}</option>
-            <option value="everyone">{t("forEveryone")}</option>
-          </select>
-        </label>
+        <Select
+          label={t("appleAllowed")}
+          className="max-w-sm"
+          value={edited.apple_allowed}
+          onChange={(v) => set("apple_allowed", v)}
+          options={[
+            { value: "admins", label: t("forAdmins") },
+            { value: "granted", label: t("forGranted") },
+            { value: "everyone", label: t("forEveryone") },
+          ]}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <TextInput label={t("appleMinutes")} value={String(edited.apple_minutes_per_month)} onChange={(v) => set("apple_minutes_per_month", Number(v))} />
           <TextInput label={t("appleReviewerModel")} value={edited.apple_reviewer_model} placeholder="openai/gpt-5" onChange={(v) => set("apple_reviewer_model", v)} />

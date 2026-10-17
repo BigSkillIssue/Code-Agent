@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MyBilling, Offer } from "../api/billing";
 import { useStore } from "../state/store";
 import { BillingPage } from "./Billing";
+import { features } from "./Plans";
 
 const pro: Offer = {
   id: "pro", kind: "plan", name: "Pro", description: "For one maker", currency: "eur",
@@ -59,19 +60,44 @@ function open(path = "/billing") {
 }
 
 describe("the billing page", () => {
-  it("shows the limits, and orders only with the waiver, by a button that says it costs money", async () => {
+  it("shows the plans side by side, monthly or yearly, and orders only with the waiver", async () => {
     open();
     expect((await screen.findByTestId("my-limits")).textContent).toContain("20");
-    const offer = await screen.findByTestId("offer");
-    expect(offer.textContent).toContain("29.00 EUR");
-    expect(offer.textContent).toMatch(/14 (days free|Tage kostenlos)/);
+    const card = await screen.findByTestId("plan");
+    expect(card.textContent).toMatch(/29[.,]00/);
+    expect(card.textContent).toMatch(/14 (days free|Tage kostenlos)/);
+    expect(card.textContent).toMatch(/10 (projects|Projekte)/); // what the plan includes
+    expect(card.textContent).toMatch(/(App Store)/);
+    expect(screen.getByText(/(save up to 17 %|spare bis zu 17 %)/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /^(Yearly|Jährlich)$/ }));
+    expect(card.textContent).toMatch(/24[.,]17/); // 290 a year is 24.17 a month
+    expect(card.textContent).toMatch(/290[.,]00/);
+    fireEvent.click(within(card).getByRole("button", { name: /^(Choose Pro|Pro wählen)$/ }));
+    const dialog = screen.getByRole("dialog");
     const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
     expect((order as HTMLButtonElement).disabled).toBe(true); // the waiver first
-    fireEvent.click(screen.getAllByRole("radio")[1]); // yearly
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(order);
     await waitFor(() => expect(mocks.api.checkout).toHaveBeenCalledWith("pro", "year", true));
     await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://checkout.stripe.com/c/pay/cs_1"));
+  });
+
+  it("lists what a plan includes, and a limit it leaves out as no limit", () => {
+    const lines = features({ projects: 3, hosted_apps: null, storage_gb: 5, custom_domains: 0, store_publishing: false });
+    expect(lines).toEqual([
+      expect.stringMatching(/^3 (projects|Projekte)$/),
+      expect.stringMatching(/^(Unlimited hosted apps|Unbegrenzt viele gehostete Apps)$/),
+      expect.stringMatching(/^5 GB/),
+    ]); // no AI budget given, no domains, no stores
+    expect(features({}).join(" ")).not.toMatch(/NaN|undefined/);
+  });
+
+  it("marks the current plan instead of offering it again", async () => {
+    mocks.api.me.mockResolvedValue({ ...mine, entitlements: { ...mine.entitlements, source: "plan:pro" } });
+    open();
+    const card = await screen.findByTestId("plan");
+    await waitFor(() => expect(card.textContent).toMatch(/(Your current plan|Dein aktueller Tarif)/));
+    expect(within(card).queryByRole("button")).toBeNull();
   });
 
   it("says when payments are not set up and offers nothing then", async () => {
@@ -104,9 +130,11 @@ describe("the billing page", () => {
     open();
     const consent = await screen.findByTestId("consent");
     expect(consent.querySelector('a[href="/rechtstexte/terms"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^(Choose Pro|Pro wählen)$/ }));
     const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
     fireEvent.click(screen.getByLabelText(/(right of withdrawal|Widerrufsrecht)/));
     expect((order as HTMLButtonElement).disabled).toBe(true); // the texts first
+    expect(screen.getByText(/(accept the legal texts|Rechtstexten zu)/)).toBeTruthy();
     const accept = screen.getByRole("button", { name: /^(Accept|Zustimmen)$/ });
     fireEvent.click(screen.getByLabelText(/AGB \((version|Version) 2\)/));
     expect((accept as HTMLButtonElement).disabled).toBe(true); // every text, not only one
@@ -124,6 +152,7 @@ describe("the billing page", () => {
     open();
     expect((await screen.findByTestId("consent")).textContent).toMatch(/(not published yet|noch nicht veröffentlicht)/);
     expect(screen.queryByRole("button", { name: /^(Accept|Zustimmen)$/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^(Choose Pro|Pro wählen)$/ }));
     fireEvent.click(screen.getByLabelText(/(right of withdrawal|Widerrufsrecht)/));
     const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
     expect((order as HTMLButtonElement).disabled).toBe(true);
@@ -138,14 +167,20 @@ describe("the billing page", () => {
     ];
     mocks.api.me.mockResolvedValue({ ...mine, apps });
     open();
-    const offer = await screen.findByTestId("offer");
-    expect(offer.textContent).toMatch(/49.00 EUR (once|einmalig)/);
-    expect([...offer.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Shop"]);
+    const offer = await screen.findByTestId("offer"); // an extra, below the plans
+    expect(offer.textContent).toMatch(/49[.,]00.*(once|einmalig)/);
     expect(screen.getAllByTestId("app-paid").map((p) => p.textContent)).toEqual([
       expect.stringMatching(/^Blog: (paid for|bezahlt)$/),
       expect.stringMatching(/^Shop: (not paid|noch nicht)/),
     ]);
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(within(offer).getByRole("button", { name: /^(Order|Bestellen)$/ }));
+    const dialog = screen.getByRole("dialog");
+    const which = within(dialog).getByRole("combobox", { name: /(For which app|Für welche App)/ });
+    expect(which.textContent).toBe("Shop");
+    fireEvent.click(which);
+    expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Shop"]); // Blog is paid for
+    fireEvent.click(which);
+    fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ }));
     await waitFor(() => expect(mocks.api.checkout).toHaveBeenCalledWith("app", "once", true, "b2b2b2b2b2b2b2b2"));
   });

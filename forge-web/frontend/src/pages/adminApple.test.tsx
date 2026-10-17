@@ -4,6 +4,7 @@ import type { ServerSettings } from "../api/account";
 import type { AppleJob, AppleUser, Mac } from "../api/apple";
 import { useStore } from "../state/store";
 import { AppleTab } from "./AdminApple";
+import { choose } from "../components/choose";
 
 const settings = {
   signup: "invite", allowed_domains: [], passwords: true, admin_two_factor: false, projects_per_user: 20,
@@ -47,7 +48,7 @@ describe("Apple administration", () => {
     render(<AppleTab />);
     const form = (await screen.findByLabelText(/Build Apple apps|Apple-Apps auf den Macs/)).closest("form")!;
     fireEvent.click(within(form).getByRole("checkbox"));
-    fireEvent.change(within(form).getByRole("combobox"), { target: { value: "everyone" } });
+    await choose(within(form).getByRole("combobox"), /^(Everyone|Alle)$/);
     fireEvent.change(within(form).getByPlaceholderText("openai/gpt-5"), { target: { value: " openai/gpt-5 " } });
     fireEvent.click(within(form).getByRole("button", { name: /^(Save|Speichern)$/ }));
     await waitFor(() =>

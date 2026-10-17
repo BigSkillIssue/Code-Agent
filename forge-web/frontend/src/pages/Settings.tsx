@@ -11,6 +11,7 @@ import { BillingLink } from "./Billing";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 import { GitSection, KeysSection, SessionsSection, UsageSection } from "./SettingsAccess";
 import { AppStoreSection } from "./SettingsAppStore";
+import { Select } from "../components/Select";
 
 export function SettingsPage() {
   const [me, reload] = useLoaded(useCallback(() => account.me(), []));
@@ -60,22 +61,16 @@ function ProfileSection({ me, onSaved }: { me: Me; onSaved: () => Promise<void> 
         <p className="text-xs text-muted">
           {t("email")}: {me.email}
         </p>
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t("defaultModel")}</span>
-          <select
-            className="w-full rounded-md border border-line bg-bg px-2 py-1.5"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-          >
-            <option value="">{t("serverDefault")}</option>
-            {model && !models?.some((m) => m.id === model) && <option value={model}>{model}</option>}
-            {(models ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label={t("defaultModel")}
+          value={model}
+          onChange={setModel}
+          options={[
+            { value: "", label: t("serverDefault") },
+            ...(model && !models?.some((m) => m.id === model) ? [{ value: model, label: model }] : []),
+            ...(models ?? []).map((m) => ({ value: m.id, label: m.model, description: m.id })),
+          ]}
+        />
         <Button type="submit" kind="primary">
           {t("save")}
         </Button>
