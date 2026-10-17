@@ -188,7 +188,7 @@ async def test_the_admin_unlocks_apps_and_carries_out_a_waiting_cancellation(
     assert ("DELETE", "/v1/subscriptions/sub_2", {}) in stripe.effects
     assert (await admin.post(done_url, json={"action": "nothing"})).status_code == 409
     assert (await admin.get(f"{BASE}/cancellations")).json()["waiting"] == []
-    assert any("wird zum" in m["body"] for m in mails)  # the customer learns when it takes effect
+    assert any("ist seit dem" in m["body"] for m in mails)  # the customer learns it took effect
     assert await actions(server) == ["billing.admin_app_unlock", "billing.admin_app_lock",
                                      "billing.admin_cancellation_done"]  # fmt: skip
     for who in (maria, jonas):

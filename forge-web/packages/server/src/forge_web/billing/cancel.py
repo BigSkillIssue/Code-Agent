@@ -120,9 +120,12 @@ def when(moment: float) -> str:
 
 def receipt(row: Cancellation) -> str:
     """The confirmation of receipt (§312k (4) BGB)."""
-    effect = (f"Sie wird zum {when(row.effective_at)} wirksam (Ende des bezahlten Zeitraums)."
-              if row.effective_at else
-              "Wann sie wirksam wird, prüfen wir und schreiben es Ihnen umgehend.")  # fmt: skip
+    if not row.effective_at:
+        effect = "Wann sie wirksam wird, prüfen wir und schreiben es Ihnen umgehend."
+    elif row.effective_at <= time.time():  # an admin ended the contract at once (W40c)
+        effect = f"Sie ist seit dem {when(row.effective_at)} wirksam."
+    else:
+        effect = f"Sie wird zum {when(row.effective_at)} wirksam (Ende des bezahlten Zeitraums)."
     kind = "außerordentliche" if row.extraordinary else "ordentliche"
     contract = row.contract or "alle Verträge"
     return (f"Ihre {kind} Kündigung ist am {when(row.received_at)} bei uns eingegangen.\n\n"
