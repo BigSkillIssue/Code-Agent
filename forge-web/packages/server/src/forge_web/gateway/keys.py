@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import delete, select, update
 
+from forge_web.auth.admin_role import acts_as_admin
 from forge_web.db.engine import Database
 from forge_web.db.models import ApiKey, KeyGrant, User
 from forge_web.settings import GatewaySettings
@@ -59,14 +60,16 @@ async def delete_key(db: Database, owner_id: str, key_id: str) -> bool:
         return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
-async def server_key_limit(db: Database, user: User, settings: GatewaySettings) -> float | None:
-    """The user's monthly limit on the server's keys, or None if they may not use them."""
+async def server_key_limit(db: Database, user: User, settings: GatewaySettings,
+                           admin_two_factor: bool = False) -> float | None:  # fmt: skip
+    """The user's monthly limit on the server's keys, or None if they may not use them (an
+    admin may, with two-factor sign-in on where the server asks for it)."""
     async with db.session() as session:
         grant = await session.get(KeyGrant, user.id)
     if grant is not None and not grant.allowed:
         return None
     allowed = (
-        user.role == "admin"
+        acts_as_admin(user, admin_two_factor)
         or settings.server_keys_for == "everyone"
         or (settings.server_keys_for == "granted" and grant is not None)
     )

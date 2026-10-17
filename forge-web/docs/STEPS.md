@@ -386,8 +386,8 @@ Asked for after W39 (the user's answers of 2026-10-17): fix the billing leftover
     - Build: `--sandbox` runs each command of a build job in a throwaway Windows Sandbox (`.wsb`: the job's folder, dotnet and vpk read only, nothing else of the machine; networking on for NuGet, the packages in the job's folder); the worker's token never enters it; a sandbox that does not start or runs out of time is stopped; links it leaves fail the command; `--direct` stays for machines without the Sandbox feature. The signing machine's vpk never starts the product's program (`--skipVeloAppCheck`).
     - Tests: the `.wsb` maps only the job's folder and the tools (read only) and turns off what the build does not need; paths become the sandbox's; the token is in neither the sandbox's files nor its environment; one that never starts or never ends is stopped; links fail the command; a whole build through the server in sandboxes.
     - Verify: `uv run pytest -q tests/test_winworker_sandbox.py tests/test_winworker.py`
-- [ ] **W42 — The review's other leftovers**
-    - Files: `forge_web/hosting/domains.py`, `forge_web/access.py` and the direct admin checks, `forge_web/git_api.py`, `forge_web/members.py`, `forge_web/gateway/meter.py`, their tests
+- [x] **W42 — The review's other leftovers**
+    - Files: `forge_web/hosting/{domains,deploy}.py`, `forge_web/auth/{admin_role,admin,git_credentials}.py`, `forge_web/{projects,stores/play_api,stores/windows_downloads}.py`, `forge_web/gateway/{keys,api,meter,proxy}.py`, `forge_web/billing/entitlements.py`, `tests/{test_domains,test_admin_powers,test_gateway}.py`
     - Build: an unverified domain no longer blocks another project from claiming it (the first to verify keeps it); every admin check asks the two-factor rule; removing a git credential and withdrawing an invite are audited; Anthropic's cache writes are priced as Anthropic prices them.
     - Tests: one for each.
-    - Verify: `uv run pytest -q tests/test_domains.py tests/test_gateway.py tests/test_access.py`
+    - Verify: `uv run pytest -q tests/test_domains.py tests/test_gateway.py tests/test_admin_powers.py tests/test_access.py`

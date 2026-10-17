@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge_hostworker.wire import AppDownloads, DownloadFile, DownloadsList
 from forge_web.audit import audit
+from forge_web.auth.admin_role import acts_as_admin
 from forge_web.auth.sessions import AdminUser, CurrentUser, client_ip
 from forge_web.db.hosting_models import AppOperator, Deploy, GoLiveApproval, HostedApp
 from forge_web.db.models import Project, User
@@ -160,13 +161,14 @@ async def new_release(
         )
         if waiting is not None:
             raise HTTPException(409, "another release of this app waits for an admin")
-        trusted = user.role == "admin" or user.hosting_trusted
+        admin = acts_as_admin(user, services.settings.auth.admin_two_factor)
+        trusted = admin or user.hosting_trusted
         now = time.time()
         row = WindowsRelease(id=secrets.token_hex(16), project_id=project_id, build_id=build.id,
                              user_id=user.id, status="waiting", created_at=now,
                              updated_at=now)  # fmt: skip
         if trusted:
-            row.admin = "admin" if user.role == "admin" else "trusted"
+            row.admin = "admin" if admin else "trusted"
             await published(session, row, now)
         session.add(row)
     return row, build

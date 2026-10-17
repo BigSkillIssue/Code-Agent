@@ -3,7 +3,9 @@ monthly totals per user, and reservations for calls still running.
 
 Usage is only ever taken from the upstream response, never from the sandbox. When a stream ends
 without its final usage report (aborted), the call is charged an estimate: the larger of what the
-upstream had reported so far and what the text that came through amounts to.
+upstream had reported so far and what the text that came through amounts to. Anthropic's prompt
+cache is priced as Anthropic prices it (W42): reads at a tenth of the input price, writes at 1.25
+times it (2 times for an hour's cache).
 """
 
 import asyncio
@@ -21,6 +23,7 @@ from forge_web.db.models import UsageRecord
 
 # Price for models the catalog does not know, so limits still bite (USD per 1M tokens).
 FALLBACK_IN, FALLBACK_OUT = 5.0, 25.0
+CACHE_READ, CACHE_WRITE, CACHE_WRITE_1H = 0.1, 1.25, 2.0  # times the input price (Anthropic)
 CHARS_PER_TOKEN = 3
 PRODUCT = "product:"  # the ledger's holders are users and, with this prefix, products
 
@@ -29,9 +32,12 @@ PRODUCT = "product:"  # the ledger's holders are users and, with this prefix, pr
 class Counted:
     """Tokens one call used."""
 
-    input_tokens: int = 0
+    input_tokens: int = 0  # all of them, from the prompt cache or not
     output_tokens: int = 0
     reported: bool = False
+    cache_read: int = 0  # of the input: read from Anthropic's prompt cache
+    cache_write: int = 0  # written to it for 5 minutes
+    cache_write_1h: int = 0  # written to it for an hour
 
 
 class UsageSniffer:
@@ -79,11 +85,12 @@ class UsageSniffer:
         if self.kind == "anthropic":
             usage = _dict(_dict(data.get("message")).get("usage") or data.get("usage"))
             if "input_tokens" in usage:
-                c.input_tokens = (
-                    int(usage.get("input_tokens") or 0)
-                    + int(usage.get("cache_read_input_tokens") or 0)
-                    + int(usage.get("cache_creation_input_tokens") or 0)
-                )
+                read = int(usage.get("cache_read_input_tokens") or 0)
+                written = int(usage.get("cache_creation_input_tokens") or 0)
+                hour = _dict(usage.get("cache_creation")).get("ephemeral_1h_input_tokens")
+                hour = min(int(hour or 0), written)
+                c.input_tokens = int(usage.get("input_tokens") or 0) + read + written
+                c.cache_read, c.cache_write, c.cache_write_1h = read, written - hour, hour
             if "output_tokens" in usage:
                 c.output_tokens = int(usage["output_tokens"] or 0)
                 c.reported = whole or data.get("type") == "message_delta"
@@ -147,10 +154,15 @@ def priced(provider: str, model: str) -> bool:
     return not (caps.cost_in == 0 and caps.cost_out == 0)
 
 
-def cost(provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
-    """What a call costs."""
+def cost(provider: str, model: str, input_tokens: int, output_tokens: int,
+         counted: Counted | None = None) -> float:  # fmt: skip
+    """What a call costs (its cached input at the prompt cache's prices)."""
     cost_in, cost_out = price(provider, model)
-    return (input_tokens * cost_in + output_tokens * cost_out) / 1_000_000
+    read, write, hour = (counted.cache_read, counted.cache_write,
+                         counted.cache_write_1h) if counted else (0, 0, 0)  # fmt: skip
+    plain = max(input_tokens - read - write - hour, 0)
+    weighted = plain + read * CACHE_READ + write * CACHE_WRITE + hour * CACHE_WRITE_1H
+    return (weighted * cost_in + output_tokens * cost_out) / 1_000_000
 
 
 def month_start(now: float | None = None) -> float:

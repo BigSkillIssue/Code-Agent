@@ -190,13 +190,17 @@ def invite_routes(router: APIRouter) -> None:
     @router.delete("/admin/invites/{invite_id}", status_code=204)
     async def withdraw(invite_id: str, request: Request, admin: AdminUser) -> None:
         prefix = short_id(invite_id)
-        async with services_of(request).db.session() as session, session.begin():
-            await session.execute(
+        services = services_of(request)
+        async with services.db.session() as session, session.begin():
+            result = await session.execute(
                 delete(OneTimeToken).where(
                     OneTimeToken.purpose == "invite",
                     OneTimeToken.id.startswith(prefix, autoescape=True),
                 )
             )
+        if result.rowcount:  # type: ignore[attr-defined]
+            await audit(services.db, "invite_withdrawn", user_id=admin.id, target=prefix,
+                        ip=client_ip(request))  # fmt: skip
 
 
 def session_routes(router: APIRouter) -> None:

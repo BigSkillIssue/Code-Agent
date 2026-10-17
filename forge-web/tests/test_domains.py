@@ -170,7 +170,7 @@ async def staged(client: httpx.AsyncClient, project_id: str) -> None:
 
 
 async def test_a_domain_belongs_to_one_app_only(
-    server: LiveServer, client: httpx.AsyncClient
+    server: LiveServer, client: httpx.AsyncClient, dns: DohStandIn
 ) -> None:
     host = HostStandIn()
     first, _ = await app_project(server, client, server.services.dev_user_id)
@@ -180,7 +180,10 @@ async def test_a_domain_belongs_to_one_app_only(
         for project_id in (first, second):
             await staged(client, project_id)
         mine = f"/api/projects/{first}/hosting/domains"
-        assert (await client.post(mine, json=body)).status_code == 200
+        claimed = await client.post(mine, json=body)
+        assert claimed.status_code == 200
+        dns.records[f"_forge-verify.{OWN}"] = [claimed.json()["txt_value"]]
+        assert (await client.post(f"{mine}/{OWN}/check")).json()["verified_at"] > 0
         theirs = f"/api/projects/{second}/hosting/domains"
         taken = await client.post(theirs, json=body | {"domain": OWN.upper()})
         assert taken.status_code == 409 and "belongs to an app" in taken.text
@@ -188,3 +191,28 @@ async def test_a_domain_belongs_to_one_app_only(
         assert (await client.delete(f"{theirs}/{OWN}")).status_code == 404
         ours = await client.post(mine, json=body | {"domain": "x.apps.example"})
         assert ours.status_code == 422
+
+
+async def test_a_claim_without_proof_blocks_nobody_and_the_owner_wins(
+    server: LiveServer, client: httpx.AsyncClient, dns: DohStandIn
+) -> None:
+    host = HostStandIn()
+    owner, _ = await app_project(server, client, server.services.dev_user_id)
+    squatter, _ = await app_project(server, client, server.services.dev_user_id)
+    body: dict[str, Any] = {"domain": OWN, "environment": "staging"}
+    async with host_online(server.url, await host_token(server, host), host):
+        for project_id in (owner, squatter):
+            await staged(client, project_id)
+        mine, theirs = (f"/api/projects/{p}/hosting/domains" for p in (owner, squatter))
+        first = (await client.post(mine, json=body)).json()
+        dns.records[f"_forge-verify.{OWN}"] = [first["txt_value"]]  # the owner's record
+        taken = await client.post(theirs, json=body)  # claimed by another app before the check
+        assert taken.status_code == 200 and taken.json()["txt_value"] != first["txt_value"]
+        assert (await client.post(f"{mine}/{OWN}/check")).status_code == 404
+        failed = (await client.post(f"{theirs}/{OWN}/check")).json()
+        assert failed["verified_at"] == 0  # without the DNS record it proves nothing
+        again = (await client.post(mine, json=body)).json()
+        assert again["txt_value"] == first["txt_value"]  # the same value: the record still fits
+        assert (await client.post(f"{mine}/{OWN}/check")).json()["verified_at"] > 0
+        refused = await client.post(theirs, json=body)
+        assert refused.status_code == 409  # verified: it is the owner's now

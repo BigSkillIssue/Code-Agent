@@ -39,6 +39,7 @@ from forge_hostworker.wire import (
     app_host,
     seal,
 )
+from forge_web.auth.admin_role import acts_as_admin
 from forge_web.billing.relay_tokens import TOKEN_SECRET as PAYMENTS_TOKEN
 from forge_web.billing.relay_tokens import payments_token, payments_url
 from forge_web.db.engine import Database
@@ -236,8 +237,10 @@ class Deploys:
             return True
         async with self.db.session() as session:
             creator = await session.get(User, row.user_id)
-        if creator is not None and (creator.hosting_trusted or creator.role == "admin"):
-            data["admin"] = "trusted" if creator.role != "admin" else "admin"
+        two_factor = self.settings.auth.admin_two_factor
+        admin = creator is not None and acts_as_admin(creator, two_factor)
+        if creator is not None and (creator.hosting_trusted or admin):
+            data["admin"] = "admin" if admin else "trusted"
             return True
         return False
 

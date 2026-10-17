@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from forge_web.audit import audit
+from forge_web.auth.admin_role import acts_as_admin
 from forge_web.auth.sessions import AdminUser, CurrentUser, client_ip
 from forge_web.db.hosting_models import GoLiveApproval
 from forge_web.db.models import User
@@ -163,12 +164,13 @@ async def new_release(
             PlayRelease.project_id == project_id, PlayRelease.status.in_(ACTIVE)))  # fmt: skip
         if busy is not None:
             raise HTTPException(409, "a Google Play release of this app is under way")
-        trusted = user.role == "admin" or user.hosting_trusted
+        admin = acts_as_admin(user, services.settings.auth.admin_two_factor)
+        trusted = admin or user.hosting_trusted
         now = time.time()
         row = PlayRelease(id=secrets.token_hex(16), project_id=project_id,
                           build_id=build.id, user_id=user.id, track=body.track, notes=body.notes,
                           status="releasing" if trusted else "waiting",
-                          admin=("admin" if user.role == "admin" else "trusted") if trusted else "",
+                          admin=("admin" if admin else "trusted") if trusted else "",
                           created_at=now, updated_at=now)  # fmt: skip
         session.add(row)
     return row, build

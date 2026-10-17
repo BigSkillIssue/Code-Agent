@@ -126,6 +126,25 @@ def test_usage_is_read_from_each_provider_format() -> None:
 def test_prices_come_from_the_catalog_with_a_fallback() -> None:
     assert price("anthropic", "claude-sonnet-5-5") == (2.0, 10.0)
     assert cost("anthropic", "claude-sonnet-5-5", 1_000_000, 100_000) == pytest.approx(3.0)
+    cached = UsageSniffer("anthropic")  # 100 new, 1000 read, 400 written (100 of them for 1 h)
+    usage = {
+        "input_tokens": 100,
+        "cache_read_input_tokens": 1000,
+        "output_tokens": 10,
+        "cache_creation_input_tokens": 400,
+        "cache_creation": {"ephemeral_5m_input_tokens": 300, "ephemeral_1h_input_tokens": 100},
+    }
+    cached.feed(json.dumps({"type": "message", "usage": usage}).encode())
+    found = cached.finish()
+    assert (found.input_tokens, found.cache_read, found.cache_write, found.cache_write_1h) == (
+        1500,
+        1000,
+        300,
+        100,
+    )
+    weighted = 100 + 1000 * 0.1 + 300 * 1.25 + 100 * 2.0  # Anthropic's cache prices
+    assert cost("anthropic", "claude-sonnet-5-5", 1500, 10, found) == pytest.approx(
+        (weighted * 2.0 + 10 * 10.0) / 1_000_000)  # fmt: skip
     assert price("openai", "a-model-nobody-knows") == (5.0, 25.0)
 
 

@@ -16,6 +16,7 @@ from forge_web.access import member_projects, require_project
 from forge_web.apple.template import app_name, checked_bundle_id, write_template
 from forge_web.apps import template as app_template
 from forge_web.audit import audit
+from forge_web.auth.admin_role import acts_as_admin
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.hosting_models import HostedApp
 from forge_web.db.models import Project, ProjectMember, User
@@ -162,8 +163,9 @@ async def delete_project(request: Request, project: Project) -> None:
 async def chosen_source(services: Services, user: User, body: ProjectIn) -> Path | None:
     """Check the source before anything is created; the server folder, if that is the source."""
     if body.source == "folder":
-        if user.role != "admin":
-            raise HTTPException(403, "only admins can open server folders as projects")
+        if not acts_as_admin(user, services.settings.auth.admin_two_factor):
+            raise HTTPException(403, "only admins (with two-factor sign-in where the server asks "
+                                     "for it) can open server folders as projects")  # fmt: skip
         return server_folder(services.settings, body.folder)
     if body.source == "git":
         await check_remote(services, body.url.strip())

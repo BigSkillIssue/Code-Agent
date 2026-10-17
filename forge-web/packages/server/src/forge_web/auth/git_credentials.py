@@ -105,5 +105,7 @@ def git_credentials_router() -> APIRouter:
             )
         if not result.rowcount:  # type: ignore[attr-defined]
             raise HTTPException(404, "no such credential")
+        await audit(services.db, "git_token_removed", user_id=user.id, ip=client_ip(request),
+                    target=credential_id)  # fmt: skip
 
     return router

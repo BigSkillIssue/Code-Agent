@@ -4,10 +4,17 @@ A project's editor names a domain for an environment of its app; Forge Web answe
 record to create (`_forge-verify.<domain>` = `forge-verify=<token>`) and where the domain must
 point (a CNAME to the app's own host). The check looks the TXT record up over DNS-over-HTTPS
 (`hosting.dns_resolver`); only then does the app's host learn the domain (a `domains` job), so the
-edge asks for a certificate for verified domains only. A domain belongs to one app; domains under
-the apps domain, Forge Web's own and the preview domain are refused.
+edge asks for a certificate for verified domains only. A verified domain belongs to one app;
+domains under the apps domain, Forge Web's own and the preview domain are refused.
+
+A domain that is only claimed (not verified yet) does not block other apps (W42): another app's
+editor can claim it, and whoever proves it through DNS keeps it. Each app's TXT value for a
+domain stays the same however often it claims it, so an owner who set the record wins the domain
+back with one claim and one check.
 """
 
+import hashlib
+import hmac
 import re
 import secrets
 import time
@@ -185,16 +192,26 @@ async def added(
         hosted = await session.get(HostedApp, project_id)
         if hosted is None or hosted.deleting_at:
             raise HTTPException(409, "put the app on staging first")
-        if await session.get(AppDomain, domain) is not None:
+        found = await session.get(AppDomain, domain)
+        if found is not None and (found.verified_at or found.project_id == project_id):
             raise HTTPException(409, "this domain belongs to an app already")
         count = await session.scalar(select(func.count()).select_from(AppDomain).where(
             AppDomain.project_id == project_id))  # fmt: skip
         if (count or 0) >= MAX_DOMAINS:
             raise HTTPException(409, f"an app can have {MAX_DOMAINS} domains")
-        row = AppDomain(domain=domain, project_id=project_id, environment=environment,
-                        token=secrets.token_hex(16), created_at=time.time())  # fmt: skip
-        session.add(row)
+        token = domain_token(services, project_id, domain)
+        row = found or AppDomain(domain=domain, created_at=time.time())
+        row.project_id, row.environment, row.token = project_id, environment, token
+        row.created_at, row.checked_at, row.error = time.time(), 0.0, ""  # another's claim ends
+        if found is None:
+            session.add(row)
     return hosted, row
+
+
+def domain_token(services: Services, project_id: str, domain: str) -> str:
+    """The app's TXT value for the domain: the same each time this app claims it."""
+    key = services.vault.derive("domain-verify")
+    return hmac.new(key, f"{project_id}:{domain}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
 async def room_for_a_domain(services: Services, project_id: str) -> None:

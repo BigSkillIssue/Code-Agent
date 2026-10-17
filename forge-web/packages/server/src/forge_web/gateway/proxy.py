@@ -238,7 +238,7 @@ class Gateway:
             user_id=meta["user"], chat_id=meta["chat"], project_id=meta["project"],
             provider=meta["provider"], model=meta["model"], key_kind=meta["key_kind"],
             input_tokens=input_tokens, output_tokens=output_tokens, estimated=estimated,
-            cost_usd=cost(meta["provider"], meta["model"], input_tokens, output_tokens),
+            cost_usd=cost(meta["provider"], meta["model"], input_tokens, output_tokens, counted),
             created_at=time.time(),
         )  # fmt: skip
         task = asyncio.create_task(self.ledger.settle(record, meta["reserved"]))

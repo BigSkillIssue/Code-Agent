@@ -73,7 +73,10 @@ class EntitlementEngine:
     async def server_defaults(self, user: User | None) -> Entitlements:
         """The server's own limits."""
         settings = self.settings
-        limit = await server_key_limit(self.db, user, settings.gateway) if user else None
+        two_factor = settings.auth.admin_two_factor
+        limit = (
+            await server_key_limit(self.db, user, settings.gateway, two_factor) if user else None
+        )
         return Entitlements(
             source="server",
             projects=settings.quotas.projects_per_user or None,

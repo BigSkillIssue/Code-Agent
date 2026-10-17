@@ -51,7 +51,9 @@ def model_provider(model: str) -> str | None:
 async def key_sources(services: Services, user: User) -> tuple[set[str], set[str]]:
     """Providers the user has an own key for, and those they may use the server's key for."""
     own = {k.provider for k in await list_keys(services.db, user.id)}
-    limit = await server_key_limit(services.db, user, services.settings.gateway)
+    limit = await server_key_limit(
+        services.db, user, services.settings.gateway, services.settings.auth.admin_two_factor
+    )
     server = {k.provider for k in await list_keys(services.db, "")} if limit is not None else set()
     return own, server
 
@@ -148,7 +150,9 @@ def keys_router() -> APIRouter:
             }
             for p, m, k, i, o, c, n in rows
         ]
-        limit = await server_key_limit(services.db, user, services.settings.gateway)
+        limit = await server_key_limit(
+            services.db, user, services.settings.gateway, services.settings.auth.admin_two_factor
+        )
         return {
             "month_start": month_start(),
             "server_keys_usd": await month_total(services, user.id),
