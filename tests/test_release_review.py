@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from forge.app_flow import review_question
 from forge.config import ForgeConfig, ReleaseConfig, load_config
 from forge.ctx import Ctx
 from forge.events import ReleaseFinding, ReleaseReview, parse_event
@@ -242,3 +243,18 @@ def test_an_untrusted_project_cannot_change_the_rulebooks(
     cfg = load_config(project)
     assert cfg.release.rulebook_files == []
     assert any("[release]" in warning for warning in cfg.warnings)
+
+
+def test_a_review_that_could_not_be_made_does_not_claim_problems_or_none() -> None:
+    summary = "The release review could not be made: no JSON object"
+    failed = ReleaseReview(session_id="s", ts=1.0, stage="prompt", verdict="concern",
+                           error="no JSON object", summary=summary)  # fmt: skip
+    text = review_question(failed)
+    assert "found problems" not in text and "no problems found" not in text
+    assert "nobody has checked the prompt" in text
+    finding = ReleaseFinding(area="privacy", status="violation", reason="no privacy page")
+    found = ReleaseReview(session_id="s", ts=1.0, stage="plan", verdict="violation",
+                          summary="One rule broken.",
+                          findings=[finding])  # fmt: skip
+    assert "found problems: One rule broken." in review_question(found)
+    assert "no privacy page" in review_question(found)

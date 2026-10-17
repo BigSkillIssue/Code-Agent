@@ -218,6 +218,15 @@ def findings_text(review: ReleaseReview) -> str:
     return "\n".join(lines) or "- no problems found"
 
 
+def review_question(review: ReleaseReview) -> str:
+    """What the user is asked after a blocking review: its problems, or that it was not made
+    (then nobody has checked this stage, which is not the same as no problems)."""
+    if review.error:
+        return f"{review.summary}\nSo nobody has checked the {review.stage} yet."
+    return (f"The release review of the {review.stage} found problems: {review.summary}\n"
+            + findings_text(review))  # fmt: skip
+
+
 async def settle(ctx: Ctx, review: ReleaseReview) -> None:
     """A blocking review needs the user's go-ahead; without it the run stops."""
     if blocking(review) and not await user_goes_on(ctx, review):
@@ -227,8 +236,7 @@ async def settle(ctx: Ctx, review: ReleaseReview) -> None:
 async def user_goes_on(ctx: Ctx, review: ReleaseReview) -> bool:
     """Ask whether to go on despite the review (the default is to stop)."""
     question = Question(
-        text=f"The release review of the {review.stage} found problems: {review.summary}\n"
-        + findings_text(review),
+        text=review_question(review),
         kind="choice",
         options=[STOP, GO_ON],
         default=STOP,
