@@ -360,7 +360,8 @@ class Plan(BaseModel):
 
 ```python
 # pipeline.py — public entry points
-async def run_task(prompt: str, ctx: "Ctx") -> "Report": ...      # whole pipeline
+async def run_task(prompt: str, ctx: "Ctx",
+                   attachments: Sequence[Attachment] = ()) -> "Report": ...  # whole pipeline
 async def refine(prompt: str, ctx: "Ctx") -> TaskSpec: ...
 async def clarify(spec: TaskSpec, ctx: "Ctx") -> TaskSpec: ...
 async def make_plan(spec: TaskSpec, ctx: "Ctx") -> Plan: ...
@@ -380,6 +381,20 @@ class Report(BaseModel):
     host_summary: str = ""           # S67b: why the product may (not) go live, with the checked commit
 ```
 
+**Attachments (added in S75)** — `src/forge/runtime/attachments.py`, also exported by `forge.api`:
+
+```python
+class Attachment(BaseModel):
+    path: str                        # relative to the project root, or absolute
+    name: str = ""                   # as the user called it; the file's own name when empty
+    media_type: str = ""             # guessed from the name when empty
+    size: int = 0                    # bytes; measured when the attachment is checked
+
+MAX_ATTACHMENTS = 10
+```
+
+`run_task` checks the attachments before anything else: more than `MAX_ATTACHMENTS` or a missing file ends the task with a report that says why (`AttachmentError`), before any model is asked. While the task runs they are in `SessionState.attachments`; every agent's ENVIRONMENT lists them (`prompts.ATTACHED`: path, name, type, size) so it can `read_file` them. Images (PNG, JPEG, GIF, WebP up to 5 MB, recognised by their header) are also shown, as `ImagePart`s on the first message, to the refiner, the planner and the agent of a trivial task, when that role's model can see. `forge.api.Forge.run(prompt, attachments=())` and `Forge.stream(prompt, attachments=())` pass them on; `forge run --attach FILE` (repeatable) attaches files from the command line.
+
 ## Agent loop — `src/forge/agent.py`
 
 ```python
@@ -391,7 +406,8 @@ class AgentResult(BaseModel):
 
 async def run_agent(ctx: Ctx, task: str, *, role: str = "coder",
                     history: list[Message] | None = None,
-                    max_turns: int = 40) -> AgentResult:
+                    max_turns: int = 40,
+                    images: Sequence[ImagePart] = ()) -> AgentResult:  # S75: shown with the task
     """Loop: build request (prompts.render(role)), stream via the role's fallback chain,
     run tool calls with call_tool (parallel only if the model asked for several and
     all are read_only), append results, compact if needed, repeat until the model

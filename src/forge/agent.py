@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import platform
 import time
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel
@@ -16,14 +17,17 @@ from forge.memory import load_memory, render_memory
 from forge.modelcall import complete, model_turn, publish_error
 from forge.plan import checklist
 from forge.providers.base import (
+    ImagePart,
     Message,
     ProviderError,
+    TextPart,
     ToolCall,
     ToolResult,
     Usage,
     text_message,
 )
 from forge.runtime.apple import is_apple_project
+from forge.runtime.attachments import listing
 from forge.runtime.shell import find_shell
 from forge.skills import skills_listing
 from forge.tools import (
@@ -55,12 +59,14 @@ async def run_agent(
     role: str = "coder",
     history: list[Message] | None = None,
     max_turns: int = 40,
+    images: Sequence[ImagePart] = (),
 ) -> AgentResult:
     """Loop: build request (prompts.render(role)), stream via the role's fallback chain,
     run tool calls with call_tool (parallel only if the model asked for several and
     all are read_only), append results, compact if needed, repeat until the model
     answers without tool calls or a limit is hit."""
-    messages = [*(history or []), text_message("user", task)]
+    first = Message(role="user", parts=[TextPart(text=task), *images])
+    messages = [*(history or []), first if images else text_message("user", task)]
     _record(ctx, messages[-1])
     system = prompts.render(prompt_for(ctx, role), **prompt_slots(ctx))
     usage, text = Usage(), ""
@@ -144,6 +150,13 @@ def apple_text(ctx: Ctx) -> str:
     return prompts.render("apple") if ctx.state.apple or is_apple_project(ctx.root) else ""
 
 
+def attachments_text(ctx: Ctx) -> str:
+    """The files attached to the running task (S75), or empty."""
+    if not ctx.state.attachments:
+        return ""
+    return "\n" + prompts.render("attached", files=listing(ctx.state.attachments, shown=False))
+
+
 def over_budget(ctx: Ctx) -> bool:
     """True once the whole session (every agent) has spent its cost budget."""
     return ctx.state.usage.cost_usd >= ctx.cfg.limits.max_cost_usd
@@ -165,6 +178,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "deferred_tools": deferred_tools_text(ctx),
         "skills": skills_text(ctx),
         "apple": apple_text(ctx),
+        "attachments": attachments_text(ctx),
         "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 

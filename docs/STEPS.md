@@ -435,8 +435,8 @@ The user asked for Forge Web to feel like Claude: an effort setting, files and i
     - Build: `effort = "auto" | "low" | "medium" | "high"` in the config (a project may set it), `/effort` and `--effort` for one session; the request asks a reasoning model for that effort, `auto` and other models send none.
     - Tests: the request carries the effort; `auto` and models that do not reason send none; `/effort` overrides the config for the session; `--effort` and an untrusted project's config set it.
     - Verify: `uv run pytest tests/test_effort.py -q`
-- [ ] **S75 — Files attached to a message**
-    - Files: `src/forge/runtime/attachments.py` (new), `src/forge/pipeline.py`, `src/forge/api.py`, `src/forge/prompts.py`, `src/forge/cli.py`, `docs/CONTRACTS.md`, `tests/test_attachments.py`
+- [x] **S75 — Files attached to a message**
+    - Files: `src/forge/runtime/attachments.py` (new), `src/forge/pipeline.py`, `src/forge/agent.py`, `src/forge/ctx.py`, `src/forge/api.py`, `src/forge/prompts.py`, `src/forge/cli.py`, `docs/CONTRACTS.md`, `tests/test_attachments.py`
     - Build: `Attachment(path, name, media_type, size)`; `run_task(prompt, ctx, attachments=())` and `Forge.run/stream(…, attachments=())`; images up to 5 MB reach a model that can see as image parts of the task's first message, every other file (and images for a blind model) is named with its path for `read_file`; at most 10; `forge run --attach FILE`.
     - Tests: an image reaches the provider as an image part; a PDF is named with its path; a blind model gets the list only; more than 10 attachments or a missing file is a clean error.
     - Verify: `uv run pytest tests/test_attachments.py -q`

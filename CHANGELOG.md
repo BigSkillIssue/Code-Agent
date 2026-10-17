@@ -90,6 +90,9 @@ Phase 9 (S74-S77), like Claude:
 
 - **Effort:** `effort = "low" | "medium" | "high"` (default `auto`, the model's own) sets how
   hard reasoning models think; `/effort` and `--effort` change it for one session.
+- **Attachments:** `forge run --attach FILE` and `Forge.run(prompt, attachments=[...])` give a
+  task up to 10 files; models that can see get the images with the request, every agent of the
+  task gets the list to read the files.
 
 ## 1.0.0 - 2026-10-05
 

@@ -76,6 +76,8 @@ KNOWN_SLOTS = frozenset(
         "deferred_tools",
         "apple",
         "material",
+        "files",
+        "attachments",
     }
 )
 
@@ -128,7 +130,13 @@ Environment:
 
 Project instructions (from FORGE.md, AGENTS.md and CLAUDE.md files; deeper files win, and the user's direct instructions win over all of them):
 {memory}
-{skills}{deferred_tools}{apple}"""
+{skills}{deferred_tools}{apple}{attachments}"""
+
+ATTACHED = """\
+Files the user attached to this task. Images marked as shown are part of the user's message; read the other files with read_file when the task needs them (read_file shows images too).
+"""
+
+ATTACHED_TAIL = "{files}\n"
 
 # --------------------------------------------------------------------------- REFINER
 
@@ -778,6 +786,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "compress_task": (COMPRESS_TASK, ""),
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
     "fix_json": (FIX_JSON, FIX_JSON_TAIL),
+    "attached": (ATTACHED, ATTACHED_TAIL),
     "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
     "web_extract": (WEB_EXTRACT, WEB_EXTRACT_TAIL),
     "web_search": (WEB_SEARCH, WEB_SEARCH_TAIL),
