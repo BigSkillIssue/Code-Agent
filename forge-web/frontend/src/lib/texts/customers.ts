@@ -49,6 +49,10 @@ export const customersEn = {
   carryNow: "End now",
   carryNothing: "Nothing to end",
   customerCancellations: "Cancellations",
+  stageGrace: "grace period",
+  stageSuspended: "apps suspended",
+  stageNoticed: "deletion announced",
+  stageDeleted: "apps deleted",
 };
 
 export const customersDe: typeof customersEn = {
@@ -100,4 +104,8 @@ export const customersDe: typeof customersEn = {
   carryNow: "Sofort beenden",
   carryNothing: "Nichts zu beenden",
   customerCancellations: "Kündigungen",
+  stageGrace: "Schonfrist",
+  stageSuspended: "Apps angehalten",
+  stageNoticed: "Löschung angekündigt",
+  stageDeleted: "Apps gelöscht",
 };

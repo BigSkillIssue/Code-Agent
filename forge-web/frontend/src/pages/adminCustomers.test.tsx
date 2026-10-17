@@ -54,7 +54,7 @@ describe("the customers panel", () => {
     render(<CustomersTab />);
     const row = await screen.findByTestId("customer");
     expect(row.textContent).toContain("maria@example.com");
-    expect(row.textContent).toContain("suspended");
+    expect(row.textContent).toMatch(/(apps suspended|Apps angehalten)/);
     fireEvent.change(screen.getByLabelText(/(Search by name|Nach Name)/), { target: { value: "mar" } });
     await waitFor(() => expect(mocks.api.list).toHaveBeenLastCalledWith("mar"));
     const cancellation = await screen.findByTestId("waiting-cancellation");
@@ -79,7 +79,7 @@ describe("the customers panel", () => {
     fireEvent.click(within(shown).getByRole("button", { name: /^(Unlock for free|Kostenlos freischalten)$/ }));
     await waitFor(() => expect(mocks.api.app).toHaveBeenCalledWith("u1", "p1p1p1p1p1p1p1p1", "unlock"));
     const dunning = within(shown).getByTestId("dunning");
-    expect(dunning.textContent).toMatch(/(Stage|Stufe) suspended/);
+    expect(dunning.textContent).toMatch(/(Stage apps suspended|Stufe Apps angehalten)/);
     fireEvent.click(within(dunning).getByRole("button", { name: /^(Hold|Anhalten)$/ }));
     await waitFor(() => expect(mocks.api.dunning).toHaveBeenCalledWith("u1", "hold"));
     expect(mocks.api.customer.mock.calls.length).toBeGreaterThan(1); // shown again after each change

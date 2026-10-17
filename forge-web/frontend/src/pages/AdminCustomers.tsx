@@ -6,8 +6,17 @@
 import { type FormEvent, useCallback, useState } from "react";
 import { billingAdmin } from "../api/billing";
 import { type CustomerDetail, customersAdmin } from "../api/customers";
-import { t } from "../lib/i18n";
+import { t, type TextKey } from "../lib/i18n";
 import { Button, date, Section, TextInput, useAction, useLoaded } from "./parts";
+
+const STAGES: Record<string, TextKey> = {
+  grace: "stageGrace",
+  suspended: "stageSuspended",
+  noticed: "stageNoticed",
+  deleted: "stageDeleted",
+};
+/** A dunning case's stage for people. */
+const stage = (name: string) => (STAGES[name] ? t(STAGES[name]) : name);
 
 export function CustomersTab() {
   const [query, setQuery] = useState("");
@@ -36,7 +45,7 @@ export function CustomersTab() {
                 </td>
                 <td>{row.paying.join(", ") || "–"}</td>
                 <td>{row.gift || "–"}</td>
-                <td>{row.dunning ? `${row.dunning}${row.held ? ` (${t("customerHeld")})` : ""}` : "–"}</td>
+                <td>{row.dunning ? `${stage(row.dunning)}${row.held ? ` (${t("customerHeld")})` : ""}` : "–"}</td>
                 <td>
                   <Button onClick={() => open(row.id)}>{t("customerOpen")}</Button>
                 </td>
@@ -61,7 +70,7 @@ function WaitingCancellations() {
       {lists?.waiting.map((c) => (
         <div key={c.id} className="rounded-md border border-line p-2" data-testid="waiting-cancellation">
           <p>
-            {t("cancellationLine", { name: c.name, email: c.email, received: date(c.received_at), contract: c.contract || "–" })}
+            {t("cancellationLine", { name: c.name, email: c.email, received: date(c.received_at), contract: c.contract || t("cancelAll") })}
             {c.extraordinary && <span className="text-bad"> · {t("cancellationForCause")}</span>}
           </p>
           {c.reason && <p className="text-muted">{c.reason}</p>}
@@ -203,7 +212,7 @@ function Dunning({ shown, change }: { shown: CustomerDetail; change: Change }) {
       {!dunning && <p className="text-muted">{t("dunningNone")}</p>}
       {dunning && (
         <>
-          <p>{t("dunningLine", { stage: dunning.stage, since: date(dunning.stage_at), opened: date(dunning.opened_at) })}</p>
+          <p>{t("dunningLine", { stage: stage(dunning.stage), since: date(dunning.stage_at), opened: date(dunning.opened_at) })}</p>
           {dunning.closed_at > 0 && <p className="text-muted">{t("dunningClosed", { closed: date(dunning.closed_at) })}</p>}
           {dunning.held_at > 0 && <p className="text-muted">{t("dunningHeldSince", { held: date(dunning.held_at) })}</p>}
           {!dunning.closed_at && (
