@@ -71,7 +71,15 @@ def delete_account(
     if not verify_password(user.password_hash, body.password):
         raise HTTPException(status_code=403, detail="The password is wrong.")
 @@if payments@@
-    payments.end_subscriptions(request.app.state.payments, db, user)  # no charges after this
+    try:
+        payments.end_subscriptions(request.app.state.payments, db, user)  # no charges after this
+    except payments.RelayError:
+        db.commit()  # what was settled and ended is kept; the account stays, too
+        raise HTTPException(
+            status_code=503,
+            detail="Your subscriptions could not be ended just now, so your account was not "
+            "deleted. Please try again in a few minutes.",
+        ) from None
 @@end@@
     db.delete(user)
     db.commit()

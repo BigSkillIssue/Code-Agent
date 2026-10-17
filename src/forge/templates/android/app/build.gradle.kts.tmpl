@@ -18,7 +18,7 @@ android {
         // Every upload to Google Play needs a higher versionCode: Forge Web passes -PversionCode.
         versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
         versionName = providers.gradleProperty("versionName").orNull ?: "1.0"
-        // Every release goes to staging first; the Play Store build talks to production.
+        // Debug builds talk to staging, the release build (Google Play's) to production.
         buildConfigField("String", "API_STAGING", "\"@@staging@@\"")
         buildConfigField("String", "API_PRODUCTION", "\"@@production@@\"")
     }

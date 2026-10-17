@@ -90,6 +90,12 @@ people who want to run the server elsewhere). Hosting
 @@end@@
 
 Every release is reviewed and approved by you before it goes live.
+
+The server takes the visitor's address from the `X-Forwarded-For` header (`--proxy-headers
+--forwarded-allow-ips "*"` in its `command`), so the rate limits count each visitor, not the
+proxy. Under Forge Web only its proxy can reach the server, and it replaces that header. Run the
+server elsewhere (the Dockerfile) only behind a proxy that does the same; reachable directly,
+anyone could claim any address and get round the rate limits.
 @@if payments@@
 
 ## Payments
@@ -97,7 +103,8 @@ Every release is reviewed and approved by you before it goes live.
 Customers pay through Forge Web's payments relay (`server/app/payments.py`): the product never
 holds a Stripe key. The relay opens Stripe Checkout as your own Stripe account (connect it in
 Forge Web under billing), and the server's operator keeps a share of every payment. Edit `OFFERS`
-in `server/app/payments.py` for what is sold, and use `has_paid(db, user, offer)` to unlock it.
+in `server/app/payments.py` for what is sold, and use `has_paid(db, relay_of(request), user,
+offer)` to unlock it (a subscription counts while it runs: renewed, not cancelled or unpaid).
 The order button says that it costs money and the buyer agrees that the service begins at once;
 subscriptions are cancelled on the purchases page, in two steps, at the end of the paid period.
 Without `PAYMENTS_RELAY_URL` (a local run) nothing can be bought; the tests use

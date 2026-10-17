@@ -22,7 +22,7 @@ class Settings:
     storage_dir: Path = Path("data")
     session_days: int = 30
     requests_per_minute: int = 300  # per client address
-    auth_requests_per_minute: int = 10  # sign-in, sign-up and password reset
+    auth_requests_per_minute: int = 10  # sign-in, sign-up, password reset, account deletion
 
 
 def database_url(raw: str) -> str:

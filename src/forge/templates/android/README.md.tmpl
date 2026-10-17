@@ -7,7 +7,8 @@ newer and the Android SDK; set `ANDROID_HOME`).
 - The client of the server's API is generated from `../server/openapi.json` on every build
   (openapi-generator, `app/build.gradle.kts`): change the server, write its snapshot, build this
   app, and the compiler shows every place the change touches.
-- `Server.kt` says where the server runs: staging until the app is released, then production.
+- `Server.kt` says where the server runs: debug builds talk to staging, the release build (the
+  one for Google Play) to production.
 - Signing in and deleting the account work in the app, as Google Play requires.
 - Every version is pinned in `gradle/libs.versions.toml`; the wrapper pins Gradle and checks its
   download (`gradle/wrapper/gradle-wrapper.properties`).

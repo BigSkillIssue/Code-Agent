@@ -9,6 +9,7 @@ subscription on the purchases page, in two steps, at the end of its paid period.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
@@ -66,6 +67,9 @@ class PaymentsRelay(Protocol):
     def cancel(self, subscription_id: str) -> dict[str, Any]:
         """End a subscription at the end of its paid period."""
 
+    def subscription(self, subscription_id: str) -> dict[str, Any]:
+        """How a subscription stands: its status and the end of its paid period."""
+
 
 @dataclass
 class HttpRelay:
@@ -98,6 +102,10 @@ class HttpRelay:
         """End a subscription at the end of its paid period."""
         return self.call("POST", f"/subscriptions/{subscription_id}/cancel")
 
+    def subscription(self, subscription_id: str) -> dict[str, Any]:
+        """How a subscription stands."""
+        return self.call("GET", f"/subscriptions/{subscription_id}")
+
 
 class NoRelay:
     """No relay here (a local run): nothing can be bought."""
@@ -114,6 +122,10 @@ class NoRelay:
         return self.refuse()
 
     def cancel(self, subscription_id: str) -> dict[str, Any]:
+        """Refused."""
+        return self.refuse()
+
+    def subscription(self, subscription_id: str) -> dict[str, Any]:
         """Refused."""
         return self.refuse()
 
@@ -156,7 +168,7 @@ class PurchaseOut(BaseModel):
     amount: int
     currency: str
     interval: str | None
-    status: str  # open, paid or expired
+    status: str  # open, paid, expired, or ended (a subscription that stopped for good)
     cancel_at_period_end: bool
     current_period_end: datetime | None
     created_at: datetime
@@ -255,6 +267,8 @@ def purchases(user: CurrentUser, request: Request, db: Db) -> list[PurchaseOut]:
                 settle(purchase, relay_of(request).checkout_state(purchase.checkout_id))
             except RelayError as error:
                 log.warning("payments relay: purchase %s not checked: %s", purchase.id, error)
+        elif period_over(purchase):  # a subscription whose paid period ended: renewed?
+            renewed(relay_of(request), purchase)
     db.commit()
     return [purchase_out(p) for p in rows]
 
@@ -292,28 +306,79 @@ def period_end(subscription: dict[str, Any]) -> datetime | None:
     return datetime.fromtimestamp(end, UTC) if end else None
 
 
-def has_paid(db: Session, user: User, offer_id: str | None = None) -> bool:
-    """Whether the user paid (for this offer, or for any): use it to unlock what was bought."""
-    query = select(Purchase.id).where(Purchase.user_id == user.id, Purchase.status == "paid")
+def period_over(purchase: Purchase) -> bool:
+    """Whether a paid subscription's period has ended (or its end is not known yet)."""
+    if purchase.status != "paid" or purchase.interval is None:
+        return False
+    end = purchase.current_period_end
+    return end is None or end <= datetime.now(UTC)
+
+
+def renewed(relay: PaymentsRelay, purchase: Purchase) -> bool:
+    """Ask the relay about a subscription whose paid period ended: True while it is active or
+    trialing, and its new period end is kept. Any other state counts as unpaid and is asked
+    about again next time (a failed renewal may still be paid); one cancelled for good ends."""
+    if not purchase.subscription_id:
+        return False
+    try:
+        state = relay.subscription(purchase.subscription_id)
+    except RelayError as error:
+        log.warning("payments relay: subscription %s not checked: %s", purchase.id, error)
+        return False
+    purchase.cancel_at_period_end = bool(state.get("cancel_at_period_end"))
+    if state.get("status") in ("active", "trialing"):
+        purchase.current_period_end = period_end(state)
+        return True
+    if state.get("status") in ("canceled", "incomplete_expired"):
+        purchase.status = "ended"
+    return False
+
+
+def has_paid(db: Session, relay: PaymentsRelay, user: User, offer_id: str | None = None) -> bool:
+    """Whether the user paid (for this offer, or for any): use it to unlock what was bought,
+    with the app's relay (`relay_of(request)`).
+
+    A subscription counts while its paid period runs; after that only while the relay says it
+    is active or trialing (renewed). What the relay says is kept: this commits the session."""
+    query = select(Purchase).where(Purchase.user_id == user.id, Purchase.status == "paid")
     if offer_id is not None:
         query = query.where(Purchase.offer == offer_id)
-    return db.scalars(query).first() is not None
+    paid = False
+    for purchase in db.scalars(query).all():
+        if not period_over(purchase) or renewed(relay, purchase):
+            paid = True
+            break
+    db.commit()
+    return paid
 
 
 def end_subscriptions(relay: PaymentsRelay, db: Session, user: User) -> None:
-    """End the user's running subscriptions (their account is being deleted)."""
-    running = db.scalars(
-        select(Purchase).where(
-            Purchase.user_id == user.id,
-            Purchase.subscription_id != "",
-            Purchase.cancel_at_period_end.is_(False),
-        )
+    """End the user's running subscriptions (their account is being deleted), open checkouts
+    settled first, so a subscription that just began is ended too. Raises RelayError when the
+    relay cannot tell or end one: then the account must stay, or billing would go on."""
+    mine = select(Purchase).where(Purchase.user_id == user.id)
+    open_ones = mine.where(Purchase.status == "open", Purchase.checkout_id != "")
+    for purchase in db.scalars(open_ones).all():
+        settle(purchase, known(relay.checkout_state, purchase.checkout_id))
+    running = mine.where(
+        Purchase.status == "paid",
+        Purchase.subscription_id != "",
+        Purchase.cancel_at_period_end.is_(False),
     )
-    for purchase in running:
-        try:
-            relay.cancel(purchase.subscription_id)
-        except RelayError as error:  # the owner sees it in the log and in Stripe
-            log.error("subscription %s was not ended: %s", purchase.subscription_id, error)
+    for purchase in db.scalars(running).all():
+        known(relay.cancel, purchase.subscription_id)
+        purchase.cancel_at_period_end = True
+
+
+def known(call: Callable[[str], dict[str, Any]], key: str) -> dict[str, Any]:
+    """The relay's answer, or nothing when it knows no such checkout or subscription."""
+    try:
+        return call(key)
+    except RelayError as error:
+        if error.status == 404:
+            return {}
+        log.warning("payments relay: %s not checked or ended: %s", key, error)
+        raise
 
 
 def export_rows(db: Session, user: User) -> list[dict[str, Any]]:

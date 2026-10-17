@@ -57,6 +57,14 @@ class FakeRelay:
         subscription["cancel_at_period_end"] = True
         return dict(subscription)
 
+    def subscription(self, subscription_id: str) -> dict[str, Any]:
+        """How a subscription stands (a test sets its status: past_due, canceled, ...)."""
+        self.refuse_when_down()
+        subscription = self.subscriptions.get(subscription_id)
+        if subscription is None:
+            raise RelayError(404, "this app opened no such subscription")
+        return dict(subscription)
+
     def refuse_when_down(self) -> None:
         if self.down:
             raise RelayError(502, "the payments relay is not reachable")

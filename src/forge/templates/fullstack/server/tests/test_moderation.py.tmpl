@@ -27,11 +27,16 @@ def removed() -> Iterator[list[str]]:
     del moderation.REMOVERS["post"]
 
 
-def test_anyone_can_report(client: TestClient) -> None:
+def test_anyone_can_report(client: TestClient, removed: list[str]) -> None:
     body = REPORT | {"contact_email": "visitor@example.com"}
     response = client.post("/api/reports", json=body)
     assert response.status_code == 201
     assert response.json()["status"] == "open"
+
+
+def test_only_content_a_moderator_can_remove_can_be_reported(client: TestClient) -> None:
+    response = client.post("/api/reports", json=REPORT)  # no remover for posts registered
+    assert response.status_code == 422
 
 
 def test_only_moderators_see_reports(client: TestClient, sign_up: SignUp) -> None:
@@ -64,8 +69,32 @@ def test_a_decision_tells_the_reporter_why(
     assert client.get("/api/moderation/reports").json() == []
 
 
+def test_removing_needs_a_remover(
+    client: TestClient,
+    sign_up: SignUp,
+    make_moderator: Callable[[str], None],
+    mailer: LogMailer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(moderation.REMOVERS, "post", lambda db, content_id: None)
+    report = client.post("/api/reports", json=REPORT | {"contact_email": "v@example.com"}).json()
+    monkeypatch.delitem(moderation.REMOVERS, "post")  # e.g. the app stopped having posts
+    sign_up(client)
+    make_moderator("ada@example.com")
+    decision = {"action": "remove", "statement": "Insults break rule 2 of our terms."}
+    url = f"/api/moderation/reports/{report['id']}/decision"
+    assert client.post(url, json=decision).status_code == 422
+    assert [r["id"] for r in client.get("/api/moderation/reports").json()] == [report["id"]]
+    assert mailer.sent == []  # nobody is told it was removed
+    dismiss = {"action": "dismiss", "statement": "We cannot remove this content."}
+    assert client.post(url, json=dismiss).status_code == 200
+
+
 def test_a_decision_needs_reasons(
-    client: TestClient, sign_up: SignUp, make_moderator: Callable[[str], None]
+    client: TestClient,
+    sign_up: SignUp,
+    make_moderator: Callable[[str], None],
+    removed: list[str],
 ) -> None:
     report = client.post("/api/reports", json=REPORT).json()
     sign_up(client)

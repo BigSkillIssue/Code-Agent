@@ -10,7 +10,12 @@ name = "api"
 runtime = "python3.12"
 root = "server"
 build = ["uv", "sync", "--locked", "--no-dev"]
-command = ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+# Every request reaches the server through hosting's proxy, which sets X-Forwarded-For: the rate
+# limits count the visitor's address, not the proxy's.
+command = [
+    "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000",
+    "--proxy-headers", "--forwarded-allow-ips", "*",
+]
 port = 8000
 health = "/healthz"
 route = "/api"
