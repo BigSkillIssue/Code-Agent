@@ -46,9 +46,16 @@ working when the release switches.
 - **Export:** users download their data themselves (`GET /api/account/export`).
 - **Deletion:** users delete their account themselves (`DELETE /api/account`); their rows go with
   it, their reports stay without their name.
+@@if payments@@
+  Their subscriptions are ended first; while the payments relay cannot end one, the account
+  stays and they are asked to try again (`503`), so nobody is billed without an account.
+@@end@@
 - If someone asks by mail instead, do the same for them and answer within one month (GDPR).
 
 ## Too many requests
 
-Each client address may make 300 API requests and 10 sign-in, sign-up or reset requests per
-minute (`server/app/settings.py`); more get `429` with `Retry-After`.
+Each client address may make 300 API requests and 10 sign-in, sign-up, reset or account
+deletion requests per minute (`server/app/settings.py`); more get `429` with `Retry-After`. The
+address is the visitor's, from the `X-Forwarded-For` header hosting's proxy sets. A reset mail
+goes to an account at most once in 5 minutes and 3 times an hour, so nobody can use up the
+product's daily mail quota.

@@ -11,6 +11,7 @@ from app import account, auth, moderation, payments
 @@else@@
 from app import account, auth, moderation
 @@end@@
+from app.csrf import same_origin_only
 from app.db import make_engine
 from app.mail import Mailer, make_mailer
 from app.ratelimit import RateLimiter, rate_limit
@@ -26,7 +27,7 @@ def create_app(
     mailer: Mailer | None = None,
     storage: Storage | None = None,
 ) -> FastAPI:
-    """The application with its database, mail, storage and rate limits."""
+    """The application with its database, mail, storage, rate limits and CSRF check."""
     settings = settings or load_settings()
     app = FastAPI(
         title=settings.app_name,
@@ -45,6 +46,7 @@ def create_app(
 @@end@@
     app.state.limiter = RateLimiter(settings.requests_per_minute, settings.auth_requests_per_minute)
     app.middleware("http")(rate_limit)
+    app.middleware("http")(same_origin_only)  # no cross-site requests that change something
     app.include_router(auth.router)
     app.include_router(account.router)
     app.include_router(moderation.router)

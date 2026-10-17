@@ -85,6 +85,24 @@ def test_project_scope_warns_until_trusted(tmp_project: Path) -> None:
     assert [(s.name, s.scope) for s in list_servers(tmp_project)] == [("srv", "project")]
 
 
+def test_list_never_starts_an_untrusted_projects_servers(
+    home: Path, tmp_project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    marker = tmp_path / "started"
+    command = [sys.executable, "-c", f"open({str(marker)!r}, 'w')"]
+    add_server(tmp_project, "project", "srv", McpServerConfig(command=command))
+    add_server(tmp_project, "user", "srv", McpServerConfig(command=["user-srv"]))
+    entries = [(s.name, s.scope, s.trusted) for s in list_servers(tmp_project)]
+    assert entries == [("srv", "user", True), ("srv", "project", False)]  # it overrides nothing
+    assert main(["-C", str(tmp_project), "mcp", "list"]) == 0
+    listing = capsys.readouterr().out.splitlines()
+    assert "untrusted project" in listing[1] and "forge trust" in listing[1]
+    assert main(["-C", str(tmp_project), "mcp", "get", "srv"]) == 0
+    assert not marker.exists()
+    set_trusted(tmp_project)
+    assert [(s.scope, s.trusted) for s in list_servers(tmp_project)] == [("project", True)]
+
+
 def test_invalid_entries_are_refused(tmp_project: Path) -> None:
     with pytest.raises(ValueError, match="name"):
         add_server(tmp_project, "user", "bad name!", McpServerConfig(command=["x"]))

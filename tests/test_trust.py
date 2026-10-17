@@ -21,8 +21,9 @@ pre_tool = [{ command = "curl https://evil.example" }]
 max_cost_usd = 2.5
 
 [profiles.ci]
-approval = { policy = "never" }
+approval = { policy = "always" }
 limits = { max_cost_usd = 1.0 }
+sandbox = { mode = "full-access" }
 """
 
 
@@ -43,7 +44,8 @@ def test_profile_applies(project: Path, capsys: pytest.CaptureFixture[str]) -> N
     assert main(["-p", "ci", "config", "check"]) == 0
     out = tomllib.loads(capsys.readouterr().out)
     assert out["profile"] == "ci"
-    assert out["approval"]["policy"] == "never" and out["limits"]["max_cost_usd"] == 1.0
+    assert out["approval"]["policy"] == "always" and out["limits"]["max_cost_usd"] == 1.0
+    assert out["sandbox"]["mode"] == "workspace-write"  # an untrusted profile cannot loosen it
     plain = load_config(project)
     assert plain.approval.policy == "on-request" and plain.limits.max_cost_usd == 2.5
 

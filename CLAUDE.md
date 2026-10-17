@@ -14,6 +14,21 @@ You are building **Forge**, a provider-agnostic coding agent in Python, one step
 
 Do not read the whole of `docs/` every session; read what the step card points to.
 
+## What is where
+
+- `src/forge/`: Forge, the agent. Everything in this file is about it.
+- `src/forge/templates/<kind>/**.tmpl`: the code of the products Forge generates (`forge app new`): a FastAPI
+  server, a React web client, Android, Windows and Apple apps. It is package data, not Forge code: hard rules 3
+  and 9 do not apply to it, its own dependencies are pinned in the templates, and its own tests run under the
+  `fullstack` and `apple` pytest markers in CI jobs of their own (`.github/workflows/ci.yml`).
+- `forge-web/`: Forge Web, the multi-user server that builds, hosts and publishes the products. It lives only on
+  the branch `claude/elegant-tesla-h2iugo`, with its own `AGENTS.md`, `PROGRESS.md` and `docs/STEPS.md` (cards
+  W…), and it never changes `src/forge`; the `forge-web-sync` workflow merges `main` into it.
+- `docs/PRODUKTFABRIK.md`: the user's plan (in German) for the product factory: the core cards S63 ff., the
+  Forge Web cards W24 ff., and the rules for working on both branches.
+- When `PROGRESS.md` says "Next step: none", every card is done: read its *Open issues* (and Forge Web's) and ask
+  the user what comes next instead of inventing steps.
+
 ## Priority when documents disagree
 
 User instruction in the session > `AGENTS.md` > `docs/CONTRACTS.md` > step card in `docs/STEPS.md` > `docs/TOOLS.md` > `docs/PLAN.md`. If two documents conflict, follow the higher one and write the conflict into `PROGRESS.md` under *Open issues*.

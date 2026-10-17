@@ -3,16 +3,22 @@
 from collections.abc import Callable
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app import moderation
 from conftest import PASSWORD
 
 SignUp = Callable[..., dict[str, Any]]
 
 
 def test_the_export_holds_everything_stored(
-    client: TestClient, new_client: Callable[[], TestClient], sign_up: SignUp
+    client: TestClient,
+    new_client: Callable[[], TestClient],
+    sign_up: SignUp,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setitem(moderation.REMOVERS, "user", lambda db, content_id: None)
     other = sign_up(new_client(), "grace@example.com")
     sign_up(client)
     report = {"content_type": "user", "content_id": str(other["id"]), "reason": "spam"}

@@ -28,6 +28,7 @@ class ServerEntry:
     scope: Scope
     path: Path
     config: McpServerConfig
+    trusted: bool = True  # False: an untrusted project's server, which Forge never starts
 
 
 def config_path(root: Path, scope: Scope) -> Path:
@@ -75,17 +76,26 @@ def remove_server(root: Path, name: str, scope: Scope | None = None) -> Path:
 
 
 def list_servers(root: Path) -> list[ServerEntry]:
-    """Servers from both files; a project server overrides a user server of the same name."""
+    """Servers from both files; a project server overrides a user server of the same name.
+
+    An untrusted project's servers come last, marked untrusted: Forge does not use them, so
+    they override nothing."""
     found: dict[str, ServerEntry] = {}
+    untrusted: list[ServerEntry] = []
     scopes: tuple[Scope, ...] = ("user", "project")
     for scope in scopes:
         path = config_path(root, scope)
         if not path.is_file():
             continue
         servers = parse_toml(path.read_text(encoding="utf-8"), path).get("mcp_servers") or {}
+        trusted = scope == "user" or is_trusted(root)
         for name, raw in servers.items():
-            found[name] = ServerEntry(name, scope, path, McpServerConfig.model_validate(raw))
-    return list(found.values())
+            entry = ServerEntry(name, scope, path, McpServerConfig.model_validate(raw), trusted)
+            if trusted:
+                found[name] = entry
+            else:
+                untrusted.append(entry)
+    return [*found.values(), *untrusted]
 
 
 def check_entry(name: str, server: McpServerConfig) -> None:
