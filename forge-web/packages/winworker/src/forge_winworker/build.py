@@ -194,8 +194,8 @@ async def velopack(
                "--delta", "None", "--outputDir", str(release)]  # fmt: skip
     if icon is not None:
         command += ["--icon", str(icon)]
-    if sign:
-        command += ["--signTemplate", sign]
+    if sign:  # a signing machine never starts the product's program, not even to check it
+        command += ["--signTemplate", sign, "--skipVeloAppCheck"]
     code, output = await run(command, folder)
     if sign:  # the signing command and its output stay on this machine
         log.info("vpk on %s:\n%s", params.pack_id, tail(output))

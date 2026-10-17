@@ -945,9 +945,15 @@ selbst von derselben Website (Velopack). Einen Microsoft Store gibt es nicht.
 Dafür gibt es zwei Arten von Windows-Rechnern. Beide verbinden sich selbst mit Forge Web, wie ein
 Mac, und brauchen keinen offenen Port:
 
-- Ein **Build-Rechner** testet und übersetzt den Code der Produkte. Weil das fremder Code ist, nimm
-  eine **Windows-VM, die nur dafür da ist** (Windows 11, 8 GB RAM, 4 Kerne, 100 GB Platte), und
-  setze sie regelmäßig auf einen sauberen Snapshot zurück.
+- Ein **Build-Rechner** testet und übersetzt den Code der Produkte. Weil das fremder Code ist, läuft
+  jeder Schritt (Tests, Übersetzen, Verpacken) in einer eigenen **Windows Sandbox**: einem
+  Wegwerf-Windows, das nur den Ordner dieses Auftrags sieht (und dotnet und vpk zum Lesen), nicht
+  den Schlüssel des Dienstes, nicht andere Aufträge, nicht deine Dateien, und das danach weg ist.
+  Nimm dafür trotzdem eine **Windows-VM, die nur dafür da ist** (Windows 11 Pro, 16 GB RAM,
+  4 Kerne, 100 GB Platte, mit verschachtelter Virtualisierung, z. B. bei Hyper-V
+  `Set-VMProcessor -ExposeVirtualizationExtensions $true`), und schalte darin unter
+  **Windows-Features** die **Windows-Sandbox** ein. Die Sandbox hat Internet (NuGet lädt die
+  Pakete), aber gib der VM in deinem Netz keinen Zugang zu anderen Rechnern.
 - Ein **Signier-Rechner** (optional) signiert die fertigen Programme mit deinem
   Code-Signing-Zertifikat. Er führt **nie** Code eines Produkts aus, deshalb ist dein
   Signierschlüssel dort sicher. Nimm dafür eine **zweite** VM, nicht den Build-Rechner. Ohne
@@ -960,7 +966,8 @@ Auf jedem der Rechner:
    **Velopack** (`dotnet tool install -g vpk --version 1.2.161`).
 2. Den Dienst installieren: `pip install forge-winworker` (aus dem Wheel dieses Repositorys,
    `uv build --package forge-winworker`).
-3. `forge-win-worker check` muss „this machine is ready“ melden.
+3. `forge-win-worker check` muss „this machine is ready“ melden (auf dem Build-Rechner auch mit
+   der Windows-Sandbox).
 4. In Forge Web unter `[stores]` `windows_enabled = true` setzen und mit
    `POST /api/admin/stores/windows/workers` einen Rechner anlegen: `{"name": "win-1"}` für einen
    Build-Rechner, `{"name": "sign-1", "signs": true}` für einen Signier-Rechner. Die Antwort zeigt
@@ -968,8 +975,14 @@ Auf jedem der Rechner:
 5. Starten, als Build-Rechner:
 
    ```powershell
-   forge-win-worker run --server https://forge.example.com --token-file C:\forge\win-token --direct
+   forge-win-worker run --server https://forge.example.com --token-file C:\forge\win-token --sandbox
    ```
+
+   Die Windows-Sandbox startet nur in einer angemeldeten Sitzung: lass die VM sich automatisch
+   anmelden und den Dienst in der Aufgabenplanung **bei der Anmeldung** starten. Es läuft ein
+   Auftrag nach dem anderen. Geht die Sandbox auf einem Rechner nicht, baut `--direct` direkt auf
+   dem Rechner; dann muss er wirklich nur dafür da sein und regelmäßig auf einen sauberen Snapshot
+   zurückgesetzt werden.
 
    oder als Signier-Rechner, mit dem Befehl, der eine Datei signiert (`{{file}}` steht für sie),
    z. B. mit Azure Artifact Signing:
@@ -979,8 +992,9 @@ Auf jedem der Rechner:
        --sign-template "signtool sign /fd sha256 /tr http://timestamp.acs.microsoft.com /td sha256 /dlib C:\forge\Azure.CodeSigning.Dlib.dll /dmdf C:\forge\signing.json {{file}}"
    ```
 
-   `--direct` und `--sign-template` schließen sich aus: ein Rechner baut oder signiert. Als Dienst
-   dauerhaft: mit der Aufgabenplanung beim Start ausführen lassen.
+   `--sandbox`, `--direct` und `--sign-template` schließen sich aus: ein Rechner baut oder signiert.
+   Der Signier-Rechner startet die Programme der Produkte nie, auch nicht zum Prüfen (vpk mit
+   `--skipVeloAppCheck`). Als Dienst dauerhaft: mit der Aufgabenplanung ausführen lassen.
 
 Ein Build (`POST /api/projects/<id>/windows/builds`) nimmt den neuesten freigegebenen Commit mit der
 nächsten Versionsnummer (`1.0.<n>`). Der Build-Rechner lässt die Tests laufen und übersetzt die

@@ -1,10 +1,11 @@
 """Where a job's commands run.
 
-`DirectRunner` runs them on this Windows machine itself, in the job's own folder, as the user the
-worker runs as, without the worker's token in their environment. The products' code is foreign
-code, so a build machine must hold nothing else: a VM of its own that is reset to a clean
-snapshot now and then (see `forge-win-worker run --help`); a signing machine never runs it.
-Builds in a throwaway Windows Sandbox per job may come later.
+`SandboxRunner` (`sandbox.py`, W41) runs each command in a throwaway Windows Sandbox that sees
+only the job's folder: what build machines use. `DirectRunner` runs them on this Windows machine
+itself, in the job's own folder, as the user the worker runs as, without the worker's token in
+their environment: for a machine without the Sandbox feature, and for signing machines, which run
+no product's code. The products' code is foreign code, so a machine that builds directly must hold
+nothing else: a VM of its own that is reset to a clean snapshot now and then.
 """
 
 import asyncio

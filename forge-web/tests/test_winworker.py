@@ -222,6 +222,7 @@ async def test_a_signing_machine_packs_and_signs_and_never_builds(
     assert not any(c[0] == "vpk" for c in builder.commands)  # the build machine packs nothing
     assert all(c[0] == "vpk" for c in signer.commands)  # and the signing machine builds nothing
     assert signer.commands[0][signer.commands[0].index("--signTemplate") + 1] == template
+    assert "--skipVeloAppCheck" in signer.commands[0]  # vpk never starts the product's program
 
 
 async def test_a_failing_test_or_a_missing_app_fails_the_build(

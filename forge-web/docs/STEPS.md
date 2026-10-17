@@ -381,11 +381,11 @@ Asked for after W39 (the user's answers of 2026-10-17): fix the billing leftover
     - Build: `/api/admin/billing/customers`: every customer with their plan, subscriptions, orders, unlocked apps, dunning case and cancellations; the admin gives a plan for free (until a date or for good) and takes it back, ends a subscription at once or at its period's end, pauses, resumes or closes a dunning case, unlocks an app or takes it back, and carries out a cancellation that waits for an admin. Every action is audited.
     - Tests: each action through the API with the Stripe stand-in, only for admins (two-factor where required), each in the audit log; a free plan counts like a paid one and ends at its date; a paused case does not move.
     - Verify: `uv run pytest -q tests/test_billing_customers.py`
-- [ ] **W41 — A Windows Sandbox for each Windows build**
-    - Files: `packages/winworker/**` (`sandbox`, `runners`, `cli`), `docs/EINRICHTUNG.md` §13, `tests/test_winworker.py`
-    - Build: the build machine runs each job in a throwaway Windows Sandbox (`.wsb`: no network but the package feeds through a proxy, the job's folder mapped, nothing else of the machine); the worker's token never enters it; `--direct` stays for machines without the Sandbox feature, named so on purpose.
-    - Tests: the `.wsb` file maps only the job's folder and turns off what the build does not need; the worker waits for the result and kills a sandbox that runs too long; the token is not in the sandbox's files.
-    - Verify: `uv run pytest -q tests/test_winworker.py`
+- [x] **W41 — A Windows Sandbox for each Windows build**
+    - Files: `packages/winworker/src/forge_winworker/{sandbox,runners,build,cli}.py`, `docs/EINRICHTUNG.md` §13, `tests/{test_winworker_sandbox,test_winworker}.py`
+    - Build: `--sandbox` runs each command of a build job in a throwaway Windows Sandbox (`.wsb`: the job's folder, dotnet and vpk read only, nothing else of the machine; networking on for NuGet, the packages in the job's folder); the worker's token never enters it; a sandbox that does not start or runs out of time is stopped; links it leaves fail the command; `--direct` stays for machines without the Sandbox feature. The signing machine's vpk never starts the product's program (`--skipVeloAppCheck`).
+    - Tests: the `.wsb` maps only the job's folder and the tools (read only) and turns off what the build does not need; paths become the sandbox's; the token is in neither the sandbox's files nor its environment; one that never starts or never ends is stopped; links fail the command; a whole build through the server in sandboxes.
+    - Verify: `uv run pytest -q tests/test_winworker_sandbox.py tests/test_winworker.py`
 - [ ] **W42 — The review's other leftovers**
     - Files: `forge_web/hosting/domains.py`, `forge_web/access.py` and the direct admin checks, `forge_web/git_api.py`, `forge_web/members.py`, `forge_web/gateway/meter.py`, their tests
     - Build: an unverified domain no longer blocks another project from claiming it (the first to verify keeps it); every admin check asks the two-factor rule; removing a git credential and withdrawing an invite are audited; Anthropic's cache writes are priced as Anthropic prices them.
