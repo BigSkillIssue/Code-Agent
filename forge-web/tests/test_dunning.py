@@ -1,9 +1,12 @@
 """Dunning (W33b2): an unpaid bill opens a case; after the grace period the customer's hosted
 apps are suspended, later they are exported and the deletion is announced, and only after that
 date, with the export there, are they deleted; a paid bill closes the case and lets the apps run
-again. Every stage comes at its date. The host is the stand-in host."""
+again. Every stage comes at its date. The case follows the invoices that failed: another paid
+invoice does not close it, and a payment during a step never reopens it (W40a). The host is the
+stand-in host."""
 
 import asyncio
+import json
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -144,15 +147,77 @@ async def test_a_paid_bill_lets_the_apps_run_again(
         deploy_id = await deployed(client, project_id, "staging")
         await until(lambda: settled(client, project_id, deploy_id))
         start = time.time() - 20 * DAY
-        await dunning.failed({"data": {"object": {"customer": "cus_7"}}})
+        await dunning.failed({"data": {"object": {"id": "in_1", "customer": "cus_7"}}})
         async with server.services.db.session() as session, session.begin():
             case = await session.scalar(select(DunningCase))
             assert case is not None
             case.opened_at = case.stage_at = start
         assert [stage for _, stage in await dunning.tick(time.time())] == ["suspended"]
-        await dunning.paid({"data": {"object": {"customer": "cus_7"}}})
+        await dunning.paid({"data": {"object": {"id": "in_1", "customer": "cus_7"}}})
         app = await hosted(server, project_id)
         assert app is not None and not app.suspended
         await until(lambda: has(host, "start"))
         assert await dunning.tick(time.time() + 100 * DAY) == []  # paid: nothing follows
+    await dunning.close()
+
+
+def invoice(invoice_id: str) -> dict[str, Any]:
+    return {"data": {"object": {"id": invoice_id, "customer": "cus_7"}}}
+
+
+async def open_case(server: LiveServer) -> DunningCase | None:
+    async with server.services.db.session() as session:
+        return await session.scalar(select(DunningCase).where(DunningCase.closed_at == 0))
+
+
+async def test_only_the_failed_invoices_close_the_case(
+    server: LiveServer, mails: list[dict[str, Any]]
+) -> None:
+    owner = server.services.dev_user_id
+    async with server.services.db.session() as session, session.begin():
+        session.add(BillingCustomer(user_id=owner, stripe_customer="cus_7", created_at=time.time()))
+    dunning = dunning_for(server)
+    assert "invoice.voided" in server.services.billing.events.handlers
+    await dunning.failed(invoice("in_1"))
+    await dunning.failed(invoice("in_2"))
+    await dunning.failed(invoice("in_2"))  # Stripe tried again and failed again
+    await dunning.paid(invoice("in_3"))  # another invoice: the failed ones are still open
+    case = await open_case(server)
+    assert case is not None and json.loads(case.invoices) == ["in_1", "in_2"]
+    await dunning.paid(invoice("in_1"))
+    assert await open_case(server) is not None
+    await dunning.paid(invoice("in_2"))  # voided by the admin goes the same way
+    assert await open_case(server) is None
+    assert [m["subject"] for m in mails] == ["Deine Zahlung ist fehlgeschlagen"]
+    await dunning.close()
+
+
+async def test_a_payment_during_a_step_does_not_reopen_the_case(
+    server: LiveServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = server.services.dev_user_id
+    async with server.services.db.session() as session, session.begin():
+        session.add(BillingCustomer(user_id=owner, stripe_customer="cus_7", created_at=time.time()))
+    held, release = asyncio.Event(), asyncio.Event()
+
+    async def slow(smtp: Any, to: str, subject: str, text: str, **headers: str) -> None:
+        if subject == "Deine Apps sind angehalten":  # the step is under way
+            held.set()
+            await release.wait()
+
+    monkeypatch.setattr(dunning_module, "send_mail", slow)
+    dunning = dunning_for(server)
+    await dunning.open(owner, time.time() - 20 * DAY, "in_1")
+    step = asyncio.create_task(dunning.tick(time.time()))
+    await asyncio.wait_for(held.wait(), 10)
+    payment = asyncio.create_task(dunning.paid(invoice("in_1")))
+    await asyncio.sleep(0.2)  # the payment waits for the step
+    release.set()
+    moved = await step
+    await payment
+    async with server.services.db.session() as session:
+        case = await session.scalar(select(DunningCase))
+    assert case is not None and moved == [(case.id, "suspended")]
+    assert case.closed_at > 0 and case.stage == "suspended"  # paid stays paid
+    assert await dunning.tick(time.time() + 100 * DAY) == []
     await dunning.close()

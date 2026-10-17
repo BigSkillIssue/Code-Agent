@@ -7,6 +7,10 @@ the customer must tick that it may begin before the withdrawal period ends and t
 withdrawal then lapses (§356 (5) BGB); the order is refused without it, the moment is kept with
 the checkout, and the confirmation mail repeats it. Stripe Tax works out the VAT.
 
+A trial comes with plans only, and only for a customer who never had a plan (W40a); a customer
+with a plan changes it in Stripe's portal instead of ordering a second one, and a new order of a
+plan ends the customer's other open orders of plans at Stripe, so only one of them can be paid.
+
 Stripe's events then turn into subscriptions (one row per subscription item), which the
 entitlements read: created and updated set their state, deleted ends them. A checkout that was
 cancelled or expired grants nothing.
@@ -26,6 +30,7 @@ from forge_web.audit import audit
 from forge_web.auth.mail import mail_enabled, send_mail
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.billing.catalog import item_view
+from forge_web.billing.entitlements import PAID
 from forge_web.billing.events import Events
 from forge_web.billing.stripe_client import StripeClient, StripeError
 from forge_web.db.billing_models import BillingCustomer, CatalogItem, Checkout, Subscription
@@ -78,7 +83,8 @@ async def for_sale(db: Database, item_id: str, interval: str) -> tuple[CatalogIt
 
 
 def session_params(settings: WebSettings, user: User, item: CatalogItem, price: str,
-                   interval: str, customer: str) -> dict[str, Any]:  # fmt: skip
+                   interval: str, customer: str,
+                   trial_days: int = 0) -> dict[str, Any]:  # fmt: skip
     """What Stripe Checkout gets: the price, the customer, Stripe Tax, where to come back to."""
     base = settings.base_url()
     params: dict[str, Any] = {
@@ -93,7 +99,7 @@ def session_params(settings: WebSettings, user: User, item: CatalogItem, price: 
         "metadata": {"forge_user": user.id, "forge_item": item.id, "waiver": "given"},
     }  # fmt: skip
     if interval != "once":
-        trial = {"trial_period_days": item.trial_days} if item.trial_days else {}
+        trial = {"trial_period_days": trial_days} if trial_days else {}
         params["subscription_data"] = {"metadata": {"forge_user": user.id}, **trial}
     return params
 
@@ -107,10 +113,16 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
     client = await services.billing.client()
     if client is None or not services.settings.billing.enabled:
         raise HTTPException(409, "payments are not set up on this server")
-    item, price = await for_sale(services.db, body.item_id, body.interval)
     try:
+        item, price = await for_sale(services.db, body.item_id, body.interval)
+        if item.kind == "plan" and await plan_running(services.db, user.id):
+            raise HTTPException(409, "you have a plan already; change it in the customer portal")
+        trial_days = await trial_for(services.db, user.id, item)
         customer = await customer_of(client, services.db, user)
-        params = session_params(services.settings, user, item, price, body.interval, customer)
+        if item.kind == "plan":
+            await expire_open_plans(client, services.db, user.id)
+        params = session_params(services.settings, user, item, price, body.interval, customer,
+                                trial_days)  # fmt: skip
         made = await client.post("/v1/checkout/sessions", params)
     except StripeError as error:
         raise HTTPException(502, f"Stripe: {error}") from None
@@ -119,8 +131,57 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
     now = time.time()
     async with services.db.session() as session, session.begin():
         session.add(Checkout(id=str(made["id"]), user_id=user.id, item_id=item.id,
-                             interval=body.interval, waiver_at=now, created_at=now))  # fmt: skip
+                             interval=body.interval, waiver_at=now, created_at=now,
+                             trial_days=trial_days))  # fmt: skip
     return str(made["url"])
+
+
+def plan_ids() -> Any:
+    """The catalog's plans, for a query."""
+    return select(CatalogItem.id).where(CatalogItem.kind == "plan")
+
+
+async def plan_running(db: Database, user_id: str) -> bool:
+    """Whether the user pays for a plan now (or tries one)."""
+    async with db.session() as session:
+        found = await session.scalar(select(Subscription.id).where(
+            Subscription.user_id == user_id, Subscription.status.in_(PAID),
+            Subscription.item_id.in_(plan_ids())).limit(1))  # fmt: skip
+    return found is not None
+
+
+async def trial_for(db: Database, user_id: str, item: CatalogItem) -> int:
+    """The days of trial an order gets: a plan's, for a customer who never had a plan."""
+    if item.kind != "plan" or not item.trial_days:
+        return 0
+    async with db.session() as session:
+        had = await session.scalar(
+            select(Subscription.id)
+            .where(Subscription.user_id == user_id, Subscription.item_id.in_(plan_ids()))
+            .limit(1)
+        )
+        tried = await session.scalar(select(Checkout.id).where(
+            Checkout.user_id == user_id, Checkout.trial_days > 0,
+            Checkout.status == "complete").limit(1))  # fmt: skip
+    return 0 if had or tried else item.trial_days
+
+
+async def expire_open_plans(client: StripeClient, db: Database, user_id: str) -> None:
+    """End the user's open orders of plans at Stripe, so only the newest can be paid."""
+    async with db.session() as session:
+        rows = list(await session.scalars(select(Checkout).where(
+            Checkout.user_id == user_id, Checkout.status == "open",
+            Checkout.item_id.in_(plan_ids()))))  # fmt: skip
+    for row in rows:
+        try:
+            await client.post(f"/v1/checkout/sessions/{row.id}/expire", {})
+        except StripeError as error:  # paid or ended already: its own event says which
+            log.info("billing: checkout %s not expired: %s", row.id, error)
+            continue
+        async with db.session() as session, session.begin():
+            stored = await session.get(Checkout, row.id)
+            if stored is not None and stored.status == "open":
+                stored.status = "expired"
 
 
 def checkout_router() -> APIRouter:
@@ -131,9 +192,14 @@ def checkout_router() -> APIRouter:
     async def offers(request: Request, user: CurrentUser) -> list[dict[str, Any]]:
         services = services_of(request)
         async with services.db.session() as session:
-            items = await session.scalars(select(CatalogItem).where(
-                CatalogItem.archived_at == 0).order_by(CatalogItem.id))  # fmt: skip
-            shown = [item_view(i) for i in items if json.loads(i.stripe_prices or "{}")]
+            items = list(await session.scalars(select(CatalogItem).where(
+                CatalogItem.archived_at == 0).order_by(CatalogItem.id)))  # fmt: skip
+        shown = []
+        for item in items:
+            if json.loads(item.stripe_prices or "{}"):
+                view = item_view(item)
+                view["trial_days"] = await trial_for(services.db, user.id, item)
+                shown.append(view)
         hidden = ("stripe_product", "prices", "synced", "archived_at")
         return [{k: v for k, v in item.items() if k not in hidden} for item in shown]
 

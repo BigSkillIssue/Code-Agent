@@ -67,6 +67,8 @@ class ItemIn(BaseModel):
         allowed = KIND_INTERVALS[self.kind]
         if not self.amounts or not set(self.amounts) <= set(allowed):
             raise ValueError(f"a {self.kind} has an amount for {' or '.join(allowed)}")
+        if self.trial_days and self.kind != "plan":
+            raise ValueError("only plans have a trial")  # add-on trials would stack (W40a)
         return self
 
 

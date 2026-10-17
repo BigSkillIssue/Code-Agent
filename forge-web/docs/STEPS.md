@@ -361,3 +361,33 @@ Android before Windows (it builds on Linux and costs less). The templates are bu
     - Build: the Store path (W38b) goes. A build machine tests and publishes the app and packs it with Velopack (installer, ZIP, update files); with a signing machine (marked by the admin, `--sign-template` on the worker) the build machine sends the published app and the signing machine packs and signs it, never running a product's code. The server checks what arrives (only the release's files, the update list's SHA-256, the installer's signature when signed). An editor puts a build of an approved commit onto the live app's website; an admin approves (trusted users need none); a newer release replaces the older, withdrawing takes it off. The app's host fetches the files with its host token, checks them and Caddy serves them at `/downloads/windows/...`; Forge Web shows the page at `/downloads`, and never serves a product's program from its own domain.
     - Tests: a build on its own and with a signing machine; an unsigned release from a signing machine fails; each machine refuses the other kind of job; the worker token never reaches a job; release checks; publish, approval, replacement and withdrawal; the host keeps only checked files, another host sees nothing; the edge routes.
     - Verify: `uv run pytest -q tests/test_winworker.py tests/test_windows_downloads.py tests/test_host_edge.py`
+
+## Phase H · Billing finished, the admin in control, isolated Windows builds
+
+Asked for after W39 (the user's answers of 2026-10-17): fix the billing leftovers of the security review, let the admin see and control every customer's billing, and build each Windows app in a throwaway Windows Sandbox. Signing the Windows apps waits (docs/SPAETER.md); Android stays on Google Play only; Forge Web gets no download page of its own.
+
+- [x] **W40a — Dunning per invoice, one trial**
+    - Files: `forge_web/billing/{dunning,checkout,catalog}.py`, `forge_web/db/{billing_models.py,migrations/versions/0035_billing_fixes.py}`, `tests/{test_dunning,test_checkout,stripe_standin}.py`
+    - Build: a dunning case keeps the invoices that failed and closes only once each of them is paid or voided; one change of a case at a time, and a step that finds its case closed meanwhile undoes its suspension instead of reopening it. A trial only with plans and only for a customer who never had a plan (the offers show it so); a customer with a plan changes it in Stripe's portal; a new order of a plan expires the older open one at Stripe.
+    - Tests: another paid invoice leaves the case open, the failed ones close it; a payment during a step waits and the case stays closed; an add-on with a trial is refused; a second plan is refused; the second order of a plan has no trial and the older open order is expired.
+    - Verify: `uv run pytest -q tests/test_dunning.py tests/test_checkout.py tests/test_billing_catalog.py`
+- [ ] **W40b — One-time purchases per app, delayed payments**
+    - Files: `forge_web/billing/{checkout,licenses}.py`, `forge_web/hosting/deploy_api.py`, `forge_web/db/{billing_models.py,migrations/versions/0036_app_licenses.py}`, `frontend/src/{api/billing.ts,pages/Billing.tsx,lib/texts/billing.ts}`, `tests/{test_app_licenses,stripe_standin}.py`
+    - Build: an app's one-time price is ordered for one of the customer's own app projects; only a paid order unlocks it (SEPA and other delayed methods are followed through `checkout.session.async_payment_succeeded` and `..._failed`), and a full refund takes it back; while the admin sells a one-time price per app, a customer's app goes live in production only once it is paid for.
+    - Tests: the order names an own app project; a paid order unlocks it, a pending one does not until its payment succeeds, a failed one never does; a refund takes it back; production is refused without it and staging is not.
+    - Verify: `uv run pytest -q tests/test_app_licenses.py`
+- [ ] **W40c — The admin controls every customer's billing**
+    - Files: `forge_web/billing/{customers,admin}.py`, `forge_web/billing/{entitlements,dunning,cancel}.py`, `forge_web/db/{billing_models.py,migrations/versions/0037_billing_admin.py}`, `frontend/src/{api/billing.ts,pages/AdminBilling.tsx,pages/AdminCustomers.tsx,lib/texts/billing.ts}`, `tests/test_billing_customers.py`
+    - Build: `/api/admin/billing/customers`: every customer with their plan, subscriptions, orders, unlocked apps, dunning case and cancellations; the admin gives a plan for free (until a date or for good) and takes it back, ends a subscription at once or at its period's end, pauses, resumes or closes a dunning case, unlocks an app or takes it back, and carries out a cancellation that waits for an admin. Every action is audited.
+    - Tests: each action through the API with the Stripe stand-in, only for admins (two-factor where required), each in the audit log; a free plan counts like a paid one and ends at its date; a paused case does not move.
+    - Verify: `uv run pytest -q tests/test_billing_customers.py`
+- [ ] **W41 — A Windows Sandbox for each Windows build**
+    - Files: `packages/winworker/**` (`sandbox`, `runners`, `cli`), `docs/EINRICHTUNG.md` §13, `tests/test_winworker.py`
+    - Build: the build machine runs each job in a throwaway Windows Sandbox (`.wsb`: no network but the package feeds through a proxy, the job's folder mapped, nothing else of the machine); the worker's token never enters it; `--direct` stays for machines without the Sandbox feature, named so on purpose.
+    - Tests: the `.wsb` file maps only the job's folder and turns off what the build does not need; the worker waits for the result and kills a sandbox that runs too long; the token is not in the sandbox's files.
+    - Verify: `uv run pytest -q tests/test_winworker.py`
+- [ ] **W42 — The review's other leftovers**
+    - Files: `forge_web/hosting/domains.py`, `forge_web/access.py` and the direct admin checks, `forge_web/git_api.py`, `forge_web/members.py`, `forge_web/gateway/meter.py`, their tests
+    - Build: an unverified domain no longer blocks another project from claiming it (the first to verify keeps it); every admin check asks the two-factor rule; removing a git credential and withdrawing an invite are audited; Anthropic's cache writes are priced as Anthropic prices them.
+    - Tests: one for each.
+    - Verify: `uv run pytest -q tests/test_domains.py tests/test_gateway.py tests/test_access.py`

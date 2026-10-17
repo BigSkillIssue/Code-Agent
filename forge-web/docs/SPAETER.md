@@ -1,7 +1,7 @@
 # Für später
 
 Offene Entscheidungen und bekannte Restpunkte von Forge Web, damit nichts verloren geht.
-Stand: 9. Oktober 2026, nach Schritt W18. Erledigtes hier einfach streichen.
+Stand: 17. Oktober 2026 (angelegt nach Schritt W18). Erledigtes hier einfach streichen.
 
 ## Zu entscheiden
 
@@ -21,6 +21,21 @@ Stand: 9. Oktober 2026, nach Schritt W18. Erledigtes hier einfach streichen.
    - `.github/workflows/forge-web-sync.yml` und `forge-web/scripts/sync-core.sh` löschen (der Abgleich
      ist dann nicht mehr nötig);
    - in `docs/EINRICHTUNG.md` (Abschnitt 2.2) das `-b claude/elegant-tesla-h2iugo` beim Klonen streichen.
+
+4. **Windows-Apps signieren** (am 17. Oktober 2026 auf später gelegt).
+   Ohne Signatur warnt Windows beim Installieren mit „Unbekannter Herausgeber“ (SmartScreen); die
+   Download-Seite sagt das bisher offen. Vorschlag: Azure Artifact Signing (etwa 10 $ im Monat) und eine
+   zweite kleine Windows-VM, die nur signiert und nie den Code eines Produkts ausführt. Forge Web kann das
+   schon (EINRICHTUNG §13, „Signier-Rechner“); es fehlen nur das Konto, das Zertifikat und die VM.
+   Schon entschieden: zuerst signiert das Zertifikat des Admins alle Kunden-Apps; eigene Zertifikate der
+   Kunden kommen später.
+
+## Schon entschieden
+
+- **Android nur über Google Play** (17. Oktober 2026): keine APK-Datei zum Herunterladen von der Website.
+- **Keine Download-Seite in Forge Web** (17. Oktober 2026): die Programme der Kunden gibt es nur über die
+  Website oder App des Kunden (`/downloads` der App und die Updates der App selbst), nie auf Forge Webs
+  eigener Domain. Freigaben laufen über den Admin-Bereich.
 
 ## Bekannte Restpunkte
 

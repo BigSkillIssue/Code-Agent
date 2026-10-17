@@ -68,6 +68,8 @@ class StripeStandIn:
             return httpx.Response(200, json={"deleted": True})
         if request.method == "POST" and path in MADE:
             return self.make(path, params)
+        if request.method == "POST" and path.startswith("/v1/checkout/sessions/"):
+            return self.expire(path)
         folder, _, object_id = path.rpartition("/")
         if request.method == "POST" and folder in MADE and object_id in self.objects:
             return self.change(path, folder, object_id, params)
@@ -90,6 +92,18 @@ class StripeStandIn:
         self.objects[object_id] = made
         self.effects.append(("POST", path, params))
         return httpx.Response(200, json=made)
+
+    def expire(self, path: str) -> httpx.Response:
+        """`POST /v1/checkout/sessions/<id>/expire`: only an open session can be ended."""
+        session_id, _, action = path.removeprefix("/v1/checkout/sessions/").partition("/")
+        found = self.objects.get(session_id)
+        if action != "expire" or found is None:
+            return error(404, f"No such checkout.session: '{session_id}'", "resource_missing")
+        if found.get("status", "open") != "open":
+            return error(400, "Only Checkout Sessions with a status of open can be expired.")
+        found["status"] = "expired"
+        self.effects.append(("POST", path, {}))
+        return httpx.Response(200, json=found)
 
     def change(
         self, path: str, folder: str, object_id: str, params: dict[str, str]

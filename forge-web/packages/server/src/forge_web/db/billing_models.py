@@ -132,6 +132,7 @@ class Checkout(Base):
     status: Mapped[str] = mapped_column(String(16), default="open")  # open, complete, expired
     created_at: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[float] = mapped_column(Float, default=0.0)
+    trial_days: Mapped[int] = mapped_column(Integer, default=0)  # the trial it offered (W40a)
 
 
 class Cancellation(Base):
@@ -169,6 +170,7 @@ class DunningCase(Base):
     stage: Mapped[str] = mapped_column(String(16))  # grace, suspended, noticed, deleted
     stage_at: Mapped[float] = mapped_column(Float)  # when it reached its stage
     closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # paid, or done
+    invoices: Mapped[str] = mapped_column(Text, default="")  # JSON: Stripe's unpaid invoices (W40a)
 
 
 class LegalText(Base):

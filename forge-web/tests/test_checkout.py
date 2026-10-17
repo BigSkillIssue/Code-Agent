@@ -1,7 +1,9 @@
 """Checkout (W33a2): customers order from the catalog through Stripe Checkout (no card data on
 this server, Stripe Tax on); the order needs the waiver of the right of withdrawal, which the
 confirmation mail repeats; a paid checkout grants its entitlements through Stripe's events, a
-cancelled or expired one grants nothing, and an ended subscription takes them away again."""
+cancelled or expired one grants nothing, and an ended subscription takes them away again. A trial
+comes once and with plans only; a second plan is refused, and a new order of a plan ends the
+older open one (W40a)."""
 
 import asyncio
 import time
@@ -176,4 +178,53 @@ async def test_a_cancelled_checkout_grants_nothing(
 
     assert await until(expired)
     assert await source(server, maria) == "server"
+    await maria.web.client.aclose()
+
+
+async def test_a_trial_comes_once_and_with_plans_only(
+    server: LiveServer, admin: httpx.AsyncClient, stripe: StripeStandIn,
+    mails: list[dict[str, Any]],
+) -> None:  # fmt: skip
+    addon = {"kind": "addon", "name": "More apps", "amounts": {"month": 500}, "trial_days": 7,
+             "limits": {"hosted_apps": 1}}  # fmt: skip
+    refused = await admin.put("/api/admin/billing/catalog/items/more", json=addon)
+    assert refused.status_code == 422 and "only plans have a trial" in refused.text
+    maria = await person(server, "maria")
+    assert (await maria.web.get("/api/billing/catalog")).json()[0]["trial_days"] == 14
+    await maria.web.post("/api/billing/checkout", {"item_id": "pro", "waiver": True})
+    [first] = stripe.of("cs")
+    assert first["subscription_data[trial_period_days]"] == "14"
+    now = time.time()
+    done = {"id": first["id"], "object": "checkout.session", "status": "complete",
+            "payment_status": "no_payment_required", "customer": first["customer"]}  # fmt: skip
+    await deliver(server, event("evt_1", "checkout.session.completed", now, done))
+    await deliver(server, event("evt_2", "customer.subscription.created", now,
+                                subscription(stripe, maria.id, "trialing", now)))  # fmt: skip
+    assert await until(lambda: plan_of(server, maria)) == "plan:pro"
+    again = await maria.web.post("/api/billing/checkout", {"item_id": "pro", "waiver": True})
+    assert again.status_code == 409 and "customer portal" in again.text  # no second plan
+    ended = subscription(stripe, maria.id, "canceled", now)
+    await deliver(server, event("evt_3", "customer.subscription.deleted", now + 1, ended))
+    assert await until(lambda: back_to_server(server, maria))
+    assert (await maria.web.get("/api/billing/catalog")).json()[0]["trial_days"] == 0
+    ordered = await maria.web.post("/api/billing/checkout", {"item_id": "pro", "waiver": True})
+    assert ordered.status_code == 200, ordered.text
+    second = stripe.of("cs")[-1]
+    assert "subscription_data[trial_period_days]" not in second  # the trial was had
+    await maria.web.client.aclose()
+
+
+async def test_a_new_order_of_a_plan_ends_the_open_one(
+    server: LiveServer, admin: httpx.AsyncClient, stripe: StripeStandIn
+) -> None:
+    maria = await person(server, "maria")
+    for _ in range(2):
+        sent = await maria.web.post("/api/billing/checkout", {"item_id": "pro", "waiver": True})
+        assert sent.status_code == 200, sent.text
+    first, second = stripe.of("cs")
+    assert first["status"] == "expired" and second.get("status", "open") == "open"
+    async with server.services.db.session() as db:
+        rows = {cs["id"]: await db.get(Checkout, cs["id"]) for cs in (first, second)}
+    assert [r.status for r in rows.values() if r] == ["expired", "open"]
+    assert all(r.trial_days == 14 for r in rows.values() if r)  # neither was paid
     await maria.web.client.aclose()
