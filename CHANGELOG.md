@@ -93,6 +93,11 @@ Phase 9 (S74-S77), like Claude:
 - **Attachments:** `forge run --attach FILE` and `Forge.run(prompt, attachments=[...])` give a
   task up to 10 files; models that can see get the images with the request, every agent of the
   task gets the list to read the files.
+- **One ongoing conversation:** the tasks of a session are one conversation: the next task
+  sees the earlier requests and their results, old turns are folded into notes, and the agent
+  calls `compact_context` to drop what an earlier task left behind when a new one starts. The
+  agent keeps the program organised in FORGE.md, docs/architecture.md, docs/decisions.md and
+  docs/progress.md.
 
 ## 1.0.0 - 2026-10-05
 

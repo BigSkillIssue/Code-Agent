@@ -186,6 +186,18 @@ class Session(BaseModel):
     plan: "Plan | None" = None
     messages: list[Message] = []     # full transcript, never compacted
     summary: str = ""                # latest compaction summary
+    conversation: Conversation = Conversation()  # S76: carried from task to task
+
+class Turn(BaseModel):               # S76: one finished task of the conversation
+    prompt: str
+    result: str                      # the report's summary
+    files: list[str] = []
+    ok: bool = True
+    ts: float = 0.0
+
+class Conversation(BaseModel):       # S76
+    notes: str = ""                  # older turns folded together, or what compact_context kept
+    turns: list[Turn] = []           # the recent turns word for word, oldest first
 
 class Store(Protocol):
     async def create_session(self, project_root: str) -> Session: ...
@@ -379,6 +391,13 @@ class Report(BaseModel):
     apple_summary: str = ""          # S60: why the app is (not) ready for Apple
     ready_to_host: bool = False      # S67b: only when the user said the product may go live (--app)
     host_summary: str = ""           # S67b: why the product may (not) go live, with the checked commit
+```
+
+**Conversation (added in S76)** — `src/forge/conversation.py`. A session is one conversation of tasks: when `run_task` ends, the request and the report (summary up to 2000 characters, changed files, ok) become a `Turn` in `Session.conversation`. When the turns grow past 12000 characters, the oldest are folded (newest two always stay, until half the room is free) into `notes` by the `compressor` role (`prompts.FOLD_TURNS`); without an answer the old turns stay as text in the notes, which are cut to 8000 characters. The lead agent (agent id `main`) sees the conversation in its ENVIRONMENT and the refiner in its project context (`prompts.CONVERSATION`); sub-agents do not. A server keeps a chat's conversation by opening its session again (`open_session(..., session=...)`).
+
+```python
+async def record_turn(ctx: Ctx, prompt: str, ok: bool, summary: str, files: list[str]) -> None: ...
+def conversation_text(ctx: Ctx) -> str: ...   # "" for sub-agents and an empty conversation
 ```
 
 **Attachments (added in S75)** — `src/forge/runtime/attachments.py`, also exported by `forge.api`:

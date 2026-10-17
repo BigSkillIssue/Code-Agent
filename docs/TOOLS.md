@@ -742,6 +742,18 @@ async def todo_write(ctx, todos: list[Todo]) -> str  # Todo: content, status (pe
 - **Output:** `todos: <done> of <n> done`, then one line per item: `[x]` completed, `[>]` in progress (shown with its `active_form`), `[ ]` pending.
 - **Prompt:** TOOL_RULES tell the model to keep a list for work with three or more steps that has no pipeline plan.
 
+### `compact_context` (added in S76)
+
+```python
+@tool(group="plan", permission="auto", read_only=True)
+async def compact_context(ctx, keep: str) -> str  # keep: 1-8000 characters
+```
+
+- **Behaviour:** lead agent only (`LEAD_ONLY_TOOLS`). Replaces the session's conversation (`Session.conversation`) with `keep` as its notes and no turns, saves the session, and asks the agent loop (`SessionState.compact_keep[agent_id]`) to compact before the next model turn: the system prompt is rendered again (now with the new notes) and the messages so far become one compacted message whose summary is `keep` (with spec, plan, touched files and the task; no model call). Publishes `Compacted` with level 3; the `pre_compact` hook runs first.
+- **Rules:** `keep` must not be empty and is at most 8000 characters, otherwise `invalid_args`.
+- **Output:** `Compacted: the earlier conversation and context are replaced by what you kept.`
+- **Prompt:** CONTEXT_RULES (coder, team lead) and the planner tell the agent to call it first when the user's new request is a different task, and after a large piece of work, having written lasting facts into the project notes (PROJECT_NOTES: FORGE.md, docs/architecture.md, docs/decisions.md, docs/progress.md).
+
 ### `submit_plan`
 
 ```python

@@ -14,6 +14,7 @@ from forge.apple_flow import AppleCheckpoint
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
+from forge.conversation import record_turn
 from forge.ctx import Ctx
 from forge.modelcall import complete, publish_error
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
@@ -365,6 +366,7 @@ async def run_task(prompt: str, ctx: Ctx, attachments: Sequence[Attachment] = ()
         report = stopped_report(ctx, str(err))
     finally:
         ctx.state.attachments = []  # the next task starts without them
+    await record_turn(ctx, prompt, report.ok, report.summary, report.files_changed)
     ctx.session.status = "done" if report.ok else "failed"
     ctx.session.summary = report.summary
     await ctx.store.save_session(ctx.session)

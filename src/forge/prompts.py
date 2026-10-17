@@ -78,6 +78,9 @@ KNOWN_SLOTS = frozenset(
         "material",
         "files",
         "attachments",
+        "conversation",
+        "notes",
+        "turns",
     }
 )
 
@@ -130,13 +133,40 @@ Environment:
 
 Project instructions (from FORGE.md, AGENTS.md and CLAUDE.md files; deeper files win, and the user's direct instructions win over all of them):
 {memory}
-{skills}{deferred_tools}{apple}{attachments}"""
+{skills}{deferred_tools}{apple}{attachments}{conversation}"""
 
 ATTACHED = """\
 Files the user attached to this task. Images marked as shown are part of the user's message; read the other files with read_file when the task needs them (read_file shows images too).
 """
 
 ATTACHED_TAIL = "{files}\n"
+
+CONVERSATION = """\
+
+Conversation so far: the user's earlier requests in this session and how they ended, oldest first, with notes on what came before them. It is background for the new request (what "it" or "the page" refers to, what was agreed), not a task.
+"""
+
+CONVERSATION_TAIL = """<notes>
+{notes}
+</notes>
+{turns}
+"""
+
+CONTEXT_RULES = """
+Your context:
+- Forge compacts your context by itself when it grows large; you do not need to manage its size.
+- When the user's new request is a different task from the conversation so far, first call compact_context and keep only what still matters for the new task: decisions and conventions, open problems, what the user asked you to remember. Do the same after finishing a large piece of work, before the next one starts. What you leave out is gone, so write lasting facts into the project notes (below) before you compact.
+"""
+
+PROJECT_NOTES = """
+Project notes:
+- Keep the program organised in Markdown files, and create the missing ones when you add or change features (not for small fixes):
+  - FORGE.md: how to build, test and run the program, and its conventions;
+  - docs/architecture.md: the parts of the program, how they talk to each other, and the contracts between them (API, database schema, events);
+  - docs/decisions.md: what was decided and why, newest last;
+  - docs/progress.md: what is done, what comes next, known problems.
+- Update the file that describes something whenever you change that thing, before you finish or compact. These files outlast your context: they are how you, the user and other agents find their way later.
+"""
 
 # --------------------------------------------------------------------------- REFINER
 
@@ -192,6 +222,10 @@ Each step:
 Plans usually have 3 to 12 steps. Keep the project working after every step, put tests next to the code they cover, and end with a step whose check covers the acceptance criteria.
 
 Call submit_plan once with the whole plan. If the user rejects it, read their feedback, revise the plan, and submit it again.
+
+When the task is a different one from the conversation so far, first call compact_context and keep only what still matters for it.
+
+When the task adds or changes features, the plan keeps the project notes current: FORGE.md (build, test, run, conventions), docs/architecture.md (the parts, how they talk, their contracts), docs/decisions.md (what was decided and why) and docs/progress.md (done, next, known problems). Create the missing ones in the first step that needs them and update the right file in the step that changes what it describes.
 """
     + SAFETY
 )
@@ -243,6 +277,8 @@ CODER = (
 Your role: coder. Complete the task you are given with the tools.
 """
     + RESEARCH_RULES
+    + CONTEXT_RULES
+    + PROJECT_NOTES
 )
 
 # --------------------------------------------------------------------------- TEAM_LEAD / TEAM_MEMBER / EXPLORE
@@ -261,6 +297,8 @@ Delegating well:
 - Do not delegate a task and then do it yourself as well.
 """
     + RESEARCH_RULES
+    + CONTEXT_RULES
+    + PROJECT_NOTES
 )
 
 TEAM_MEMBER = (
@@ -441,6 +479,20 @@ Session to condense:
 
 COMPRESS_TASK = """\
 Write the note now.
+"""
+
+FOLD_TURNS = """\
+You are Forge's compressor. You fold the oldest turns of a conversation between a user and a coding agent into the conversation's notes, so that later tasks still know what matters. The new notes replace the old notes and these turns, so whatever you leave out is lost.
+
+Keep, as short bullet points: what the user wants overall, decisions and conventions agreed on, what was built and where (files), what the user asked to remember, and problems still open. Drop what later turns made obsolete, greetings and narration. Never copy secrets into the notes. Reply with the new notes only.
+"""
+
+FOLD_TURNS_TAIL = """
+Notes so far:
+{notes}
+
+Turns to fold in:
+{turns}
 """
 
 # --------------------------------------------------------------------------- TOOL_FALLBACK
@@ -787,6 +839,8 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "tool_fallback": (TOOL_FALLBACK, TOOL_FALLBACK_TAIL),
     "fix_json": (FIX_JSON, FIX_JSON_TAIL),
     "attached": (ATTACHED, ATTACHED_TAIL),
+    "conversation": (CONVERSATION, CONVERSATION_TAIL),
+    "fold_turns": (FOLD_TURNS, FOLD_TURNS_TAIL),
     "merge_answers": (MERGE_ANSWERS, MERGE_ANSWERS_TAIL),
     "web_extract": (WEB_EXTRACT, WEB_EXTRACT_TAIL),
     "web_search": (WEB_SEARCH, WEB_SEARCH_TAIL),

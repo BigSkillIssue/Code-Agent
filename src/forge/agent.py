@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from forge import prompts
 from forge.compress import compact
+from forge.conversation import conversation_text
 from forge.ctx import Ctx
 from forge.events import ToolFinished, ToolStarted
 from forge.memory import load_memory, render_memory
@@ -77,6 +78,8 @@ async def run_agent(
         if team is not None:
             messages += deliver(ctx, team.take_messages(ctx.agent_id))
         specs = [t.spec for t in agent_tools(ctx, role)]  # tool_search can add tools
+        if ctx.agent_id in ctx.state.compact_keep:  # compact_context changed the conversation
+            system = prompts.render(prompt_for(ctx, role), **prompt_slots(ctx))
         messages = await compact(ctx, messages, role=role, system=system, tools=specs, task=task)
         early = EarlyTools(ctx)
         try:
@@ -179,6 +182,7 @@ def prompt_slots(ctx: Ctx) -> dict[str, str]:
         "skills": skills_text(ctx),
         "apple": apple_text(ctx),
         "attachments": attachments_text(ctx),
+        "conversation": conversation_text(ctx),
         "agent_prompt": custom.prompt if (custom := ctx.state.custom_roles.get(ctx.role)) else "",
     }
 

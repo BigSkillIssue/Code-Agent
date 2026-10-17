@@ -440,8 +440,8 @@ The user asked for Forge Web to feel like Claude: an effort setting, files and i
     - Build: `Attachment(path, name, media_type, size)`; `run_task(prompt, ctx, attachments=())` and `Forge.run/stream(…, attachments=())`; images up to 5 MB reach a model that can see as image parts of the task's first message, every other file (and images for a blind model) is named with its path for `read_file`; at most 10; `forge run --attach FILE`.
     - Tests: an image reaches the provider as an image part; a PDF is named with its path; a blind model gets the list only; more than 10 attachments or a missing file is a clean error.
     - Verify: `uv run pytest tests/test_attachments.py -q`
-- [ ] **S76 — One ongoing conversation that the agent keeps tidy**
-    - Files: `src/forge/conversation.py` (new), `src/forge/ports.py`, `src/forge/local/sqlite_store.py`, `src/forge/pipeline.py`, `src/forge/tools.py` (`compact_context`), `src/forge/prompts.py`, `docs/CONTRACTS.md`, `tests/test_conversation.py`
+- [x] **S76 — One ongoing conversation that the agent keeps tidy**
+    - Files: `src/forge/conversation.py` (new), `src/forge/ports.py`, `src/forge/pipeline.py`, `src/forge/agent.py`, `src/forge/compress.py`, `src/forge/context.py`, `src/forge/ctx.py`, `src/forge/tools.py` (`compact_context`), `src/forge/prompts.py`, `docs/CONTRACTS.md`, `docs/TOOLS.md`, `tests/test_conversation.py`
     - Build: the session keeps the conversation across runs (notes plus recent turns); each run opens with it and adds its own turn; turns over the budget are folded into the notes by the compressor; the tool `compact_context(keep)` drops what an earlier task left behind; the prompts tell the agent to compact when a new task starts and to keep the program organised in Markdown (`FORGE.md`, `docs/architecture.md`, `docs/decisions.md`, `docs/progress.md`).
     - Tests: a second run sees the first run's turn; turns over the budget fold into the notes; `compact_context` drops the earlier turns but keeps what it was told to; the prompts carry the Markdown rule; a new session starts empty.
     - Verify: `uv run pytest tests/test_conversation.py -q`
