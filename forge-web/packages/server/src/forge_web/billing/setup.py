@@ -16,6 +16,7 @@ from forge_web.billing.catalog import Catalog
 from forge_web.billing.events import Events
 from forge_web.billing.stripe_client import StripeClient, key_mode
 from forge_web.db.billing_models import (
+    AppLicense,
     BillingCustomer,
     BillingKeys,
     CatalogItem,
@@ -121,6 +122,7 @@ async def forget_test_mode(session: AsyncSession) -> None:
     for table in (Subscription, BillingCustomer, Checkout, DunningCase, ConnectAccount,
                   RelayCheckout):  # fmt: skip
         await session.execute(delete(table))
+    await session.execute(delete(AppLicense).where(AppLicense.checkout_id != ""))  # paid in test
     await session.execute(update(CatalogItem).values(stripe_product="", stripe_prices="{}",
                                                      synced_at=0.0))  # fmt: skip
     await session.execute(update(Coupon).values(stripe_coupon="", stripe_promotion="",

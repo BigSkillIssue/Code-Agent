@@ -115,6 +115,7 @@ export interface MyBilling {
   enabled: boolean;
   entitlements: Entitlements;
   subscriptions: { item_id: string; status: string; interval: string; quantity: number; current_period_end: number }[];
+  apps: { project_id: string; name: string; unlocked: boolean }[]; // own apps; paid for once (W40b)
 }
 
 /** A maker's own Stripe account, through which their apps take payments (W35). */
@@ -130,8 +131,8 @@ export interface ConnectState {
 export const billing = {
   offers: () => api.get<Offer[]>("/api/billing/catalog"),
   me: () => api.get<MyBilling>("/api/billing/me"),
-  checkout: (itemId: string, interval: Interval, waiver: boolean) =>
-    api.post<{ url: string }>("/api/billing/checkout", { item_id: itemId, interval, waiver }),
+  checkout: (itemId: string, interval: Interval, waiver: boolean, projectId = "") =>
+    api.post<{ url: string }>("/api/billing/checkout", { item_id: itemId, interval, waiver, project_id: projectId }),
   cancel: (contract: string) =>
     api.post<{ id: string; status: "done" | "manual"; received_at: number; effective_at: number }>(
       "/api/billing/cancel",

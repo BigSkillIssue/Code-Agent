@@ -33,6 +33,7 @@ from forge_hostworker.wire import (
 from forge_hostworker.wire import SealedSecrets as Sealed
 from forge_web.audit import audit
 from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.billing.licenses import require_paid
 from forge_web.db.hosting_models import (
     AppBackup,
     AppOperator,
@@ -257,6 +258,8 @@ async def new_deploy(services: Services, user: User, project_id: str, body: Depl
             Deploy.project_id == project_id, Deploy.environment == body.environment))  # fmt: skip
     if hosted is None:
         await room_for_an_app(services, project.owner_id, project_id)
+    if body.environment == "production":
+        await require_paid(services, project)
     picked = None if hosted else await pick_host(services.db)
     host = hosted.host_id if hosted else picked.id if picked else None
     if host is None:

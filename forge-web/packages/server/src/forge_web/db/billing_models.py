@@ -129,10 +129,30 @@ class Checkout(Base):
     item_id: Mapped[str] = mapped_column(String(40))
     interval: Mapped[str] = mapped_column(String(8))
     waiver_at: Mapped[float] = mapped_column(Float)  # when the box was ticked
-    status: Mapped[str] = mapped_column(String(16), default="open")  # open, complete, expired
+    # open; pending (a delayed payment such as SEPA is under way), complete, failed, expired,
+    # refunded (W40b)
+    status: Mapped[str] = mapped_column(String(16), default="open")
     created_at: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[float] = mapped_column(Float, default=0.0)
     trial_days: Mapped[int] = mapped_column(Integer, default=0)  # the trial it offered (W40a)
+    project_id: Mapped[str] = mapped_column(String(64), default="")  # what an app's price unlocks
+    payment_intent: Mapped[str] = mapped_column(String(255), default="")  # a one-time payment's
+
+
+class AppLicense(Base):
+    """An app unlocked by its one-time price (W40b), or by an admin for free (W40c)."""
+
+    __tablename__ = "billing_app_licenses"
+    __table_args__ = (Index("billing_app_licenses_by_project", "project_id", "revoked_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(String(32), default="")  # who paid ("" for a gift)
+    checkout_id: Mapped[str] = mapped_column(String(255), default="")  # "": given by an admin
+    granted_at: Mapped[float] = mapped_column(Float)
+    granted_by: Mapped[str] = mapped_column(String(32), default="")  # the admin who gave it
+    revoked_at: Mapped[float] = mapped_column(Float, default=0.0)
+    revoked_reason: Mapped[str] = mapped_column(String(200), default="")
 
 
 class Cancellation(Base):

@@ -12,9 +12,9 @@ import pytest
 from forge_web.billing import stripe_client
 from forge_web.billing.setup import Billing, StripeKeysIn
 from forge_web.billing.stripe_client import StripeClient, StripeError, form, key_mode
-from forge_web.db.billing_models import BillingCustomer, Subscription
+from forge_web.db.billing_models import AppLicense, BillingCustomer, Subscription
 from forge_web.db.engine import Database
-from forge_web.db.models import User
+from forge_web.db.models import Project, User
 from forge_web.vault import Vault
 from stripe_standin import LIVE_KEY, TEST_KEY, StripeStandIn
 from support import dev_settings
@@ -108,10 +108,18 @@ async def test_going_live_forgets_everything_test_mode_made(tmp_path: Path) -> N
         session.add(BillingCustomer(user_id="u1", stripe_customer="cus_test", created_at=now))
         session.add(Subscription(id="si_1", user_id="u1", item_id="pro", status="active",
                                  created_at=now, updated_at=now))  # fmt: skip
+        session.add(Project(id="p1", name="Shop", owner_id="u1", kind="app", created_at=now,
+                            updated_at=now))  # fmt: skip
+        await session.flush()
+        session.add(AppLicense(id="l1", project_id="p1", user_id="u1", checkout_id="cs_test",
+                               granted_at=now))  # fmt: skip
+        session.add(AppLicense(id="l2", project_id="p1", granted_by="a", granted_at=now))
     await billing.save(StripeKeysIn(secret_key="sk_live_" + "b" * 24, webhook_secret=hook), "a")
     async with db.session() as session:
         assert await session.get(Subscription, "si_1") is None  # a test card pays for nothing
         assert await session.get(BillingCustomer, "u1") is None
+        assert await session.get(AppLicense, "l1") is None  # an app paid with a test card
+        assert await session.get(AppLicense, "l2") is not None  # an admin's gift stays
     with pytest.raises(PermissionError):
         await billing.save(StripeKeysIn(secret_key="sk_test_" + "c" * 24, webhook_secret=hook), "a")
     await db.close()

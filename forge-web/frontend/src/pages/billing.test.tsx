@@ -12,7 +12,7 @@ const pro: Offer = {
     storage_gb: null, custom_domains: 2, store_publishing: true },
 };
 const mine: MyBilling = {
-  enabled: true, subscriptions: [],
+  enabled: true, subscriptions: [], apps: [],
   entitlements: { source: "server", projects: 20, ai_month_usd: null, ai_product_usd: null, server_keys: false,
     mac_minutes: 600, hosted_apps: null, storage_mb: 10000, custom_domains: null, store_publishing: true },
 };
@@ -127,6 +127,27 @@ describe("the billing page", () => {
     fireEvent.click(screen.getByLabelText(/(right of withdrawal|Widerrufsrecht)/));
     const order = screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ });
     expect((order as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("orders an app's one-time price for one of the maker's own apps not paid for yet", async () => {
+    const app: Offer = { ...pro, id: "app", kind: "app_once", name: "App", amounts: { once: 4900 }, trial_days: 0 };
+    mocks.api.offers.mockResolvedValue([app]);
+    const apps = [
+      { project_id: "a1a1a1a1a1a1a1a1", name: "Blog", unlocked: true },
+      { project_id: "b2b2b2b2b2b2b2b2", name: "Shop", unlocked: false },
+    ];
+    mocks.api.me.mockResolvedValue({ ...mine, apps });
+    open();
+    const offer = await screen.findByTestId("offer");
+    expect(offer.textContent).toMatch(/49.00 EUR (once|einmalig)/);
+    expect([...offer.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Shop"]);
+    expect(screen.getAllByTestId("app-paid").map((p) => p.textContent)).toEqual([
+      expect.stringMatching(/^Blog: (paid for|bezahlt)$/),
+      expect.stringMatching(/^Shop: (not paid|noch nicht)/),
+    ]);
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /^(Order with obligation to pay|Zahlungspflichtig bestellen)$/ }));
+    await waitFor(() => expect(mocks.api.checkout).toHaveBeenCalledWith("app", "once", true, "b2b2b2b2b2b2b2b2"));
   });
 
   it("checks a VAT ID with VIES", async () => {

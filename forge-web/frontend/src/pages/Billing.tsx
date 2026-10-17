@@ -58,6 +58,12 @@ export function BillingPage() {
                 {t("subscriptionLine", { item: s.item_id, status: s.status })}
               </p>
             ))}
+            {offers?.some((o) => o.kind === "app_once") &&
+              mine.apps.map((app) => (
+                <p key={app.project_id} className="text-muted" data-testid="app-paid">
+                  {t(app.unlocked ? "appUnlocked" : "appLocked", { name: app.name })}
+                </p>
+              ))}
           </Section>
         )}
         {mine?.enabled && mine.subscriptions.length > 0 && <CancelSection mine={mine} />}
@@ -68,7 +74,7 @@ export function BillingPage() {
           <Section title={t("offersTitle")}>
             <ul className="space-y-3">
               {offers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} ready={ready} />
+                <OfferCard key={offer.id} offer={offer} ready={ready} apps={mine.apps} />
               ))}
             </ul>
           </Section>
@@ -80,15 +86,19 @@ export function BillingPage() {
   );
 }
 
-function OfferCard({ offer, ready }: { offer: Offer; ready: boolean }) {
+function OfferCard({ offer, ready, apps }: { offer: Offer; ready: boolean; apps: MyBilling["apps"] }) {
   const intervals = (Object.keys(offer.amounts) as Interval[]).filter((i) => offer.amounts[i]);
   const [interval, choose] = useState<Interval>(intervals[0] ?? "month");
   const [waiver, setWaiver] = useState(false);
+  const perApp = offer.kind === "app_once"; // paid once for one of one's own apps (W40b)
+  const open = apps.filter((a) => !a.unlocked);
+  const [app, setApp] = useState(open[0]?.project_id ?? "");
   const act = useAction();
   const order = async () => {
     const stripe = { url: "" };
     const opened = await act(async () => {
-      stripe.url = (await billing.checkout(offer.id, interval, waiver)).url;
+      const made = perApp ? billing.checkout(offer.id, interval, waiver, app) : billing.checkout(offer.id, interval, waiver);
+      stripe.url = (await made).url;
     });
     if (opened) window.location.assign(stripe.url); // Stripe's own page takes the card
   };
@@ -109,12 +119,27 @@ function OfferCard({ offer, ready }: { offer: Offer; ready: boolean }) {
           </label>
         ))}
       </div>
+      {perApp &&
+        (open.length > 0 ? (
+          <label className="mt-2 flex items-center gap-2">
+            {t("appChoose")}
+            <select className="rounded border border-line bg-transparent p-1" value={app} onChange={(e) => setApp(e.target.value)}>
+              {open.map((a) => (
+                <option key={a.project_id} value={a.project_id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="mt-2 text-muted">{t("appNoneLeft")}</p>
+        ))}
       <label className="mt-2 flex items-start gap-2 text-sm">
         <input type="checkbox" checked={waiver} onChange={(e) => setWaiver(e.target.checked)} />
         <span>{t("waiverBox")}</span>
       </label>
       <div className="mt-2">
-        <Button kind="primary" disabled={!waiver || !ready} onClick={() => void order()}>
+        <Button kind="primary" disabled={!waiver || !ready || (perApp && !app)} onClick={() => void order()}>
           {t("orderButton")}
         </Button>
       </div>

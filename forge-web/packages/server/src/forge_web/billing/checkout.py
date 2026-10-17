@@ -14,6 +14,11 @@ plan ends the customer's other open orders of plans at Stripe, so only one of th
 Stripe's events then turn into subscriptions (one row per subscription item), which the
 entitlements read: created and updated set their state, deleted ends them. A checkout that was
 cancelled or expired grants nothing.
+
+An app's one-time price is ordered for one of the customer's own app projects and unlocks it once
+paid (W40b, `licenses.py`). A delayed payment method (SEPA) completes the checkout unpaid: it waits
+as "pending" until Stripe reports the payment succeeded (then it counts and is confirmed) or
+failed (then it never does); a full refund takes the app back.
 """
 
 import json
@@ -32,10 +37,11 @@ from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.billing.catalog import item_view
 from forge_web.billing.entitlements import PAID
 from forge_web.billing.events import Events
+from forge_web.billing.licenses import grant, own_app, revoke, unlocked
 from forge_web.billing.stripe_client import StripeClient, StripeError
 from forge_web.db.billing_models import BillingCustomer, CatalogItem, Checkout, Subscription
 from forge_web.db.engine import Database
-from forge_web.db.models import User
+from forge_web.db.models import Project, User
 from forge_web.legal import require_accepted
 from forge_web.services import Services, services_of
 from forge_web.settings import WebSettings
@@ -52,6 +58,7 @@ class CheckoutIn(BaseModel):
     item_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")
     interval: Literal["month", "year", "once"] = "month"
     waiver: bool = False  # the box: begin now, the right of withdrawal lapses
+    project_id: str = Field(default="", pattern=r"^([0-9a-f]{16})?$")  # an app's one-time price
 
 
 async def customer_of(client: StripeClient, db: Database, user: User) -> str:
@@ -83,8 +90,8 @@ async def for_sale(db: Database, item_id: str, interval: str) -> tuple[CatalogIt
 
 
 def session_params(settings: WebSettings, user: User, item: CatalogItem, price: str,
-                   interval: str, customer: str,
-                   trial_days: int = 0) -> dict[str, Any]:  # fmt: skip
+                   interval: str, customer: str, trial_days: int = 0,
+                   project_id: str = "") -> dict[str, Any]:  # fmt: skip
     """What Stripe Checkout gets: the price, the customer, Stripe Tax, where to come back to."""
     base = settings.base_url()
     params: dict[str, Any] = {
@@ -98,6 +105,8 @@ def session_params(settings: WebSettings, user: User, item: CatalogItem, price: 
         "allow_promotion_codes": True, "locale": "auto",
         "metadata": {"forge_user": user.id, "forge_item": item.id, "waiver": "given"},
     }  # fmt: skip
+    if project_id:
+        params["metadata"]["forge_project"] = project_id
     if interval != "once":
         trial = {"trial_period_days": trial_days} if trial_days else {}
         params["subscription_data"] = {"metadata": {"forge_user": user.id}, **trial}
@@ -115,6 +124,10 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
         raise HTTPException(409, "payments are not set up on this server")
     try:
         item, price = await for_sale(services.db, body.item_id, body.interval)
+        if (item.kind == "app_once") != bool(body.project_id):
+            raise HTTPException(422, "an app's one-time price, and only that, names the app")
+        if body.project_id:
+            await own_app(services.db, user, body.project_id)
         if item.kind == "plan" and await plan_running(services.db, user.id):
             raise HTTPException(409, "you have a plan already; change it in the customer portal")
         trial_days = await trial_for(services.db, user.id, item)
@@ -122,7 +135,7 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
         if item.kind == "plan":
             await expire_open_plans(client, services.db, user.id)
         params = session_params(services.settings, user, item, price, body.interval, customer,
-                                trial_days)  # fmt: skip
+                                trial_days, body.project_id)  # fmt: skip
         made = await client.post("/v1/checkout/sessions", params)
     except StripeError as error:
         raise HTTPException(502, f"Stripe: {error}") from None
@@ -132,7 +145,7 @@ async def start_checkout(services: Services, user: User, body: CheckoutIn) -> st
     async with services.db.session() as session, session.begin():
         session.add(Checkout(id=str(made["id"]), user_id=user.id, item_id=item.id,
                              interval=body.interval, waiver_at=now, created_at=now,
-                             trial_days=trial_days))  # fmt: skip
+                             trial_days=trial_days, project_id=body.project_id))  # fmt: skip
     return str(made["url"])
 
 
@@ -212,7 +225,8 @@ def checkout_router() -> APIRouter:
                 Subscription.user_id == user.id).order_by(newest_first)))  # fmt: skip
         limits = await services.entitlements.of(user)
         return {"enabled": services.settings.billing.enabled, "entitlements": asdict(limits),
-                "subscriptions": [subscription_view(r) for r in rows]}  # fmt: skip
+                "subscriptions": [subscription_view(r) for r in rows],
+                "apps": await apps_of(services.db, user.id)}  # fmt: skip
 
     @router.post("/checkout")
     async def order(body: CheckoutIn, request: Request, user: CurrentUser) -> dict[str, str]:
@@ -234,25 +248,66 @@ class StripeEvents:
 
     def register(self, events: Events) -> None:
         events.on("checkout.session.completed", self.completed)
+        events.on("checkout.session.async_payment_succeeded", self.payment_succeeded)
+        events.on("checkout.session.async_payment_failed", self.payment_failed)
         events.on("checkout.session.expired", self.expired)
+        events.on("charge.refunded", self.refunded)
         for kind in ("created", "updated", "deleted"):
             events.on(f"customer.subscription.{kind}", self.subscription)
 
     async def completed(self, event: dict[str, Any]) -> None:
-        """A paid order: record it and confirm it by mail, with the waiver."""
-        found = await self.mark(event["data"]["object"]["id"], "complete")
+        """An order is through: paid now, or (SEPA) its payment is still under way."""
+        order = event["data"]["object"]
+        paid = order.get("payment_status", "paid") != "unpaid"
+        await self.settle(order, "complete" if paid else "pending")
+
+    async def payment_succeeded(self, event: dict[str, Any]) -> None:
+        """A delayed payment arrived: the order counts now."""
+        await self.settle(event["data"]["object"], "complete")
+
+    async def payment_failed(self, event: dict[str, Any]) -> None:
+        """A delayed payment failed: the order grants nothing."""
+        await self.settle(event["data"]["object"], "failed")
+
+    async def settle(self, order: dict[str, Any], status: str) -> None:
+        """Record what became of an order; unlock its app once paid, and tell the customer."""
+        intent = str(order.get("payment_intent") or "")
+        found = await self.mark(str(order["id"]), status, intent)
         if found is None:
             return
         row, user, item = found
+        if status == "complete" and row.project_id:
+            await grant(self.db, row.project_id, row.user_id, checkout_id=row.id)
         smtp = self.settings.auth.smtp
-        if mail_enabled(smtp) and user.email:
+        if not mail_enabled(smtp) or not user.email or status == "pending":
+            return
+        if status == "complete":
             await send_mail(smtp, user.email, f"Deine Bestellung: {item}", confirmation(item, row))
+        else:
+            await send_mail(smtp, user.email, f"Zahlung fehlgeschlagen: {item}",
+                            f"Die Zahlung für deine Bestellung {item} ist fehlgeschlagen. Die "
+                            "Bestellung gilt nicht; du kannst sie unter Abrechnung neu "
+                            "aufgeben.")  # fmt: skip
 
     async def expired(self, event: dict[str, Any]) -> None:
         """A checkout left without paying: it grants nothing."""
         await self.mark(event["data"]["object"]["id"], "expired")
 
-    async def mark(self, checkout_id: str, status: str) -> tuple[Checkout, User, str] | None:
+    async def refunded(self, event: dict[str, Any]) -> None:
+        """A one-time payment refunded in full: its app is no longer paid for."""
+        charge = event["data"]["object"]
+        intent = str(charge.get("payment_intent") or "")
+        if not charge.get("refunded") or not intent:
+            return  # a partial refund leaves the app unlocked
+        async with self.db.session() as session, session.begin():
+            row = await session.scalar(select(Checkout).where(Checkout.payment_intent == intent))
+            if row is None:
+                return
+            row.status = "refunded"
+        await revoke(self.db, "refunded", checkout_id=row.id)
+
+    async def mark(self, checkout_id: str, status: str,
+                   intent: str = "") -> tuple[Checkout, User, str] | None:  # fmt: skip
         async with self.db.session() as session, session.begin():
             row = await session.get(Checkout, checkout_id)
             user = await session.get(User, row.user_id) if row else None
@@ -262,6 +317,7 @@ class StripeEvents:
                 return None
             row.status = status
             row.completed_at = time.time() if status == "complete" else 0.0
+            row.payment_intent = intent or row.payment_intent
         return row, user, item.name if item else row.item_id
 
     async def subscription(self, event: dict[str, Any]) -> None:
@@ -326,3 +382,13 @@ def confirmation(item: str, row: Checkout) -> str:
         "(§ 356 Abs. 5 BGB).\n\n"
         "Rechnungen und Zahlungen findest du in deinem Konto unter Abrechnung."
     )
+
+
+async def apps_of(db: Database, user_id: str) -> list[dict[str, Any]]:
+    """The user's own app projects, and whether each is unlocked (W40b)."""
+    async with db.session() as session:
+        projects = list(await session.scalars(
+            select(Project).where(Project.owner_id == user_id, Project.kind == "app")
+            .order_by(Project.name)))  # fmt: skip
+    return [{"project_id": p.id, "name": p.name,
+             "unlocked": await unlocked(db, p.id) is not None} for p in projects]  # fmt: skip
