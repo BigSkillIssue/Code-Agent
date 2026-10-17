@@ -1,8 +1,10 @@
 """Payments through the relay: offers, an order only with the box for beginning at once, a paid
-purchase, a subscription cancelled at the end of its period, nothing sold without the relay, and
-no running subscription left behind a deleted account. The relay is tests/fake_relay.py."""
+purchase, a subscription cancelled at the end of its period and paid only while it runs,
+nothing sold without the relay, and no running subscription left behind a deleted account. The
+relay is tests/fake_relay.py."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -11,7 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import User
+from app.models import Purchase, User
 from app.payments import has_paid
 from conftest import PASSWORD
 from fake_relay import FakeRelay
@@ -38,7 +40,15 @@ def buy(client: TestClient, offer: str) -> dict[str, Any]:
 def paid(app: FastAPI, email: str, offer: str | None = None) -> bool:
     with Session(app.state.engine) as db:
         user = db.scalars(select(User).where(User.email == email)).one()
-        return has_paid(db, user, offer)
+        return has_paid(db, app.state.payments, user, offer)
+
+
+def period_ends(app: FastAPI) -> None:
+    """Time passes: the paid period of every purchase is over."""
+    with Session(app.state.engine) as db:
+        for purchase in db.scalars(select(Purchase)):
+            purchase.current_period_end = datetime.now(UTC) - timedelta(days=1)
+        db.commit()
 
 
 def test_the_offers_are_public(client: TestClient) -> None:
@@ -100,6 +110,31 @@ def test_a_subscription_ends_at_the_end_of_its_paid_period(
     assert relay.subscriptions["sub_1"]["cancel_at_period_end"]
 
 
+def test_a_subscription_is_paid_only_while_it_runs(
+    app: FastAPI, client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    buy(client, "pro-monthly")
+    relay.pay("cs_1")
+    client.get("/api/payments/purchases")  # the purchase learns its subscription
+    assert paid(app, "ada@example.com", "pro-monthly")  # the relay tells when the period ends
+    period_ends(app)
+    assert paid(app, "ada@example.com")  # renewed: the relay says it is still active
+    mine = client.get("/api/payments/purchases").json()[0]
+    assert mine["status"] == "paid" and mine["current_period_end"].startswith("2030-")
+    period_ends(app)
+    relay.subscriptions["sub_1"]["status"] = "past_due"  # the renewal was not paid
+    assert not paid(app, "ada@example.com") and not paid(app, "ada@example.com")
+    relay.down = True
+    assert not paid(app, "ada@example.com")  # and not while the relay cannot tell
+    relay.down = False
+    relay.subscriptions["sub_1"]["status"] = "canceled"
+    assert not paid(app, "ada@example.com")
+    assert client.get("/api/payments/purchases").json()[0]["status"] == "ended"
+    relay.subscriptions["sub_1"]["status"] = "active"
+    assert not paid(app, "ada@example.com")  # an ended subscription stays ended
+
+
 def test_nothing_is_sold_without_the_relay(client: TestClient, sign_up: SignUp) -> None:
     sign_up(client)  # no relay configured, as in a local run
     response = client.post("/api/payments/checkout", json={"offer": "lifetime", "begin_now": True})
@@ -114,6 +149,34 @@ def test_deleting_the_account_ends_its_subscriptions(
     buy(client, "pro-monthly")
     relay.pay("cs_1")
     client.get("/api/payments/purchases")  # the purchase learns its subscription
+    gone = client.request("DELETE", "/api/account", json={"password": PASSWORD})
+    assert gone.status_code == 204
+    assert relay.subscriptions["sub_1"]["cancel_at_period_end"]
+
+
+def test_deleting_the_account_ends_a_subscription_the_app_has_not_seen_yet(
+    client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    buy(client, "pro-monthly")
+    relay.pay("cs_1")  # paid on Stripe's page; the purchases page was never opened
+    gone = client.request("DELETE", "/api/account", json={"password": PASSWORD})
+    assert gone.status_code == 204
+    assert relay.subscriptions["sub_1"]["cancel_at_period_end"]
+
+
+def test_the_account_stays_while_its_subscription_cannot_be_ended(
+    client: TestClient, relay: FakeRelay, sign_up: SignUp
+) -> None:
+    sign_up(client)
+    buy(client, "pro-monthly")
+    relay.pay("cs_1")
+    relay.down = True
+    refused = client.request("DELETE", "/api/account", json={"password": PASSWORD})
+    assert refused.status_code == 503
+    assert client.get("/api/auth/me").status_code == 200  # nothing was deleted
+    assert not relay.subscriptions["sub_1"]["cancel_at_period_end"]
+    relay.down = False
     gone = client.request("DELETE", "/api/account", json={"password": PASSWORD})
     assert gone.status_code == 204
     assert relay.subscriptions["sub_1"]["cancel_at_period_end"]

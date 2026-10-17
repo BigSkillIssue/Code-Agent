@@ -1,12 +1,20 @@
 """Sign-up, sign-in, sign-out and password reset."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app import auth
 from app.mail import LogMailer
+from app.models import PasswordReset
+from app.security import NO_ACCOUNT_HASH
 from conftest import PASSWORD
 
 SignUp = Callable[..., dict[str, Any]]
@@ -67,6 +75,67 @@ def test_password_reset(client: TestClient, sign_up: SignUp, mailer: LogMailer) 
     login = {"email": "ada@example.com", "password": "a brand new password"}
     assert client.post("/api/auth/login", json=login).status_code == 200
     assert client.post("/api/auth/password-reset/confirm", json=new).status_code == 400  # used
+
+
+def resets_sent(app: FastAPI, minutes_ago: int) -> None:
+    """Time passes: every reset link so far was sent that many minutes ago."""
+    with Session(app.state.engine) as db:
+        for reset in db.scalars(select(PasswordReset)):
+            sent = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+            reset.expires_at = sent + timedelta(hours=auth.RESET_HOURS)
+        db.commit()
+
+
+def test_reset_mails_to_one_account_are_limited(
+    app: FastAPI, client: TestClient, sign_up: SignUp, mailer: LogMailer
+) -> None:
+    sign_up(client)
+    ask = {"email": "ada@example.com"}
+    assert client.post("/api/auth/password-reset", json=ask).status_code == 202
+    assert client.post("/api/auth/password-reset", json=ask).status_code == 202  # same answer,
+    assert len(mailer.sent) == 1  # but no second mail within minutes
+    for count in (2, 3):
+        resets_sent(app, minutes_ago=10)
+        client.post("/api/auth/password-reset", json=ask)
+        assert len(mailer.sent) == count
+    resets_sent(app, minutes_ago=10)
+    client.post("/api/auth/password-reset", json=ask)
+    assert len(mailer.sent) == 3  # three an hour at most
+    resets_sent(app, minutes_ago=61)
+    client.post("/api/auth/password-reset", json=ask)
+    assert len(mailer.sent) == 4
+
+
+def test_a_new_password_ends_every_reset_link(
+    app: FastAPI, client: TestClient, sign_up: SignUp, mailer: LogMailer
+) -> None:
+    sign_up(client)
+    client.post("/api/auth/password-reset", json={"email": "ada@example.com"})
+    first = reset_token(mailer)
+    resets_sent(app, minutes_ago=10)
+    client.post("/api/auth/password-reset", json={"email": "ada@example.com"})
+    second = reset_token(mailer)
+    assert first != second
+    new = {"token": second, "password": "a brand new password"}
+    assert client.post("/api/auth/password-reset/confirm", json=new).status_code == 204
+    old = {"token": first, "password": "someone else's password"}
+    assert client.post("/api/auth/password-reset/confirm", json=old).status_code == 400
+
+
+def test_an_unknown_email_takes_a_password_check_too(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checked: list[str] = []
+    real = auth.verify_password
+
+    def counting(password_hash: str, password: str) -> bool:
+        checked.append(password_hash)
+        return real(password_hash, password)
+
+    monkeypatch.setattr(auth, "verify_password", counting)
+    wrong = {"email": "nobody@example.com", "password": "guessing"}
+    assert client.post("/api/auth/login", json=wrong).status_code == 401
+    assert checked == [NO_ACCOUNT_HASH]  # as long as a wrong password for a real account
 
 
 def test_a_reset_does_not_tell_whether_an_account_exists(

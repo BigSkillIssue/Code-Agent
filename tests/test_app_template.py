@@ -31,6 +31,7 @@ EXPECTED = [
     "server/alembic.ini",
     "server/app/account.py",
     "server/app/auth.py",
+    "server/app/csrf.py",
     "server/app/main.py",
     "server/app/moderation.py",
     "server/app/ratelimit.py",
@@ -114,6 +115,20 @@ def test_the_manifest_is_valid(product: Path) -> None:
     )
     assert (product / api.root / "pyproject.toml").is_file()
     assert manifest.database is not None
+
+
+def test_the_server_counts_the_visitors_address_behind_the_proxy(product: Path) -> None:
+    manifest = load_manifest(product)
+    assert isinstance(manifest, AppManifest)
+    command = manifest.services[0].command
+    assert "--proxy-headers" in command
+    assert command[command.index("--forwarded-allow-ips") + 1] == "*"
+    dockerfile = (product / "server" / "Dockerfile").read_text(encoding="utf-8")
+    assert "--proxy-headers --forwarded-allow-ips='*'" in dockerfile
+    readme = (product / "README.md").read_text(encoding="utf-8")
+    assert "X-Forwarded-For" in readme and "behind a proxy" in readme
+    main_py = (product / "server" / "app" / "main.py").read_text(encoding="utf-8")
+    assert 'app.middleware("http")(same_origin_only)' in main_py  # and no cross-site writes
 
 
 def test_the_api_snapshot_names_the_product(product: Path) -> None:

@@ -53,7 +53,10 @@ def test_the_client_is_generated_from_the_snapshot_and_points_at_staging() -> No
     assert '"API_STAGING", "\\"https://tally-notes.staging.apps.forge.test\\""' in build
     assert '"API_PRODUCTION", "\\"https://tally-notes.apps.forge.test\\""' in build
     server = android()["app/src/main/java/com/example/tallynotes/Server.kt"].decode()
-    assert "BuildConfig.API_STAGING" in server and "CookieJar" in server
+    assert "CookieJar" in server
+    # debug builds talk to staging, the release build (Google Play's) to production
+    wanted = "if (BuildConfig.DEBUG) BuildConfig.API_STAGING else BuildConfig.API_PRODUCTION"
+    assert wanted in server
 
 
 def test_signing_in_and_deleting_the_account_work_in_the_app() -> None:

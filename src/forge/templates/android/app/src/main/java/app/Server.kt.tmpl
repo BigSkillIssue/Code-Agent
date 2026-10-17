@@ -10,8 +10,9 @@ import okhttp3.OkHttpClient
 
 /** The product's server: its address and one HTTP client that keeps the sign-in cookie. */
 object Server {
-    /** Staging until the app is released; the Play Store build uses BuildConfig.API_PRODUCTION. */
-    val baseUrl: String = BuildConfig.API_STAGING
+    /** Debug builds talk to staging; the release build (the Play Store's) to production. */
+    val baseUrl: String =
+        if (BuildConfig.DEBUG) BuildConfig.API_STAGING else BuildConfig.API_PRODUCTION
 
     private val cookies = ConcurrentHashMap<String, List<Cookie>>()
 

@@ -37,7 +37,7 @@ commands:
   forge run --json     work on a task headless: JSON events, exit 0/1/2 (done/failed/needs input)
   forge config check   validate and print the effective configuration
   forge config schema  the configuration schema (--markdown: the reference in docs/config.md)
-  forge trust          let this project's config set providers, MCP servers and hooks
+  forge trust          let this project's config set providers, MCP servers, hooks, looser safety
   forge sessions       list this project's sessions
   forge resume [ID]    continue a session's plan (default: the latest)
   forge eval           run the benchmark tasks in evals/tasks (--fake: offline)

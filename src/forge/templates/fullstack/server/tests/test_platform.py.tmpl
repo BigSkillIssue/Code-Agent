@@ -1,11 +1,14 @@
-"""Health, the API description, migrations, storage and rate limits."""
+"""Health, the API description, migrations, storage, rate limits and password hashing."""
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
 from alembic import command
 from fastapi.testclient import TestClient
 
+from app import security
 from app.openapi_snapshot import SNAPSHOT, current, render
 from app.ratelimit import RateLimiter
 from app.storage import LocalStorage
@@ -56,3 +59,35 @@ def test_rate_limits_count_per_client_kind_and_minute() -> None:
     assert all(limiter.allow("1.2.3.4", "/api/reports", now=2) for _ in range(3))
     assert not limiter.allow("1.2.3.4", "/api/reports", now=3)
     assert limiter.allow("1.2.3.4", "/api/auth/login", now=61)  # the next minute
+
+
+def test_deleting_an_account_counts_like_a_sign_in() -> None:
+    limiter = RateLimiter(per_minute=3, auth_per_minute=1)
+    assert limiter.allow("1.2.3.4", "/api/account", now=0, method="DELETE")
+    assert not limiter.allow("1.2.3.4", "/api/account", now=1, method="DELETE")
+    assert limiter.allow("1.2.3.4", "/api/account/export", now=1)  # reading is not limited so
+
+
+def test_passwords_are_hashed_at_owasps_cost_two_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert security.hash_password("a password").startswith("$argon2id$v=19$m=19456,t=2,p=1$")
+    running, most = 0, 0
+    lock = threading.Lock()
+
+    class SlowHasher:
+        def hash(self, password: str) -> str:
+            nonlocal running, most
+            with lock:
+                running += 1
+                most = max(most, running)
+            time.sleep(0.05)
+            with lock:
+                running -= 1
+            return "hashed"
+
+    monkeypatch.setattr(security, "_hasher", SlowHasher())
+    threads = [threading.Thread(target=security.hash_password, args=("pw",)) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert most == 2  # each hash holds 19 MiB while it runs
