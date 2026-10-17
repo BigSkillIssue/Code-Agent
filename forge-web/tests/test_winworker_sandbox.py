@@ -137,7 +137,7 @@ def machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
 def runner(machine: dict[str, Path], start_s: float = 30) -> SandboxRunner:
     kill = (
         "import os, pathlib, signal, sys\np = pathlib.Path(sys.argv[1])\n"
-        "if p.exists():\n    os.kill(int(p.read_text()), signal.SIGKILL)\n    p.unlink()"
+        "if p.exists():\n    os.kill(int(p.read_text()), signal.SIGTERM)\n    p.unlink()"
     )
     return SandboxRunner(machine["work"], launcher=(sys.executable, str(machine["launcher"])),
                          stops=((sys.executable, "-c", kill, str(machine["pid"])),),
