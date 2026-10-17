@@ -6,7 +6,9 @@ Forge Web, and nothing of the build stays on the host.
 """
 
 import asyncio
+import os
 import shutil
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +52,29 @@ def android_args(job: HostJob, folder: Path, user: str, network: str) -> list[st
     ]  # fmt: skip
 
 
+def take_bundle(folder: Path, target: Path) -> bool:
+    """Copy the release bundle out of the build's folder, if it is a plain file there. The
+    build's own code wrote that folder and this worker runs as root, so a link anywhere on the
+    way (which would send a file of the host instead) counts as no bundle."""
+    path = folder
+    if path.is_symlink():
+        return False
+    for part in BUNDLE.parts:
+        path = path / part
+        if path.is_symlink():
+            return False
+    try:
+        handle = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return False
+    with os.fdopen(handle, "rb") as source:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            return False
+        with target.open("wb") as out:
+            shutil.copyfileobj(source, out)
+    return True
+
+
 async def android_job(runner: "HostRunner", job: HostJob, source: Path) -> JobResult:
     """Build the bundle and leave it in `outgoing`; a failed build says why."""
     work = runner.data_dir / "android" / job.id
@@ -67,13 +92,11 @@ async def android_job(runner: "HostRunner", job: HostJob, source: Path) -> JobRe
         if built.code != 0:
             return JobResult(ok=False, error="the Android build or its tests failed",
                              log_tail=built.tail())  # fmt: skip
-        bundle = folder / BUNDLE
-        if not bundle.is_file():
-            return JobResult(ok=False, error="the build made no release bundle",
-                             log_tail=built.tail())  # fmt: skip
         target = bundle_path(runner.data_dir, job.id)
         target.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(shutil.move, bundle, target)
+        if not await asyncio.to_thread(take_bundle, folder, target):
+            return JobResult(ok=False, error="the build made no release bundle",
+                             log_tail=built.tail())  # fmt: skip
     except SourceError as error:
         return JobResult(ok=False, error=f"the source was refused: {error}")
     finally:

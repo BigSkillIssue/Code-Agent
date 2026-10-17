@@ -3,13 +3,21 @@ does it once; Stripe's form encoding; Stripe's errors in its own words; the key 
 error, a log line or the client's repr; test keys first. Stripe is `stripe_standin.py`."""
 
 import logging
+import time
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest
 
 from forge_web.billing import stripe_client
+from forge_web.billing.setup import Billing, StripeKeysIn
 from forge_web.billing.stripe_client import StripeClient, StripeError, form, key_mode
+from forge_web.db.billing_models import BillingCustomer, Subscription
+from forge_web.db.engine import Database
+from forge_web.db.models import User
+from forge_web.vault import Vault
 from stripe_standin import LIVE_KEY, TEST_KEY, StripeStandIn
+from support import dev_settings
 
 
 @pytest.fixture(autouse=True)
@@ -83,3 +91,27 @@ def test_test_keys_first() -> None:
     for bad in ("pk_test_abc", "sk_test_", "whsec_123", "", "sk_prod_" + "x" * 30):
         with pytest.raises(ValueError):
             key_mode(bad)
+
+
+async def test_going_live_forgets_everything_test_mode_made(tmp_path: Path) -> None:
+    settings = dev_settings(tmp_path / "data")
+    settings.billing.allow_live = True
+    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'b.db'}")
+    await db.migrate()
+    billing = Billing(db, Vault(b"m" * 32), settings)
+    hook = "whsec_" + "x" * 24
+    await billing.save(StripeKeysIn(secret_key="sk_test_" + "a" * 24, webhook_secret=hook), "a")
+    now = time.time()
+    async with db.session() as session, session.begin():
+        session.add(User(id="u1", email="u@x", role="member", status="active", created_at=now))
+        await session.flush()
+        session.add(BillingCustomer(user_id="u1", stripe_customer="cus_test", created_at=now))
+        session.add(Subscription(id="si_1", user_id="u1", item_id="pro", status="active",
+                                 created_at=now, updated_at=now))  # fmt: skip
+    await billing.save(StripeKeysIn(secret_key="sk_live_" + "b" * 24, webhook_secret=hook), "a")
+    async with db.session() as session:
+        assert await session.get(Subscription, "si_1") is None  # a test card pays for nothing
+        assert await session.get(BillingCustomer, "u1") is None
+    with pytest.raises(PermissionError):
+        await billing.save(StripeKeysIn(secret_key="sk_test_" + "c" * 24, webhook_secret=hook), "a")
+    await db.close()

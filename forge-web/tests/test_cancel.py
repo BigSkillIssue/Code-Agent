@@ -5,6 +5,7 @@ takes effect; what cannot be matched goes to the admins. Stripe's customer porta
 away. Stripe is `stripe_standin.py`."""
 
 import asyncio
+import re
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -110,20 +111,39 @@ async def test_the_button_works_without_signing_in(
         form = {"name": "Maria Muster", "email": maria.email.upper(), "contract": ""}
         confirmed = await stranger.post("/kuendigen", data=form)
         assert confirmed.status_code == 200 and "eingegangen" in confirmed.text
-        assert time.strftime("%d.%m.%Y", time.gmtime(PERIOD_END)) in confirmed.text
+        # The page tells a stranger nothing about the account: not even when its period ends.
+        assert time.strftime("%d.%m.%Y", time.gmtime(PERIOD_END)) not in confirmed.text
         unknown = await stranger.post(
             "/kuendigen", data={"name": "Kim", "email": "kim@example.org"}
         )
         assert unknown.status_code == 200 and "eingegangen" in unknown.text
+        assert strip_id(unknown.text, "Kim") == strip_id(confirmed.text, "Maria Muster")
     assert stripe.objects["sub_1"]["cancel_at_period_end"] == "true"
     await until(lambda: enough(mails, 3))  # maria, kim, and the admins about kim's
     by_to = {m["to"]: m for m in mails}
     assert "kim@example.org" in by_to and maria.email in by_to
+    mine = by_to[maria.email]["body"]
+    assert time.strftime("%d.%m.%Y", time.gmtime(PERIOD_END)) in mine
+    link = mine.split("/kuendigen/zuruecknehmen/")[1].split()[0]
+    assert "zuruecknehmen" not in by_to["kim@example.org"]["body"]  # nothing to take back
+    async with httpx.AsyncClient(base_url=server.url, timeout=30) as owner:
+        url = f"/kuendigen/zuruecknehmen/{link}"
+        assert "Kündigung zurücknehmen" in (await owner.get(url)).text
+        assert (await owner.post(url)).status_code == 200
+        assert stripe.objects["sub_1"]["cancel_at_period_end"] == "false"  # it runs on
+        assert (await owner.post(url)).status_code == 404  # once
+        assert (await owner.post("/kuendigen/zuruecknehmen/guessed")).status_code == 404
     async with server.services.db.session() as session:
         rows = {r.email: r for r in await session.scalars(select(Cancellation))}
-    assert rows[maria.email].status == "done" and rows[maria.email].user_id == maria.id
+    assert rows[maria.email].status == "undone" and rows[maria.email].user_id == maria.id
     assert rows["kim@example.org"].status == "manual"
     await maria.web.client.aclose()
+
+
+def strip_id(text: str, name: str) -> str:
+    """A receipt page without what differs between two cancellations: name, address, time."""
+    kept = text.split("Vorgang:")[0].replace(name, "N")
+    return re.sub(r"E-Mail: [^<\n]*|am [0-9.]+ um [0-9:]+ UTC", "", kept)
 
 
 async def enough(mails: list[dict[str, Any]], count: int) -> bool:

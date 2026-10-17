@@ -9,11 +9,23 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import delete, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge_web.billing.catalog import Catalog
 from forge_web.billing.events import Events
 from forge_web.billing.stripe_client import StripeClient, key_mode
-from forge_web.db.billing_models import BillingKeys
+from forge_web.db.billing_models import (
+    BillingCustomer,
+    BillingKeys,
+    CatalogItem,
+    Checkout,
+    ConnectAccount,
+    Coupon,
+    DunningCase,
+    RelayCheckout,
+    Subscription,
+)
 from forge_web.db.engine import Database
 from forge_web.settings import WebSettings
 from forge_web.vault import Vault
@@ -75,6 +87,12 @@ class Billing:
         secret, hook = body.secret_key.strip(), body.webhook_secret.strip()
         async with self.db.session() as session, session.begin():
             row = await session.get(BillingKeys, KEYS_ROW)
+            before = row.mode if row is not None else ""
+            if before == "live" and mode == "test":
+                raise PermissionError("back to test keys, the live customers would lose their "
+                                      "subscriptions: keep the live keys")  # fmt: skip
+            if before == "test" and mode == "live":
+                await forget_test_mode(session)
             if row is None:
                 row = BillingKeys(id=KEYS_ROW, secret_key="", webhook_secret="", mode=mode,
                                   hint="", updated_at=0.0)  # fmt: skip
@@ -94,3 +112,16 @@ class Billing:
                 "hint": row.hint if row else "", "updated_at": row.updated_at if row else 0.0,
                 "enabled": self.settings.billing.enabled,
                 "webhook_url": self.settings.base_url() + WEBHOOK_PATH}  # fmt: skip
+
+
+async def forget_test_mode(session: AsyncSession) -> None:
+    """What test mode made at Stripe does not exist in live mode: customers, subscriptions,
+    checkouts, dunning, makers' accounts and the apps' checkouts go, and the catalog is synced
+    to live mode afresh. Nothing bought with a test card stays paid."""
+    for table in (Subscription, BillingCustomer, Checkout, DunningCase, ConnectAccount,
+                  RelayCheckout):  # fmt: skip
+        await session.execute(delete(table))
+    await session.execute(update(CatalogItem).values(stripe_product="", stripe_prices="{}",
+                                                     synced_at=0.0))  # fmt: skip
+    await session.execute(update(Coupon).values(stripe_coupon="", stripe_promotion="",
+                                                synced_at=0.0))  # fmt: skip

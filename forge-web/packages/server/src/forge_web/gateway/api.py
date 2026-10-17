@@ -8,7 +8,8 @@ from forge.providers.catalog import KNOWN_MODELS, PRESETS
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from forge_web.auth.sessions import AdminUser, CurrentUser
+from forge_web.audit import audit
+from forge_web.auth.sessions import AdminUser, CurrentUser, client_ip
 from forge_web.db.models import ApiKey, KeyGrant, UsageRecord, User
 from forge_web.gateway.keys import delete_key, list_keys, save_key, server_key_limit
 from forge_web.gateway.meter import month_start
@@ -82,12 +83,17 @@ def keys_router() -> APIRouter:
         key = await save_key(
             services.db, services.vault, user.id, body.provider, body.key.strip(), body.name
         )
+        await audit(services.db, "keys.added", user_id=user.id, target=key.id,
+                    ip=client_ip(request), provider=body.provider)  # fmt: skip
         return key_view(key)
 
     @router.delete("/api/keys/{key_id}", status_code=204)
     async def remove_key(key_id: str, request: Request, user: CurrentUser) -> None:
-        if not await delete_key(services_of(request).db, user.id, key_id):
+        services = services_of(request)
+        if not await delete_key(services.db, user.id, key_id):
             raise HTTPException(404, "no such key")
+        await audit(services.db, "keys.removed", user_id=user.id, target=key_id,
+                    ip=client_ip(request))  # fmt: skip
 
     @router.get("/api/providers")
     async def providers(request: Request, user: CurrentUser) -> list[dict[str, Any]]:
@@ -162,18 +168,24 @@ def keys_router() -> APIRouter:
         key = await save_key(
             services.db, services.vault, "", body.provider, body.key.strip(), body.name
         )
+        await audit(services.db, "keys.server_key_added", user_id=admin.id, target=key.id,
+                    ip=client_ip(request), provider=body.provider)  # fmt: skip
         return key_view(key)
 
     @router.delete("/api/admin/keys/{key_id}", status_code=204)
     async def remove_server_key(key_id: str, request: Request, admin: AdminUser) -> None:
-        if not await delete_key(services_of(request).db, "", key_id):
+        services = services_of(request)
+        if not await delete_key(services.db, "", key_id):
             raise HTTPException(404, "no such key")
+        await audit(services.db, "keys.server_key_removed", user_id=admin.id, target=key_id,
+                    ip=client_ip(request))  # fmt: skip
 
     @router.put("/api/admin/grants/{user_id}")
     async def set_grant(
         user_id: str, body: GrantIn, request: Request, admin: AdminUser
     ) -> dict[str, Any]:
-        async with services_of(request).db.session() as session, session.begin():
+        services = services_of(request)
+        async with services.db.session() as session, session.begin():
             if await session.get(User, user_id) is None:
                 raise HTTPException(404, "no such user")
             grant = await session.get(KeyGrant, user_id)
@@ -181,6 +193,9 @@ def keys_router() -> APIRouter:
                 grant = KeyGrant(user_id=user_id)
                 session.add(grant)
             grant.allowed, grant.monthly_limit_usd = body.allowed, body.monthly_limit_usd
+        await audit(services.db, "keys.grant_changed", user_id=admin.id, target=user_id,
+                    ip=client_ip(request), allowed=body.allowed,
+                    monthly_limit_usd=body.monthly_limit_usd)  # fmt: skip
         return {"user_id": user_id, **body.model_dump(), "updated_at": time.time()}
 
     return router

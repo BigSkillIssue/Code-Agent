@@ -101,6 +101,10 @@ def payments_router() -> APIRouter:
     @router.post("/checkout")
     async def checkout(body: PaymentIn, seller: SellerOf, request: Request) -> dict[str, str]:
         services = services_of(request)
+        keys = await services.billing.keys()
+        if seller.environment == "production" and keys is not None and keys.mode != "live":
+            raise HTTPException(503, "payments are in Stripe's test mode: production apps take "
+                                "payments once the admin set live keys")  # fmt: skip
         allowed = await addresses(services, seller)
         for url in (body.success_url, body.cancel_url):
             if urlsplit(url).scheme != "https" or (urlsplit(url).hostname or "") not in allowed:

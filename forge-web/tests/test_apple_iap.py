@@ -121,6 +121,12 @@ async def test_a_renewal_extends_and_a_refund_removes_the_entitlement(
     refund = subscription("1000", PRO, 60, revocationDate=int(time.time() * 1000))
     await tell(apple_http, "shop", apple.notification("REFUND", BUNDLE, refund))
     assert await bought(apple_http, token) == []
+    again = subscription("1000", PRO, 90, appAccountToken="u-7")  # they subscribe again
+    await tell(apple_http, "shop", apple.notification("SUBSCRIBED", BUNDLE, again))
+    assert len(await bought(apple_http, token, account_token="u-7")) == 1  # paid is paid
+    refund = subscription("1000", PRO, 90, revocationDate=int(time.time() * 1000))
+    await tell(apple_http, "shop", apple.notification("REFUND", BUNDLE, refund))
+    assert await bought(apple_http, token) == []
     lapsed = subscription("9000", PRO, -1)  # its period is over
     await tell(apple_http, "shop", apple.notification("EXPIRED", BUNDLE, lapsed))
     assert await bought(apple_http, token) == []

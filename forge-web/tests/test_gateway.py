@@ -13,7 +13,7 @@ from sqlalchemy import select
 from forge_web.db.engine import Database
 from forge_web.db.models import Chat, KeyGrant, Project, UsageRecord, User
 from forge_web.gateway.keys import save_key
-from forge_web.gateway.meter import UsageSniffer, cost, price
+from forge_web.gateway.meter import Ledger, UsageSniffer, cost, price
 from forge_web.gateway.proxy import Gateway
 from forge_web.gateway.tokens import parse_token, run_token
 from forge_web.gateway.upstreams import (
@@ -70,6 +70,27 @@ def test_requests_are_capped_and_asked_for_usage() -> None:
     assert google["generationConfig"]["maxOutputTokens"] == 1000
     path = "v1beta/models/gemini-2.5-pro:streamGenerateContent"
     assert model_of("google", path, {}) == "gemini-2.5-pro"
+
+
+def test_a_token_limit_below_one_or_not_a_number_becomes_the_cap() -> None:
+    body: dict[str, Any] = {"max_tokens": -1_000_000_000, "max_output_tokens": 50}
+    assert prepare_body("openai_compat", "responses", body, 64_000) == 50
+    assert body == {"max_tokens": 1, "max_output_tokens": 50}  # the largest one applies
+    odd: dict[str, Any] = {"max_tokens": 1e12}
+    assert prepare_body("anthropic", "v1/messages", odd, 64_000) == 64_000
+    google: dict[str, Any] = {"generationConfig": {"maxOutputTokens": -5}}
+    assert prepare_body("google", "v1beta/models/x:generateContent", google, 1000) == 1
+    assert prepare_body("google", "x", {"generationConfig": {"maxOutputTokens": "lots"}}, 9) == 9
+
+
+async def test_a_negative_reservation_holds_nothing(tmp_path: Path) -> None:
+    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'ledger.db'}")
+    await db.migrate()
+    ledger = Ledger(db)
+    assert await ledger.reserve("u1", -5000.0, 1.0) == ""
+    assert ledger.reserved["u1"] == 0.0
+    assert await ledger.reserve("u1", 0.6, 1.0) == "" and await ledger.reserve("u1", 0.6, 1.0)
+    await db.close()
 
 
 def test_usage_is_read_from_each_provider_format() -> None:
@@ -237,6 +258,16 @@ async def test_server_keys_need_a_grant_and_respect_the_limit(world: dict[str, A
     assert {r.user_id for r in rows} == {"admin", "u1"} and all(
         r.key_kind == "server" for r in rows
     )
+
+
+async def test_server_keys_pay_only_for_calls_the_meter_can_price(world: dict[str, Any]) -> None:
+    await save_key(world["db"], world["vault"], "", "anthropic", "sk-ant-server-key-0001")
+    admin = token(world, "c2")  # an admin may use the server's keys
+    unknown = await call(world, admin, model="claude-from-the-future-x")
+    assert unknown.status_code == 403 and "no price" in unknown.json()["error"]["message"]
+    background = await call(world, admin, background=True)
+    assert background.status_code == 400
+    assert (await call(world, admin)).status_code == 200
 
 
 async def test_other_endpoints_are_refused(world: dict[str, Any]) -> None:

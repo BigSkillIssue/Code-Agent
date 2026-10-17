@@ -8,9 +8,15 @@ it came in and confirmed at once by mail, with that time and when it takes effec
 An ordinary cancellation of a customer it can match ends their subscriptions at Stripe at the end
 of the paid period; everything else (no matching account, for cause, Stripe away) goes to the
 admins, and the customer still gets the confirmation of receipt.
+
+The open form proves nothing about who sends it, so its page says only that the cancellation
+came in (never whether an account matched or when its period ends), and the confirmation that
+goes to the account's own address carries a link that takes the cancellation back while the
+paid period lasts: whoever cancels someone else's contract cannot keep it cancelled.
 """
 
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -50,18 +56,23 @@ class CancelIn(BaseModel):
 async def cancel(services: Services, name: str, email: str, body: CancelIn, user: User | None,
                  sender: str) -> Cancellation:  # fmt: skip
     """Record a cancellation, carry it out where it can be, and confirm it by mail."""
+    signed_in = user is not None
     user = user or await account_of(services, email)
     email = user.email if user and user.email else email  # the account's own spelling
     row = Cancellation(id=secrets.token_hex(8), received_at=time.time(), name=name[:200],
                        email=email[:320], contract=body.contract, extraordinary=body.extraordinary,
                        reason=body.reason, user_id=user.id if user else "", status="manual",
                        sender=sender)  # fmt: skip
+    undo = ""
     if user is not None and not body.extraordinary:
-        row.effective_at = await end_at_period_end(services, user, body.contract, row.id)
+        row.effective_at, ended = await end_at_period_end(services, user, body.contract, row.id)
         row.status = "done" if row.effective_at else "manual"
+        if row.effective_at and not signed_in:
+            undo = secrets.token_urlsafe(24)
+            row.undo_hash, row.subscriptions = token_hash(undo), json.dumps(ended)
     async with services.db.session() as session, session.begin():
         session.add(row)
-    services.background(confirm(services, row))
+    services.background(confirm(services, row, undo))
     if row.status == "manual":
         services.background(tell_admins(services, row))
     return row
@@ -73,28 +84,33 @@ async def account_of(services: Services, email: str) -> User | None:
         return await session.scalar(select(User).where(func.lower(User.email) == email.lower()))
 
 
+def token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 async def end_at_period_end(
     services: Services, user: User, contract: str, request_id: str
-) -> float:
+) -> tuple[float, list[str]]:
     """End the user's subscriptions (or the one named) at Stripe when their paid period ends;
-    when that is (0 when there is nothing to end, or Stripe could not be reached)."""
+    when that is (0 when there is nothing to end, or Stripe could not be reached), and which."""
     async with services.db.session() as session:
         rows = list(await session.scalars(select(Subscription).where(
             Subscription.user_id == user.id, Subscription.status.in_(PAID))))  # fmt: skip
     rows = [r for r in rows if not contract or contract in (r.item_id, r.stripe_subscription)]
     client = await services.billing.client()
     if not rows or client is None:
-        return 0.0
+        return 0.0, []
+    ended = sorted({r.stripe_subscription for r in rows if r.stripe_subscription})
     try:
-        for stripe_id in sorted({r.stripe_subscription for r in rows if r.stripe_subscription}):
+        for stripe_id in ended:
             await client.post(f"/v1/subscriptions/{stripe_id}", {"cancel_at_period_end": True},
                               idempotency_key=f"forge-cancel-{request_id}-{stripe_id}")  # fmt: skip
     except StripeError as error:
         log.warning("billing: a cancellation could not reach Stripe: %s", error)
-        return 0.0
+        return 0.0, []
     finally:
         await client.close()
-    return max(r.current_period_end for r in rows)
+    return max(r.current_period_end for r in rows), ended
 
 
 def when(moment: float) -> str:
@@ -114,10 +130,26 @@ def receipt(row: Cancellation) -> str:
             + f"\n{effect}\n\nVorgang: {row.id}")  # fmt: skip
 
 
-async def confirm(services: Services, row: Cancellation) -> None:
+def received(row: Cancellation) -> str:
+    """What the open form's page says: the same whether or not an account matched."""
+    kind = "außerordentliche" if row.extraordinary else "ordentliche"
+    return (f"Ihre {kind} Kündigung ist am {when(row.received_at)} bei uns eingegangen.\n\n"
+            f"Name: {row.name}\nE-Mail: {row.email}\nVertrag: {row.contract or 'alle Verträge'}"
+            "\n\nDie Bestätigung, auch wann die Kündigung wirksam wird, schicken wir an diese "
+            f"E-Mail-Adresse.\n\nVorgang: {row.id}")  # fmt: skip
+
+
+async def confirm(services: Services, row: Cancellation, undo: str = "") -> None:
+    """The confirmation of receipt by mail, with the link that takes back a cancellation from
+    the open form."""
     smtp = services.settings.auth.smtp
+    text = receipt(row)
+    if undo:
+        link = f"{services.settings.base_url()}/kuendigen/zuruecknehmen/{undo}"
+        text += ("\n\nWenn diese Kündigung nicht von Ihnen kommt, nehmen Sie sie hier zurück "
+                 f"(bis zum Ende des bezahlten Zeitraums): {link}")  # fmt: skip
     if mail_enabled(smtp):
-        await send_mail(smtp, row.email, "Ihre Kündigung ist eingegangen", receipt(row))
+        await send_mail(smtp, row.email, "Ihre Kündigung ist eingegangen", text)
 
 
 async def tell_admins(services: Services, row: Cancellation) -> None:
@@ -157,7 +189,9 @@ def cancel_router() -> APIRouter:
                         extraordinary=form.get("kind") == "extraordinary",
                         reason=form.get("reason", "")[:5000])  # fmt: skip
         row = await cancel(services, form["name"], form["email"], body, None, sender)
-        return page("Kündigung eingegangen", f"<p>{esc(receipt(row))}</p>")
+        return page("Kündigung eingegangen", f"<p>{esc(received(row))}</p>")
+
+    undo_routes(router)
 
     @router.post("/api/billing/cancel")
     async def mine(body: CancelIn, request: Request, user: CurrentUser) -> dict[str, Any]:
@@ -173,6 +207,46 @@ def cancel_router() -> APIRouter:
         return {"url": await portal_url(services, user)}
 
     return router
+
+
+def undo_routes(router: APIRouter) -> None:
+    """`/kuendigen/zuruecknehmen/<token>`: the link in the confirmation of an open-form one."""
+    url = "/kuendigen/zuruecknehmen/{token}"
+
+    @router.get(url, response_class=HTMLResponse)
+    async def ask(token: str) -> HTMLResponse:
+        return page("Kündigung zurücknehmen", f'<form method="post" action="/kuendigen/'
+                    f'zuruecknehmen/{esc(token)}"><p>Ihre Verträge laufen dann weiter.</p>'
+                    '<button type="submit">Kündigung zurücknehmen</button></form>')  # fmt: skip
+
+    @router.post(url, response_class=HTMLResponse)
+    async def undo(token: str, request: Request) -> HTMLResponse:
+        if not await undone(services_of(request), token):
+            return page("Kündigung zurücknehmen", "<p>Dieser Link gilt nicht (mehr).</p>", 404)
+        return page("Kündigung zurückgenommen", "<p>Ihre Verträge laufen weiter.</p>")
+
+
+async def undone(services: Services, token: str) -> bool:
+    """Take an open-form cancellation back at Stripe, once, while its period lasts."""
+    async with services.db.session() as session, session.begin():
+        row = await session.scalar(select(Cancellation).where(
+            Cancellation.undo_hash == token_hash(token), Cancellation.undone_at == 0))  # fmt: skip
+        if row is None or row.effective_at < time.time():
+            return False
+        row.undone_at, row.status = time.time(), "undone"
+        ended, row_id = json.loads(row.subscriptions or "[]"), row.id
+    client = await services.billing.client()
+    if client is None:
+        return True  # nothing was ended at Stripe without one
+    try:
+        for stripe_id in ended:
+            await client.post(f"/v1/subscriptions/{stripe_id}", {"cancel_at_period_end": False},
+                              idempotency_key=f"forge-undo-{row_id}-{stripe_id}")  # fmt: skip
+    except StripeError as error:
+        log.warning("billing: taking a cancellation back could not reach Stripe: %s", error)
+    finally:
+        await client.close()
+    return True
 
 
 async def portal_url(services: Services, user: User) -> str:

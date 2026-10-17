@@ -6,6 +6,7 @@ one (tests/docker_standin.py)."""
 
 import asyncio
 import shutil
+import zipfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
@@ -19,8 +20,8 @@ from docker_standin import FakeDocker, runner_for, tarball
 from forge_hostworker.android import bundle_path
 from forge_hostworker.wire import WITH_SECRETS, AndroidBuild, HostJob, JobResult
 from forge_web.db.hosting_models import HostedApp
-from forge_web.stores.android import android_app
-from host_standin import HostStandIn, host_online
+from forge_web.stores.android import android_app, is_bundle
+from host_standin import HostStandIn, host_online, stand_in_bundle
 from support import LiveServer, free_port
 from test_hosting_deploy import (
     app_project,
@@ -53,6 +54,32 @@ class GradleDocker(FakeDocker):
         return result
 
 
+class LinkingDocker(FakeDocker):
+    """Docker whose Gradle build leaves a link to a file of the host where the bundle goes, or
+    a linked folder on the way to it."""
+
+    def __init__(self, secret: Path, folder_link: bool = False) -> None:
+        super().__init__()
+        self.secret, self.folder_link = secret, folder_link
+
+    def do_run(self, args: list[str]) -> Any:
+        result = super().do_run(args)
+        if result.code == 0 and "bundleRelease" in args:
+            folder = Path(args[args.index("-v") + 1].removesuffix(":/app"))
+            if self.folder_link:
+                (folder / "app").mkdir(parents=True, exist_ok=True)
+                elsewhere = self.secret.parent / "outputs"
+                (elsewhere / "bundle/release").mkdir(parents=True, exist_ok=True)
+                (elsewhere / "bundle/release/app-release.aab").write_bytes(b"PK\x03\x04 x")
+                (folder / "app/build").mkdir()
+                (folder / "app/build/outputs").symlink_to(elsewhere)
+            else:
+                bundle = folder / "app/build/outputs/bundle/release/app-release.aab"
+                bundle.parent.mkdir(parents=True, exist_ok=True)
+                bundle.symlink_to(self.secret)
+        return result
+
+
 def android_job(code: int = 7) -> HostJob:
     build = AndroidBuild(image=IMAGE, version_code=code, version_name=f"1.0.{code}")
     return HostJob(id="b" * 32, kind="android", app="shop", environment="staging", android=build)
@@ -80,6 +107,19 @@ async def test_the_build_runs_in_a_throwaway_container_without_secrets(tmp_path:
     assert "android" not in WITH_SECRETS  # the client never asks for any
     assert bundle_path(runner.data_dir, "b" * 32).read_bytes().startswith(b"PK")
     assert not (runner.data_dir / "android" / ("b" * 32)).exists()  # nothing else stays
+
+
+async def test_a_link_instead_of_the_bundle_sends_nothing_of_the_host(tmp_path: Path) -> None:
+    secret = tmp_path / "host" / "host.key"
+    secret.parent.mkdir()
+    secret.write_text("the host's private key", encoding="utf-8")
+    for folder_link in (False, True):
+        runner = runner_for(tmp_path / f"r{folder_link}", LinkingDocker(secret, folder_link))
+        source = tarball(tmp_path / f"s{folder_link}.tar.gz", ANDROID)
+        result = await runner.run(android_job(), source, {})
+        assert not result.ok and result.error == "the build made no release bundle"
+        assert not bundle_path(runner.data_dir, "b" * 32).exists()
+    assert secret.read_text(encoding="utf-8") == "the host's private key"
 
 
 async def test_a_missing_app_or_a_failed_build_says_why(tmp_path: Path) -> None:
@@ -275,3 +315,13 @@ async def test_a_restart_waits_for_the_same_build(tmp_path: Path) -> None:
     assert done["status"] == "built", done["error"]
     assert host.kinds().count("android") == 1
     shutil.rmtree(host.data_dir, ignore_errors=True)
+
+
+def test_only_an_android_bundle_counts_as_one(tmp_path: Path) -> None:
+    good, text, other = tmp_path / "a.aab", tmp_path / "b.aab", tmp_path / "c.aab"
+    good.write_bytes(stand_in_bundle(3))
+    text.write_text("the host's private key", encoding="utf-8")
+    with zipfile.ZipFile(other, "w") as archive:
+        archive.writestr("readme.txt", "no manifest")
+    assert is_bundle(good) and not is_bundle(text) and not is_bundle(other)
+    assert not is_bundle(tmp_path / "missing.aab")

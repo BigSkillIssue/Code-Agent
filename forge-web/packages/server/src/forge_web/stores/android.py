@@ -14,6 +14,7 @@ import re
 import secrets
 import tarfile
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,17 @@ def android_app(archive: Path) -> str | None:
         text = handle.read(1024 * 1024).decode("utf-8", "replace") if handle else ""
     found = APPLICATION_ID.search(text)
     return found.group(1) if found else ""
+
+
+def is_bundle(path: Path) -> bool:
+    """Whether a file is an Android App Bundle (a ZIP with the base module's manifest)."""
+    if not path.is_file() or not zipfile.is_zipfile(path):
+        return False
+    try:
+        with zipfile.ZipFile(path) as bundle:
+            return "base/manifest/AndroidManifest.xml" in bundle.namelist()
+    except (zipfile.BadZipFile, OSError):
+        return False
 
 
 class AndroidBuilds:
@@ -197,9 +209,9 @@ class AndroidBuilds:
             if row is None:
                 return
             bundle = self.bundle(row)
-            made = result.ok and bundle.is_file()
+            made = result.ok and is_bundle(bundle)
             row.status = "built" if made else "failed"
-            row.error = "" if made else (result.error or "the host sent no bundle")
+            row.error = "" if made else (result.error or "the host sent no Android bundle")
             row.hint, row.log_tail, row.updated_at = result.hint, result.log_tail, time.time()
             row.size = bundle.stat().st_size if made else 0
         if not made:

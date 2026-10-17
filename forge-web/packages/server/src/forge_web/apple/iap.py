@@ -178,8 +178,8 @@ async def apply(session: Any, project_id: str, kind: str, purchase: dict[str, An
     row.expires_at = max(row.expires_at, expires) if row.expires_at and expires else expires
     if kind in TAKES:
         row.revoked_at = float(purchase.get("revocationDate") or time.time() * 1000) / 1000
-    elif kind == "REFUND_REVERSED":
-        row.revoked_at = 0.0
+    else:  # a renewal, a new purchase, a reversed refund: the transaction says if it is revoked
+        row.revoked_at = float(purchase.get("revocationDate") or 0) / 1000
     row.updated_at = time.time()
 
 

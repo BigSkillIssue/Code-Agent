@@ -151,6 +151,10 @@ class Cancellation(Base):
     status: Mapped[str] = mapped_column(String(16))  # done, or manual (an admin looks at it)
     effective_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: an admin confirms it
     sender: Mapped[str] = mapped_column(String(64), default="")  # a hash of the address, for limits
+    # A cancellation from the open form can be taken back by the account's mailbox (its link):
+    undo_hash: Mapped[str] = mapped_column(String(64), default="")  # SHA-256 of the link's token
+    subscriptions: Mapped[str] = mapped_column(Text, default="")  # JSON: the Stripe ids it ended
+    undone_at: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class DunningCase(Base):

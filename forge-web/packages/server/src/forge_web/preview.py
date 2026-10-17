@@ -92,7 +92,7 @@ def preview_router() -> APIRouter:
         base = preview_base(services.settings)
         if base is None:
             raise HTTPException(409, NO_DOMAIN)
-        session_id = token_id(session_token(request.cookies) or "")
+        session_id = token_id(session_token(request.cookies, services) or "")
         ticket = services.previews.issue(user.id, session_id, project_id, port)
         query = urlencode({"ticket": ticket, "next": "/"})
         return {"url": base.url(project_id, port, f"{ENTER_PATH}?{query}")}

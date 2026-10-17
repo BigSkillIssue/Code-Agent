@@ -12,7 +12,7 @@ from forge_web.access import require_project
 from forge_web.audit import audit
 from forge_web.auth.mail import mail_enabled
 from forge_web.auth.sessions import CurrentUser, client_ip
-from forge_web.db.models import Chat, ProjectMember, User
+from forge_web.db.models import Chat, Project, ProjectMember, User
 from forge_web.services import Services, services_of
 
 log = logging.getLogger(__name__)
@@ -30,6 +30,19 @@ class RoleIn(BaseModel):
     """A new role."""
 
     role: MemberRole
+
+
+async def hand_on(session: AsyncSession, project_id: str, leaving: str) -> None:
+    """When the project's owner of record stops being an owner, another owner becomes it: the
+    project's plan, limits, payments and notices are theirs from now on."""
+    project = await session.get(Project, project_id)
+    if project is None or project.owner_id != leaving:
+        return
+    heir = await session.scalar(select(ProjectMember.user_id).where(
+        ProjectMember.project_id == project_id, ProjectMember.role == "owner",
+        ProjectMember.user_id != leaving).order_by(ProjectMember.user_id).limit(1))  # fmt: skip
+    if heir is not None:
+        project.owner_id = heir
 
 
 async def owners_left(session: AsyncSession, project_id: str, without: str) -> int:
@@ -120,6 +133,8 @@ def members_router() -> APIRouter:
             if body.role != "owner" and await owners_left(session, project_id, member_id) == 0:
                 raise HTTPException(409, "a project needs at least one owner")
             member.role = body.role
+            if body.role != "owner":
+                await hand_on(session, project_id, member_id)
         if body.role == "viewer":  # viewers cannot run chats
             await stop_chats(services, member_id, project_id)
         await audit(
@@ -143,6 +158,7 @@ def members_router() -> APIRouter:
             if await owners_left(session, project_id, member_id) == 0:
                 raise HTTPException(409, "a project needs at least one owner")
             await session.delete(member)
+            await hand_on(session, project_id, member_id)
         await stop_chats(services, member_id, project_id)
         await audit(
             services.db, "member_removed", user_id=user.id, target=project_id,

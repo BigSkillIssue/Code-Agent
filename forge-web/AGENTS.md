@@ -28,8 +28,9 @@ Work through `docs/STEPS.md` in order, record each step in `PROGRESS.md`, one co
    the worker. `forge_macworker` (runs on a Mac that builds Apple apps) imports neither of them; the server
    imports only its `wire` module. `forge_hostworker` (runs on a Linux host and runs the hosted apps, W25)
    imports none of them and not even Forge (the host stays small); the server imports only its `wire`
-   module. `forge_winworker` (runs on a Windows machine that packages Windows apps, W38) imports none of
-   them and not Forge either; the server imports only its `wire` module. The others may import Forge.
+   module. `forge_winworker` (runs on a Windows machine that builds, or on another that packs and signs, the
+   products' Windows apps, W38/W39) imports none of them and not Forge either; the server imports only its
+   `wire` module. The others may import Forge.
 3. **The container is hostile.** Every frame, event, path and number that comes out of a container is
    validated and size-limited. The server never trusts usage reported by a worker, never uses a path from a
    container on the host, and never runs git or any project code on the host.
@@ -43,8 +44,8 @@ Work through `docs/STEPS.md` in order, record each step in `PROGRESS.md`, one co
 
 ## Stack and allowed dependencies
 
-Python **3.12+**, **uv** workspace (`packages/sandbox`, `packages/server`), Forge as an editable path
-dependency.
+Python **3.12+**, **uv** workspace (`packages/sandbox`, `packages/server`, `packages/macworker`,
+`packages/hostworker`, `packages/winworker`), Forge as an editable path dependency.
 
 | Package | Used for |
 | --- | --- |

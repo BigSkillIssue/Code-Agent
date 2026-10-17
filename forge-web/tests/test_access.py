@@ -38,8 +38,10 @@ PUBLIC = {
     "GET /legal/{app}/downloads",
     # Stripe's webhooks: the signature is the proof, not a session.
     "POST /api/billing/stripe/webhook",
-    # The cancellation button (§312k BGB) must work without signing in.
-    "GET /kuendigen", "POST /kuendigen",
+    # The cancellation button (§312k BGB) must work without signing in; its confirmation mail
+    # carries the link that takes an open-form cancellation back (the token is the proof).
+    "GET /kuendigen", "POST /kuendigen", "GET /kuendigen/zuruecknehmen/{token}",
+    "POST /kuendigen/zuruecknehmen/{token}",
     # The legal texts are public: customers read them before they accept them.
     "GET /rechtstexte/{kind}",
     # Apple's App Store Server Notifications: Apple's signature is the proof, not a session.
@@ -469,6 +471,9 @@ async def test_members_are_managed_by_owners(world: World) -> None:
     assert promote.status_code == 200
     assert (await owner.request("DELETE", f"{base}/{world.owner.id}")).status_code == 204
     assert (await owner.get(f"/api/projects/{world.project_id}")).status_code == 404  # left
+    async with world.server.services.db.session() as session:
+        project = await session.get(Project, world.project_id)
+    assert project is not None and project.owner_id == world.outsider.id  # plan, payments, notices
     leave = await world.viewer.web.request("DELETE", f"{base}/{world.viewer.id}")
     assert leave.status_code == 204
     async with world.server.services.db.session() as session:

@@ -26,7 +26,7 @@ from forge_web.billing.entitlements import Entitlements
 from forge_web.db.engine import Database
 from forge_web.db.models import Chat, UsageRecord, User
 from forge_web.gateway.keys import ChosenKey, choose_key, server_key_limit
-from forge_web.gateway.meter import CHARS_PER_TOKEN, Ledger, UsageSniffer, cost
+from forge_web.gateway.meter import CHARS_PER_TOKEN, Ledger, UsageSniffer, cost, priced
 from forge_web.gateway.tokens import parse_token, run_token
 from forge_web.gateway.upstreams import (
     FORWARD_HEADERS,
@@ -55,6 +55,16 @@ class Refusal(Exception):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
+
+
+def refuse_unmetered(up: Upstream, model: str, body: dict[str, Any]) -> None:
+    """The server's keys pay only for calls the meter can price: a model with a known price,
+    answered at once (a background response would report its usage nowhere)."""
+    if not up.keyless and not priced(up.name, model):
+        raise Refusal(403, f"Forge Web knows no price for {model or 'this model'}, so the "
+                      "server's keys are not used for it; use a key of your own")  # fmt: skip
+    if body.get("background"):
+        raise Refusal(400, "background responses cannot be metered on the server's keys")
 
 
 class Gateway:
@@ -146,6 +156,7 @@ class Gateway:
         model = model_of(up.kind, path, body)
         reserved = 0.0
         if key.kind == "server":
+            refuse_unmetered(up, model, body)
             reserved = cost(up.name, model, len(raw) // CHARS_PER_TOKEN, cap)
             refused = await self.ledger.reserve(user.id, reserved, limits.ai_month_usd,
                                                 chat.project_id, limits.ai_product_usd)  # fmt: skip

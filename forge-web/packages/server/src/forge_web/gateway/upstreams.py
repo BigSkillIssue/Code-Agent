@@ -96,20 +96,26 @@ def model_of(kind: str, path: str, body: dict[str, Any]) -> str:
     return model if isinstance(model, str) else ""
 
 
+def capped(value: Any, cap: int) -> int:
+    """A token limit between 1 and the cap; anything that is not a whole number is the cap."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return cap
+    return max(1, min(value, cap))
+
+
 def prepare_body(kind: str, path: str, body: dict[str, Any], cap: int) -> int:
     """Cap the output tokens a request may produce (in place); returns the cap that applies.
     OpenAI-style streams are asked to report their usage at the end."""
     if kind == "google":
-        config = body.setdefault("generationConfig", {})
-        if isinstance(config, dict):
-            config["maxOutputTokens"] = min(int(config.get("maxOutputTokens") or cap), cap)
-            return int(config["maxOutputTokens"])
-        return cap
-    limit = cap
-    for field in MAX_TOKEN_FIELDS[kind]:
-        if isinstance(body.get(field), int):
-            body[field] = min(body[field], cap)
-            limit = body[field]
+        config = body.get("generationConfig")
+        if not isinstance(config, dict):
+            config = body["generationConfig"] = {}
+        config["maxOutputTokens"] = capped(config.get("maxOutputTokens"), cap)
+        return int(config["maxOutputTokens"])
+    present = [field for field in MAX_TOKEN_FIELDS[kind] if field in body]
+    for field in present:
+        body[field] = capped(body[field], cap)
+    limit = max((int(body[field]) for field in present), default=cap)
     if kind == "openai_compat" and path == "chat/completions" and body.get("stream"):
         body["stream_options"] = {"include_usage": True}
     return limit

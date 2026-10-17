@@ -141,6 +141,12 @@ def price(provider: str, model: str) -> tuple[float, float]:
     return caps.cost_in, caps.cost_out
 
 
+def priced(provider: str, model: str) -> bool:
+    """Whether Forge knows what this model costs (else the server's keys are not used for it)."""
+    caps = capabilities_for(provider, model)
+    return not (caps.cost_in == 0 and caps.cost_out == 0)
+
+
 def cost(provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
     """What a call costs."""
     cost_in, cost_out = price(provider, model)
@@ -184,6 +190,7 @@ class Ledger:
         """Hold `amount` for a call if it fits under the user's monthly limit and the product's
         own; "" when it does, else which limit is used up (None: no limit)."""
         product = PRODUCT + project_id
+        amount = max(amount, 0.0)  # a reservation never lowers what is held
         async with self.lock:
             spent = await self.spent_this_month(user_id)
             if limit is not None and spent + self.reserved.get(user_id, 0.0) + amount > limit:

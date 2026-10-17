@@ -147,7 +147,8 @@ async def relay(websocket: WebSocket, channel: Channel, project_id: str) -> None
 
 async def watch_access(websocket: WebSocket, project_id: str) -> None:
     """Close the terminal once its user may no longer use it (signed out, removed, demoted)."""
-    services, token = services_of(websocket), session_token(websocket.cookies)
+    services = services_of(websocket)
+    token = session_token(websocket.cookies, services)
     while True:
         await asyncio.sleep(live_access.RECHECK_SECONDS)
         if not await live_access.may_use_project(services, token, project_id, "editor"):

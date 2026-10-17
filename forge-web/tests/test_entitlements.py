@@ -79,6 +79,7 @@ async def test_without_a_plan_the_servers_own_limits_apply(server: LiveServer) -
         source="server", projects=settings.quotas.projects_per_user, ai_month_usd=None,
         server_keys=False,  # no grant for the server's keys
         mac_minutes=settings.apple.minutes_per_month, storage_mb=settings.quotas.project_disk_mb,
+        hosted_apps=0, custom_domains=0, store_publishing=False,  # those are paid for
     )  # fmt: skip
     admin = await account(server, server.services.dev_user_id)
     assert (await engine.of(admin)).projects is None  # admins: any number of projects
@@ -113,6 +114,7 @@ async def test_a_plan_and_its_add_ons_set_every_limit(server: LiveServer) -> Non
     free = await engine.of(maria)
     assert (free.source, free.projects, free.store_publishing, free.ai_month_usd) == (
         "plan:free", 1, False, None)  # fmt: skip
+    assert free.server_keys is False  # no AI budget in the plan: the server's policy (no grant)
 
 
 async def test_every_limit_is_enforced_from_the_engine(server: LiveServer) -> None:

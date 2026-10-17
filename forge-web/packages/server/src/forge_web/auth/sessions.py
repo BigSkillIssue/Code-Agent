@@ -9,6 +9,7 @@ must come from this site's own origin (checked for API calls and WebSockets).
 import hashlib
 import secrets
 import time
+from collections.abc import Mapping
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -71,8 +72,11 @@ def clear_cookies(response: Response) -> None:
         response.delete_cookie(name, path="/")
 
 
-def session_token(cookies: dict[str, str]) -> str | None:
-    """The session token from either cookie name."""
+def session_token(cookies: Mapping[str, str], services: Services) -> str | None:
+    """The session token. Over HTTPS only the `__Host-` cookie counts: a plain one may have been
+    set by another host of the same site, to sign the browser into someone else's account."""
+    if is_https(services):
+        return cookies.get(SECURE_SESSION_COOKIE)
     return cookies.get(SECURE_SESSION_COOKIE) or cookies.get(SESSION_COOKIE)
 
 
@@ -119,7 +123,7 @@ def origin_allowed(services: Services, origin: str | None, host: str | None, sch
 async def current_user(request: Request) -> User:
     """The signed-in user; 401 otherwise. Changing requests must carry the CSRF value."""
     services = services_of(request)
-    found = await load_session(services, session_token(request.cookies))
+    found = await load_session(services, session_token(request.cookies, services))
     if found is None:
         raise HTTPException(401, "sign in first")
     row, user = found
@@ -156,7 +160,7 @@ async def websocket_user(websocket: WebSocket) -> User | None:
         services, origin, websocket.headers.get("host"), _http(websocket.url.scheme)
     ):
         return None
-    found = await load_session(services, session_token(websocket.cookies))
+    found = await load_session(services, session_token(websocket.cookies, services))
     return found[1] if found is not None else None
 
 

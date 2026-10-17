@@ -65,7 +65,7 @@ async def serve(websocket: WebSocket, services: Services, user: User) -> None:
 
 async def _recheck(websocket: WebSocket, services: Services, subscriber: Subscriber) -> None:
     """End the socket when its session ends, and subscriptions to chats it may no longer read."""
-    token = session_token(websocket.cookies)
+    token = session_token(websocket.cookies, services)
     while True:
         await asyncio.sleep(live_access.RECHECK_SECONDS)
         user = await live_access.signed_in(services, token)

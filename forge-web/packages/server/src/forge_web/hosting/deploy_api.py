@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from forge_hostworker.wire import (
     ENV_NAME,
@@ -190,7 +190,7 @@ def deploy_router() -> APIRouter:
     @router.get("/hosting")
     async def overview(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
         services = await allowed(request, user, project_id)
-        return await hosting_overview(services, project_id)
+        return await hosting_overview(services, project_id, user.id)
 
     secret_routes(router)
     return router
@@ -327,7 +327,7 @@ async def room_for_an_app(services: Services, owner_id: str, project_id: str) ->
         raise HTTPException(403, f"your plan allows {limit} hosted apps")
 
 
-async def hosting_overview(services: Services, project_id: str) -> dict[str, Any]:
+async def hosting_overview(services: Services, project_id: str, user_id: str) -> dict[str, Any]:
     """The go-live page's data: reviews, approvals, deploys, what is live, the secrets' names."""
     async with services.db.session() as session:
         hosted = await session.get(HostedApp, project_id)
@@ -339,7 +339,7 @@ async def hosting_overview(services: Services, project_id: str) -> dict[str, Any
             select(GoLiveApproval).where(GoLiveApproval.project_id == project_id,
                                          GoLiveApproval.commit != "")
             .order_by(GoLiveApproval.created_at.desc()).limit(SHOWN))]  # fmt: skip
-        reviews = await release_reviews(session, project_id)
+        reviews = await release_reviews(session, project_id, user_id)
         names = [{"environment": s.environment, "name": s.name} for s in await session.scalars(
             select(AppSecret).where(AppSecret.project_id == project_id))]  # fmt: skip
         operator = operator_view(await session.get(AppOperator, project_id))
@@ -358,12 +358,14 @@ async def hosting_overview(services: Services, project_id: str) -> dict[str, Any
             "secrets": names, "operator": operator}  # fmt: skip
 
 
-async def release_reviews(session: Any, project_id: str) -> list[dict[str, Any]]:
-    """The newest release review of each stage (request, plan, product) from the chats."""
+async def release_reviews(session: Any, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """The newest release review of each stage (request, plan, product) from the chats this
+    user may read: their own and the shared ones."""
     query = (
         select(ChatEvent.chat_id, ChatEvent.data)
         .join(Chat, Chat.id == ChatEvent.chat_id)
-        .where(Chat.project_id == project_id, ChatEvent.kind == "release_review")
+        .where(Chat.project_id == project_id, ChatEvent.kind == "release_review",
+               or_(Chat.shared.is_(True), Chat.user_id == user_id))
         .order_by(ChatEvent.ts.desc()).limit(200)
     )  # fmt: skip
     latest: dict[str, dict[str, Any]] = {}

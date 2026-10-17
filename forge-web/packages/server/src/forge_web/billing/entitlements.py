@@ -1,11 +1,13 @@
 """Entitlements (W33a): one engine sets every limit of a user, wherever it is enforced.
 
-Admins keep the server's own limits (any number of projects). With billing off, and for customers
-without a subscription (unless the admin named a free plan), the server's own settings apply as
-before: projects per user, disk per project, the monthly budget on the server's AI keys (with its
-grants), Mac minutes. A customer with a subscription gets the limits of their plan, plus what
-their add-ons add; hosting bought per app adds hosted apps. Plans set AI budgets in EUR; the
-gateway counts USD.
+Admins keep the server's own limits (any number of projects). With billing off, the server's own
+settings apply as before: projects per user, disk per project, the monthly budget on the server's
+AI keys (with its grants), Mac minutes. With billing on, a customer without a subscription (unless
+the admin named a free plan) gets those too, but no hosted app, no own domain and no store
+publishing: those are paid for. A customer with a subscription gets the limits of their plan, plus
+what their add-ons add; hosting bought per app adds hosted apps. Plans set AI budgets in EUR; the
+gateway counts USD. A plan without an AI budget leaves the server's AI keys to the server's own
+policy (its grants and default budget), never unlimited: they are the admin's money.
 """
 
 import json
@@ -50,9 +52,11 @@ class EntitlementEngine:
         if user.role == "admin":  # the server's limits, but no count of projects
             return replace(await self.server_defaults(user), source="admin", projects=None)
         if self.settings.billing.enabled:
-            paid = await self.plan_of(user.id)
+            paid = await self.plan_of(user)
             if paid is not None:
                 return paid
+            unpaid = await self.server_defaults(user)
+            return replace(unpaid, hosted_apps=0, custom_domains=0, store_publishing=False)
         return await self.server_defaults(user)
 
     async def of_project(self, project_id: str) -> Entitlements:
@@ -76,11 +80,11 @@ class EntitlementEngine:
             storage_mb=settings.quotas.project_disk_mb or None,
         )  # fmt: skip
 
-    async def plan_of(self, user_id: str) -> Entitlements | None:
+    async def plan_of(self, user: User) -> Entitlements | None:
         """The limits of the user's plan and add-ons (None without a plan)."""
         async with self.db.session() as session:
             paid = list(await session.scalars(
-                select(Subscription).where(Subscription.user_id == user_id,
+                select(Subscription).where(Subscription.user_id == user.id,
                                            Subscription.status.in_(PAID))
                 .order_by(Subscription.created_at.desc())))  # fmt: skip
             wanted = {s.item_id for s in paid} | {self.settings.billing.free_plan}
@@ -93,6 +97,10 @@ class EntitlementEngine:
         if plan is None:
             return None
         found = self.from_limits(f"plan:{plan.id}", Limits.model_validate(json.loads(plan.limits)))
+        if found.ai_month_usd is None:  # no budget in the plan: the server's own policy
+            policy = await self.server_defaults(user)
+            found = replace(found, ai_month_usd=policy.ai_month_usd,
+                            server_keys=policy.server_keys)  # fmt: skip
         for row in paid:
             item = items.get(row.item_id)
             if item is not None and item.kind in ("addon", "hosting"):

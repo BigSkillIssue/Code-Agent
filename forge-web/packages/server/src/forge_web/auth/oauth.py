@@ -127,7 +127,7 @@ def flow_routes(router: APIRouter) -> None:
             raise HTTPException(404, "no such sign-in provider")
         user_id = ""
         if intent != "login":
-            found = await load_session(services, session_token(request.cookies))
+            found = await load_session(services, session_token(request.cookies, services))
             if found is None:
                 raise HTTPException(401, "sign in first")
             user_id = found[1].id
@@ -207,7 +207,7 @@ async def finish(
 
 async def same_user(request: Request, services: Services, flow: Flow) -> str:
     """The signed-in user, who must be the one who started the flow."""
-    found = await load_session(services, session_token(request.cookies))
+    found = await load_session(services, session_token(request.cookies, services))
     if found is None or found[1].id != flow.user_id:
         raise HTTPException(401, "sign in again first")
     return found[1].id
