@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal, cast
 
 from forge.ctx import Ctx
 from forge.events import ErrorEvent, ModelDelta, ModelDone
@@ -48,8 +48,9 @@ async def model_turn(
     last_error: ProviderError | None = None
     for provider, model in usable(ctx, chain):
         request = ChatRequest(
-            model=model, system=system, messages=messages, tools=specs, json_schema=json_schema
-        )
+            model=model, system=system, messages=messages, tools=specs, json_schema=json_schema,
+            reasoning_effort=effort_for(ctx, provider, model),
+        )  # fmt: skip
         try:
             return await stream_reply(
                 ctx, with_tool_fallback(provider, request), request, on_tool_call
@@ -60,6 +61,14 @@ async def model_turn(
             cool_down(ctx, f"{provider.name}/{model}", err)
     assert last_error is not None
     raise last_error
+
+
+def effort_for(ctx: Ctx, provider: Provider, model: str) -> Literal["low", "medium", "high"] | None:
+    """The effort to ask a reasoning model for (S74); None for `auto` and other models."""
+    level = ctx.state.effort_override or ctx.cfg.effort
+    if level not in ("low", "medium", "high") or not provider.capabilities(model).reasoning:
+        return None
+    return cast(Literal["low", "medium", "high"], level)
 
 
 def usable(ctx: Ctx, chain: list[tuple[Provider, str]]) -> list[tuple[Provider, str]]:

@@ -12,6 +12,7 @@ from forge import __version__
 from forge.app_cli import cmd_app
 from forge.apple_template import bundle_problem, name_problem, write_app
 from forge.config import (
+    EFFORTS,
     ConfigError,
     ForgeConfig,
     find_project_root,
@@ -28,6 +29,7 @@ from forge.ollama_cli import cmd_ollama
 from forge.ollama_setup import context_warnings
 from forge.pipeline import PipelineError, Report, report_text, resume, run_task
 from forge.ports import Renderer, SessionNotFoundError
+from forge.runtime.attachments import Attachment, attachment_for
 from forge.wiring import close_session, default_store, open_session, show_events, use_fake_provider
 
 EPILOG = """\
@@ -68,6 +70,18 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--solo", action="store_const", const="solo", dest="mode", help="one agent")
     mode.add_argument(
         "--team", action="store_const", const="team", dest="mode", help="a team on a task board"
+    )
+    parser.add_argument(
+        "--attach",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="attach a file or image to the prompt (repeatable, at most 10)",
+    )
+    parser.add_argument(
+        "--effort",
+        choices=EFFORTS,
+        help="how hard reasoning models think; auto (default) keeps the model's own default",
     )
     parser.add_argument(
         "--apple",
@@ -114,6 +128,8 @@ def load(options: argparse.Namespace) -> tuple[Path, ForgeConfig]:
         cfg.apple.review = True
     if options.app:
         cfg.app.review = True
+    if options.effort:
+        cfg.effort = options.effort
     for warning in cfg.warnings:  # e.g. untrusted project settings that were ignored
         print(f"warning: {warning}", file=sys.stderr)
     if options.fake is None:
@@ -200,11 +216,20 @@ def cmd_prompt(options: argparse.Namespace, prompt: str) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    return asyncio.run(run_prompt(root, cfg, prompt, auto_approve=options.yes, mode=options.mode))
+    files = [attachment_for(Path.cwd(), path) for path in options.attach]
+    return asyncio.run(
+        run_prompt(root, cfg, prompt, auto_approve=options.yes, mode=options.mode, files=files)
+    )
 
 
 async def run_prompt(
-    root: Path, cfg: ForgeConfig, prompt: str, *, auto_approve: bool, mode: str | None = None
+    root: Path,
+    cfg: ForgeConfig,
+    prompt: str,
+    *,
+    auto_approve: bool,
+    mode: str | None = None,
+    files: Sequence[Attachment] = (),
 ) -> int:
     """Run one task in a fresh session; exit code 0 when the agent finished."""
     renderer = RichRenderer(auto_approve=auto_approve)
@@ -212,7 +237,7 @@ async def run_prompt(
     ctx.state.mode_override = mode
     shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
     try:
-        report = await run_task(prompt, ctx)
+        report = await run_task(prompt, ctx, files)
         ok = report.ok
         event = SessionDone(
             session_id=ctx.session.id, ts=time.time(), ok=ok, report=report_text(report)
@@ -311,15 +336,24 @@ def cmd_run(options: argparse.Namespace, rest: list[str]) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_FAILED
     prompt = " ".join(args.prompt)
+    files = [attachment_for(Path.cwd(), path) for path in options.attach]
     return asyncio.run(
         run_headless(
-            root, cfg, prompt, json_lines=args.json, yes=options.yes, defaults=not args.no_defaults
+            root, cfg, prompt, json_lines=args.json, yes=options.yes, defaults=not args.no_defaults,
+            files=files,
         )
-    )
+    )  # fmt: skip
 
 
 async def run_headless(
-    root: Path, cfg: ForgeConfig, prompt: str, *, json_lines: bool, yes: bool, defaults: bool
+    root: Path,
+    cfg: ForgeConfig,
+    prompt: str,
+    *,
+    json_lines: bool,
+    yes: bool,
+    defaults: bool,
+    files: Sequence[Attachment] = (),
 ) -> int:
     """Run one task without prompts; 0 done, 1 failed, 2 needs input."""
     task: asyncio.Task[Report] | None = None
@@ -337,7 +371,7 @@ async def run_headless(
     ctx = await open_session(root, cfg, renderer, headless=defaults)
     shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), renderer))
     try:
-        task = asyncio.create_task(run_task(prompt, ctx))
+        task = asyncio.create_task(run_task(prompt, ctx, files))
         try:
             report = await task
         except (asyncio.CancelledError, NeedsInput):  # NeedsInput: asked by the pipeline itself

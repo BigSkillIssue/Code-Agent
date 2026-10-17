@@ -1,5 +1,6 @@
 """Gather what the refiner needs to know about the project (no model calls)."""
 
+from forge.conversation import conversation_text
 from forge.ctx import Ctx
 from forge.memory import load_memory, render_memory
 from forge.runtime.ignore import project_files
@@ -21,7 +22,8 @@ async def gather(ctx: Ctx) -> str:
     summary = await last_summary(ctx)
     if summary:
         parts.append(f"Summary of the previous session:\n{summary}")
-    return "\n\n".join(parts)
+    talk = conversation_text(ctx)  # S76: this session's earlier tasks
+    return "\n\n".join([*parts, talk.strip()] if talk else parts)
 
 
 async def git_status(ctx: Ctx) -> str:

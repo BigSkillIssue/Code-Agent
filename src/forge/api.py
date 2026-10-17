@@ -12,7 +12,7 @@ and tool approvals follow `approve` (default: allow, as `forge run --yes` would)
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
 from forge.config import ForgeConfig, find_project_root, load_config
@@ -22,9 +22,10 @@ from forge.local.auto_renderer import AutoRenderer
 from forge.pipeline import Report, report_text, run_task
 from forge.ports import Approval, Executor, Renderer, Store
 from forge.providers.base import ToolCall
+from forge.runtime.attachments import Attachment
 from forge.wiring import close_session, open_session, show_events
 
-__all__ = ["Forge", "Report"]
+__all__ = ["Attachment", "Forge", "Report"]
 
 
 class Forge:
@@ -58,12 +59,13 @@ class Forge:
             headless=self.headless,
         )
 
-    async def run(self, prompt: str) -> Report:
-        """Work on one task and return the report; the renderer sees every event."""
+    async def run(self, prompt: str, attachments: Sequence[Attachment] = ()) -> Report:
+        """Work on one task (with files attached) and return the report; the renderer sees
+        every event."""
         ctx = await self.open()
         shower = asyncio.create_task(show_events(ctx.bus.subscribe(ctx.session.id), self.renderer))
         try:
-            report = await run_task(prompt, ctx)
+            report = await run_task(prompt, ctx, attachments)
             await publish_done(ctx, report)
             await asyncio.wait({shower}, timeout=5)
             return report
@@ -71,11 +73,14 @@ class Forge:
             shower.cancel()
             await close_session(ctx)
 
-    async def stream(self, prompt: str) -> AsyncIterator[Event]:
-        """Work on one task, yielding every event; the last one is SessionDone."""
+    async def stream(
+        self, prompt: str, attachments: Sequence[Attachment] = ()
+    ) -> AsyncIterator[Event]:
+        """Work on one task (with files attached), yielding every event; the last one is
+        SessionDone."""
         ctx = await self.open()
         events = ctx.bus.subscribe(ctx.session.id)
-        task = asyncio.create_task(run_and_finish(prompt, ctx))
+        task = asyncio.create_task(run_and_finish(prompt, ctx, attachments))
         try:
             async for event in events:
                 yield event
@@ -87,9 +92,9 @@ class Forge:
             await close_session(ctx)
 
 
-async def run_and_finish(prompt: str, ctx: Ctx) -> Report:
+async def run_and_finish(prompt: str, ctx: Ctx, attachments: Sequence[Attachment] = ()) -> Report:
     """run_task, then the SessionDone event that ends a stream."""
-    report = await run_task(prompt, ctx)
+    report = await run_task(prompt, ctx, attachments)
     await publish_done(ctx, report)
     return report
 

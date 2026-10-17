@@ -1,6 +1,7 @@
 """The pipeline every task goes through: refine -> clarify -> plan -> execute -> verify."""
 
 import json
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Literal
 
@@ -10,17 +11,27 @@ from forge import prompts, release_flow
 from forge.agent import over_budget, run_agent
 from forge.app_flow import AppCheckpoint
 from forge.apple_flow import AppleCheckpoint
+from forge.board import plan_areas
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
+from forge.conversation import record_turn
 from forge.ctx import Ctx
 from forge.modelcall import complete, publish_error
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
-from forge.providers.base import Message, ProviderError, Usage, text_message
+from forge.providers.base import ImagePart, Message, ProviderError, TextPart, Usage, text_message
 from forge.questions import ask, assumption, default_answer
+from forge.runtime.attachments import (
+    Attachment,
+    AttachmentError,
+    check_attachments,
+    image_parts,
+    listing,
+)
 from forge.runtime.checkpoint import CheckpointError, snapshot
 from forge.runtime.gitops import changed_files, diff_since
 from forge.structured import StructuredError, parse_as
+from forge.tools import model_has_vision
 
 
 class Report(BaseModel):
@@ -58,8 +69,25 @@ async def refine(prompt: str, ctx: Ctx) -> TaskSpec:
     """Turn the raw prompt into a TaskSpec with the refiner role (one retry on invalid JSON)."""
     schema = TaskSpec.model_json_schema()
     system = prompts.render("refiner", schema=json.dumps(schema), context=await gather(ctx))
-    messages = [text_message("user", prompt)]
+    messages = [await request_message(ctx, prompt)]
     return await ask_for_spec(ctx, system, messages, schema)
+
+
+async def request_message(ctx: Ctx, prompt: str) -> Message:
+    """The refiner's message: the request, the files attached to it and the images it can see."""
+    if not ctx.state.attachments:
+        return text_message("user", prompt)
+    images = await shown_images(replace(ctx, role="refiner"))
+    files = listing(ctx.state.attachments, shown=bool(images))
+    text = prompt + "\n\n" + prompts.render("attached", files=files)
+    return Message(role="user", parts=[TextPart(text=text), *images])
+
+
+async def shown_images(ctx: Ctx) -> list[ImagePart]:
+    """The task's attached images, when this agent's model can see (S75)."""
+    if not ctx.state.attachments or not model_has_vision(ctx):
+        return []
+    return await image_parts(ctx.root, ctx.state.attachments)
 
 
 async def ask_for_spec(
@@ -142,7 +170,13 @@ async def make_plan(spec: TaskSpec, ctx: Ctx) -> Plan:
     ctx.session.plan = None
     ctx.state.plan_rejected = False
     planner = replace(ctx, role="planner")
-    await run_agent(planner, prompts.render("plan_task"), role="planner", max_turns=PLANNER_TURNS)
+    await run_agent(
+        planner,
+        prompts.render("plan_task"),
+        role="planner",
+        max_turns=PLANNER_TURNS,
+        images=await shown_images(planner),
+    )
     if ctx.state.plan_rejected:
         raise PlanRejected("the user rejected the plan")
     if ctx.session.plan is None:
@@ -167,6 +201,14 @@ def choose_mode(spec: TaskSpec, override: str | None) -> Mode:
     if override in ("solo", "subagents", "team"):
         return override  # type: ignore[return-value]
     return MODE_BY_SIZE[spec.size]
+
+
+def mode_for_plan(plan: Plan, mode: str, override: str | None) -> str:
+    """A plan whose steps span several areas gets a team, one agent per area (S77), unless the
+    user chose the mode."""
+    if mode == "subagents" and override is None and plan_areas(plan):
+        return "team"
+    return mode
 
 
 async def execute(plan: Plan, ctx: Ctx) -> Plan:
@@ -310,14 +352,15 @@ def checkpoints_for(ctx: Ctx) -> list[release_flow.Checkpoint]:
     return found
 
 
-async def run_task(prompt: str, ctx: Ctx) -> Report:
-    """The whole pipeline: refine, clarify, plan, execute, final review."""
+async def run_task(prompt: str, ctx: Ctx, attachments: Sequence[Attachment] = ()) -> Report:
+    """The whole pipeline: refine, clarify, plan, execute, final review (S75: with files)."""
     ctx.session.status = "active"
     submitted = await ctx.hooks.run("prompt_submit", {"prompt": prompt}, ctx)
     if submitted.block:
         return stopped_report(ctx, f"A prompt_submit hook stopped this task: {submitted.message}")
     checkpoints = checkpoints_for(ctx)
     try:
+        ctx.state.attachments = await check_attachments(ctx.root, attachments)
         await release_flow.check_request(checkpoints, ctx, prompt)
         spec = await refine(prompt, ctx)
         ctx.session.spec = spec
@@ -328,8 +371,11 @@ async def run_task(prompt: str, ctx: Ctx) -> Report:
             report = await run_planned(await clarify(spec, ctx), ctx, checkpoints)
     except PlanRejected:
         report = stopped_report(ctx, "You rejected the plan, so nothing was changed.")
-    except (PipelineError, release_flow.CheckpointStopped) as err:
+    except (PipelineError, release_flow.CheckpointStopped, AttachmentError) as err:
         report = stopped_report(ctx, str(err))
+    finally:
+        ctx.state.attachments = []  # the next task starts without them
+    await record_turn(ctx, prompt, report.ok, report.summary, report.files_changed)
     ctx.session.status = "done" if report.ok else "failed"
     ctx.session.summary = report.summary
     await ctx.store.save_session(ctx.session)
@@ -349,6 +395,7 @@ async def run_planned(
         return await make_plan(revised, ctx)
 
     plan = await release_flow.check_plan(checkpoints, ctx, plan, replan)
+    ctx.state.mode = mode_for_plan(plan, ctx.state.mode, ctx.state.mode_override)
     plan = await execute(plan, ctx)
     if over_budget(ctx):
         return await budget_report(ctx)
@@ -359,7 +406,10 @@ async def run_planned(
 
 async def run_trivial(prompt: str, spec: TaskSpec, ctx: Ctx) -> Report:
     """Trivial tasks skip questions and planning: one agent run straight on the prompt."""
-    result = await run_agent(ctx, prompt, max_turns=ctx.cfg.limits.max_turns_per_step)
+    images = await shown_images(ctx)
+    result = await run_agent(
+        ctx, prompt, max_turns=ctx.cfg.limits.max_turns_per_step, images=images
+    )
     return Report(
         ok=result.stopped == "done",
         summary=result.text,

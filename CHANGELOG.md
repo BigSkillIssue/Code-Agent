@@ -86,6 +86,23 @@ Phase 8 (Produkt-Fabrik: complete products, hosted by Forge Web):
   installer and a ZIP to run without installing, and both update themselves from the website. A
   paid product sells on its website; there is no Microsoft Store.
 
+Phase 9 (S74-S77), like Claude:
+
+- **Effort:** `effort = "low" | "medium" | "high"` (default `auto`, the model's own) sets how
+  hard reasoning models think; `/effort` and `--effort` change it for one session.
+- **Attachments:** `forge run --attach FILE` and `Forge.run(prompt, attachments=[...])` give a
+  task up to 10 files; models that can see get the images with the request, every agent of the
+  task gets the list to read the files.
+- **One ongoing conversation:** the tasks of a session are one conversation: the next task
+  sees the earlier requests and their results, old turns are folded into notes, and the agent
+  calls `compact_context` to drop what an earlier task left behind when a new one starts. The
+  agent keeps the program organised in FORGE.md, docs/architecture.md, docs/decisions.md and
+  docs/progress.md.
+- **A team per area:** the planner names each step's area (`database: …`, `api: …`, `web: …`);
+  a plan with several areas runs as a team with one agent per area, named after it, and the
+  agents agree on interfaces with each other through `send_message` and `docs/architecture.md`.
+  The lead is told to work the same way for any change across several areas.
+
 ## 1.0.0 - 2026-10-05
 
 The first release: everything planned in `docs/STEPS.md` (S01-S48).

@@ -21,6 +21,7 @@ from forge.ports import (
     Store,
 )
 from forge.providers.base import Usage
+from forge.runtime.attachments import Attachment
 from forge.runtime.ledger import ReadLedger
 from forge.runtime.permissions import Permissions
 from forge.todos import Todo
@@ -95,12 +96,15 @@ class SessionState:
     checkpoints: dict[str, str] = field(default_factory=dict)  # step id -> snapshot ref (S18)
     web_searches: int = 0  # web_search calls so far (limit 200 per session)
     compact_request: int = 0  # /compact asks for level 2 (or 3 with "hard") on the next turn
+    compact_keep: dict[str, str] = field(default_factory=dict)  # agent id -> compact_context's text
     context_usage: dict[str, int] = field(default_factory=dict)  # last request, by category
     team: Team | None = None  # set by wiring; None means sub-agents are unavailable
     custom_roles: dict[str, CustomRole] = field(default_factory=dict)  # from agent files
     team_mode: bool = False  # the board tools are offered only to teams
     mode: str = ""  # solo | subagents | team, chosen per task by the pipeline ("" = not chosen)
     mode_override: str | None = None  # --solo / --team
+    effort_override: str | None = None  # /effort or --effort, over the config's `effort` (S74)
+    attachments: list[Attachment] = field(default_factory=list)  # the running task's (S75)
     mcp: McpTools | None = None  # set by wiring when [mcp_servers] are configured
     browser_factory: BrowserFactory | None = None  # set by wiring; None: no browser agent
     # Forge's own screenshots of a product it runs locally (S67b): may open local addresses,
