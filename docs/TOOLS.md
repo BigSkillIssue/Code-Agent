@@ -989,6 +989,8 @@ async def stop_agent(
 
 The board is the plan seen by a team: each `Step` is a task, with an extra `owner: str | None` stored next to it in the `Store` (`board` table: `session_id, step_id, owner, claimed_at`). Display status is computed: `done`, `failed`, `skipped` and `doing` come from the step; a `todo` step is `ready` when all dependencies are `done` or `skipped`, otherwise `blocked`. These three tools are given only to agents in team mode.
 
+**Areas (added in S77).** A step whose title starts with an area and a colon (`database: add the orders table`, matched as `[a-z][a-z0-9-]{0,31}:` case-insensitively) belongs to that area. When the open steps name at least two areas, team mode starts one worker per area (up to `limits.max_parallel_agents`), named after it (`database`, `api` …), with `prompts.TEAM_AREA_TASK`: take only your area's tasks, agree on interfaces with the other areas' agents through `send_message` (by their names) and write them into `docs/architecture.md`. Without areas the workers are `worker-1` … `worker-n` with `TEAM_TASK`. A plan with areas also turns a `subagents` task into a team (`pipeline.mode_for_plan`), unless the user chose the mode with `--solo`/`--team`. The planner is told to name areas that way, and a blueprint's components (S68) are its areas.
+
 ### `read_board`
 
 ```python

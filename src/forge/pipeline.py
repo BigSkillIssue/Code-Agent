@@ -11,6 +11,7 @@ from forge import prompts, release_flow
 from forge.agent import over_budget, run_agent
 from forge.app_flow import AppCheckpoint
 from forge.apple_flow import AppleCheckpoint
+from forge.board import plan_areas
 from forge.checks import CheckResult, save_plan, settle_step
 from forge.checks import verify_step as run_check
 from forge.context import gather
@@ -202,6 +203,14 @@ def choose_mode(spec: TaskSpec, override: str | None) -> Mode:
     return MODE_BY_SIZE[spec.size]
 
 
+def mode_for_plan(plan: Plan, mode: str, override: str | None) -> str:
+    """A plan whose steps span several areas gets a team, one agent per area (S77), unless the
+    user chose the mode."""
+    if mode == "subagents" and override is None and plan_areas(plan):
+        return "team"
+    return mode
+
+
 async def execute(plan: Plan, ctx: Ctx) -> Plan:
     """Run the plan one ready step at a time; a step that keeps failing triggers a replan.
 
@@ -386,6 +395,7 @@ async def run_planned(
         return await make_plan(revised, ctx)
 
     plan = await release_flow.check_plan(checkpoints, ctx, plan, replan)
+    ctx.state.mode = mode_for_plan(plan, ctx.state.mode, ctx.state.mode_override)
     plan = await execute(plan, ctx)
     if over_budget(ctx):
         return await budget_report(ctx)

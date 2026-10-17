@@ -5,6 +5,7 @@ skipped, else `blocked`. Owners live in the store (`BoardStore`), so a claim is 
 when several agents race for the same task.
 """
 
+import re
 from collections.abc import Callable
 
 from forge.checks import save_plan, settle_step
@@ -16,6 +17,20 @@ from forge.tools import step_failed
 
 FINISHED = ("done", "skipped")
 Notify = Callable[[str], None]
+AREA = re.compile(r"^([a-z][a-z0-9-]{0,31}):\s")  # "database: add the orders table"
+
+
+def area_of(step: Step) -> str | None:
+    """The area a step's title names before a colon, if any (S77)."""
+    found = AREA.match(step.title.strip().lower())
+    return found.group(1) if found else None
+
+
+def plan_areas(plan: Plan) -> list[str]:
+    """The areas of the plan's open steps in order, when there are at least two (S77)."""
+    named = [area_of(step) for step in plan.steps if step.status not in FINISHED]
+    areas = list(dict.fromkeys(area for area in named if area))
+    return areas if len(areas) >= 2 else []
 
 
 def display_status(plan: Plan, step: Step) -> str:

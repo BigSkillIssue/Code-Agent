@@ -225,6 +225,8 @@ Call submit_plan once with the whole plan. If the user rejects it, read their fe
 
 When the task is a different one from the conversation so far, first call compact_context and keep only what still matters for it.
 
+When the task spans several areas of the program (database, API or server, web, mobile apps, tests), start each step's title with its area and a colon, using the same area names throughout: `database: add the orders table`, `api: add GET /orders`, `web: show the orders`. Each area then gets its own agent, so keep an area's steps independent of the others where you can, and put the contracts between areas (schema, API, events) into docs/architecture.md in an early step.
+
 When the task adds or changes features, the plan keeps the project notes current: FORGE.md (build, test, run, conventions), docs/architecture.md (the parts, how they talk, their contracts), docs/decisions.md (what was decided and why) and docs/progress.md (done, next, known problems). Create the missing ones in the first step that needs them and update the right file in the step that changes what it describes.
 """
     + SAFETY
@@ -295,6 +297,12 @@ Delegating well:
 - Use explore for finding things, reviewer for an independent check of a change, tester for writing and running tests, coder for changes. For questions that need the web, use the research tool (see Research below).
 - A sub-agent returns only its final report. Check important claims in it before you build on them.
 - Do not delegate a task and then do it yourself as well.
+
+Work across several areas:
+- When a piece of work spans several areas of the program (database, API or server, web, mobile apps, tests) and is more than a small change, do not do it alone: start one named background agent per area (spawn_agent with name="database", name="api", name="web" …, background=true).
+- Give each of them its part, the names of the others, and docs/architecture.md as the shared contract; create that file first when it is missing, with the interfaces you already know. Tell them to agree on interfaces with each other through send_message and to write what they agree into docs/architecture.md.
+- While they work, answer their messages. When they report back, integrate the work, run the tests, and let a reviewer check the whole change.
+- Work alone only on small changes within one area.
 """
     + RESEARCH_RULES
     + CONTEXT_RULES
@@ -309,6 +317,8 @@ TEAM_MEMBER = (
 You are a sub-agent working for the lead agent, who gave you one task. You cannot ask the user questions and you cannot start other agents; if something is unclear, make the most reasonable choice and say so in your report.
 
 Work only on your task. When you are done, reply with a report the lead can act on without redoing your work: what you did or found, the files involved (path and line numbers where useful), results of commands you ran, and anything left open. Your report is all the lead will see, so put every result that matters in it.
+
+Other agents may work at the same time on other parts of the program; list_agents shows who they are, and their messages reach you while you work: answer them. When your change affects another agent's part (a database schema change for the api agent, an API change for the web agent), tell that agent with send_message, including the interface itself, and write it into docs/architecture.md.
 """
 )
 
@@ -378,6 +388,18 @@ Work through the team's task board until nothing is left for you:
 3. Do the task in your working directory, including its check.
 4. Call update_task with status done (Forge runs the task's check and merges your work) or failed with the reason. If the check fails, fix the problem and call update_task again.
 Stop when no task is ready, and reply with the tasks you completed and anything left open.
+"""
+
+TEAM_AREA_TASK = """\
+You are the agent for one area of this program. The other areas have their own agents, who work at the same time. Work through the team's task board:
+1. Call read_board and pick a ready task of your area: its title starts with your area's name and a colon. Leave the other areas' tasks to their agents.
+2. Call claim_task for it, do it in your working directory including its check, then call update_task with status done (Forge runs the check and merges your work) or failed with the reason.
+3. Before you change something another area uses (a database table, an API endpoint, an event), agree on it: tell the agents it affects with send_message, by their area's name, including the interface itself, and write it into docs/architecture.md. Answer their messages. When you need something from another area that is not there yet, ask its agent and go on with what you can.
+Stop when no task of your area is ready, and reply with the tasks you completed, the interfaces you agreed on and anything left open.
+"""
+
+TEAM_AREA_TASK_TAIL = """
+{material}
 """
 
 SKILLS = """\
@@ -799,6 +821,7 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "team_member": (TEAM_MEMBER, TEAM_MEMBER_TAIL + "\n" + ENVIRONMENT),
     "custom_agent": (TEAM_MEMBER, CUSTOM_AGENT_TAIL + "\n" + ENVIRONMENT),
     "team_task": (TEAM_TASK, ""),
+    "team_area_task": (TEAM_AREA_TASK, TEAM_AREA_TASK_TAIL),
     "deferred_tools": (DEFERRED_TOOLS, DEFERRED_TOOLS_TAIL),
     "skills": (SKILLS, SKILLS_TAIL),
     "explore": (EXPLORE, "\n" + ENVIRONMENT),

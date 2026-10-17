@@ -445,10 +445,10 @@ The user asked for Forge Web to feel like Claude: an effort setting, files and i
     - Build: the session keeps the conversation across runs (notes plus recent turns); each run opens with it and adds its own turn; turns over the budget are folded into the notes by the compressor; the tool `compact_context(keep)` drops what an earlier task left behind; the prompts tell the agent to compact when a new task starts and to keep the program organised in Markdown (`FORGE.md`, `docs/architecture.md`, `docs/decisions.md`, `docs/progress.md`).
     - Tests: a second run sees the first run's turn; turns over the budget fold into the notes; `compact_context` drops the earlier turns but keeps what it was told to; the prompts carry the Markdown rule; a new session starts empty.
     - Verify: `uv run pytest tests/test_conversation.py -q`
-- [ ] **S77 — A team of agents that talk to each other**
-    - Files: `src/forge/prompts.py`, `src/forge/pipeline.py`, `src/forge/team.py`, `tests/test_team_pressure.py`
-    - Build: the lead starts one named agent per area of a larger task (`database`, `api`, `web` …) that share `docs/architecture.md` and agree on interfaces with `send_message`; agents are told who else works and to tell those their change affects; medium tasks get agents instead of running solo; a blueprint's components name the team's workers.
-    - Tests: the lead's and the members' prompts carry the rules; a medium task gets the agent tools; two agents message each other by name; team workers carry the components' names.
+- [x] **S77 — A team of agents that talk to each other**
+    - Files: `src/forge/prompts.py`, `src/forge/pipeline.py`, `src/forge/team.py`, `src/forge/board.py`, `src/forge/blueprint.py`, `docs/TOOLS.md`, `tests/test_team_pressure.py`
+    - Build: the lead starts one named agent per area of a larger task (`database`, `api`, `web` …) that share `docs/architecture.md` and agree on interfaces with `send_message`; agents are told who else works and to tell those their change affects; the planner names each step's area (`api: …`), a plan with several areas runs as a team with one worker per area, named after it; a blueprint's components are the areas.
+    - Tests: the lead's, the members' and the planner's prompts carry the rules; areas come from step titles and a plan with several gets a team unless the user chose the mode; a blueprint asks for its components as areas; team workers carry the areas' names and message each other by name.
     - Verify: `uv run pytest tests/test_team_pressure.py -q`
 
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.
