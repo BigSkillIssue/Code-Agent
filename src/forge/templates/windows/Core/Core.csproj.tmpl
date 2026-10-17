@@ -7,10 +7,6 @@
     <AssemblyName>@@namespace@@.Core</AssemblyName>
     <Snapshot>$(MSBuildThisFileDirectory)../../server/openapi.json</Snapshot>
     <KiotaArgs>generate --language CSharp --openapi &quot;$(Snapshot)&quot; --output Api --namespace-name @@namespace@@.Core.Api --class-name ApiClient --clean-output --exclude-backward-compatible --log-level Warning</KiotaArgs>
-@@if digital_goods@@
-    <!-- The app sells in the Microsoft Store (App/Store.cs), never through the web checkout. -->
-    <KiotaArgs>$(KiotaArgs) --exclude-path &quot;/api/payments/**&quot;</KiotaArgs>
-@@end@@
   </PropertyGroup>
 
   <ItemGroup>

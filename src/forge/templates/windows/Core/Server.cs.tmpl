@@ -4,12 +4,20 @@ using @@namespace@@.Core.Api;
 
 namespace @@namespace@@.Core;
 
-/// <summary>Where the product's server runs, and a client of its API. Every release is tested
-/// against staging first; the Store build talks to production.</summary>
+/// <summary>Where the product's server and website run, and a client of its API. Every release is
+/// tested against staging first; the release build talks to production.</summary>
 public static class Server
 {
     public static readonly Uri Staging = new("@@staging@@");
     public static readonly Uri Production = new("@@production@@");
+
+    /// <summary>Where the website offers the app's installer, its ZIP and its updates.</summary>
+    public static readonly Uri Downloads = new("@@production@@/downloads/windows");
+@@if payments@@
+
+    /// <summary>The website's plans and prices, where people buy.</summary>
+    public static readonly Uri Pricing = new("@@production@@/pricing");
+@@end@@
 
     /// <summary>A client of the server at <paramref name="baseUrl"/>; it keeps the session
     /// cookie the server sets at sign-in.</summary>

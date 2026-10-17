@@ -1,0 +1,35 @@
+using @@namespace@@.Core;
+using Velopack;
+
+namespace @@namespace@@;
+
+/// <summary>New versions from the product's website (<see cref="Server.Downloads"/>, over
+/// HTTPS): looked for at start, installed when the user restarts the app for them.</summary>
+public sealed class Updates
+{
+    private readonly UpdateManager manager = new(Server.Downloads.ToString());
+    private UpdateInfo? found;
+
+    /// <summary>The newer version on the website, or null (also when the app was not installed
+    /// or unpacked from the website's ZIP, e.g. while it is developed).</summary>
+    public async Task<string?> CheckAsync()
+    {
+        if (!manager.IsInstalled)
+        {
+            return null;
+        }
+        found = await manager.CheckForUpdatesAsync();
+        return found?.TargetFullRelease.Version.ToString();
+    }
+
+    /// <summary>Download the newer version, install it and start it again.</summary>
+    public async Task ApplyAsync()
+    {
+        if (found is null)
+        {
+            return;
+        }
+        await manager.DownloadUpdatesAsync(found);
+        manager.ApplyUpdatesAndRestart(found);
+    }
+}
