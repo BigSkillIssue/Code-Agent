@@ -135,6 +135,9 @@ BODIES: dict[str, dict[str, Any]] = {
     "CouponIn": {"code": "LAUNCH", "name": "Launch", "percent_off": 10},
     "CheckoutIn": {"item_id": "pro", "waiver": True},
     "CancelIn": {"contract": "pro"},
+    "GiftIn": {"item_id": "pro"},
+    "EndIn": {"now": True},
+    "CarryOutIn": {"action": "nothing"},
     "TextIn": {"title": "Terms", "body": "The terms."},
     "AcceptIn": {"kind": "terms", "version": 1},
     "VatIn": {"vat_id": "DE123456789"},
@@ -290,6 +293,7 @@ def filled(path: str, world: World) -> str:
         "notice_id": "0" * 12, "backup_id": "0" * 16, "domain": "shop.example.org",
         "item_id": "pro", "coupon_id": "launch", "kind": "terms", "checkout_id": "cs_1",
         "subscription_id": "sub_1", "build_id": "0" * 32, "worker_id": "0" * 16,
+        "action": "hold", "change": "lock", "cancellation_id": "0" * 16,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 

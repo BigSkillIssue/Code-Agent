@@ -875,14 +875,24 @@ das Häkchen für den sofortigen Beginn (damit erlischt ihr Widerrufsrecht) und 
 „Zahlungspflichtig bestellen“; die Karte geben sie auf Stripes eigener Seite ein, die Steuer
 rechnet Stripe Tax (in Stripe unter **Steuern** einrichten). Damit die Bestellung ankommt, wählst
 du beim Webhook in Stripe mindestens diese Ereignisse: `checkout.session.completed`,
-`checkout.session.expired`, `customer.subscription.created`, `customer.subscription.updated`,
-`customer.subscription.deleted`. Die Grenzen des gekauften Tarifs gelten, sobald Stripe das Abo
-meldet.
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
+`checkout.session.expired`, `charge.refunded`, `customer.subscription.created`,
+`customer.subscription.updated`, `customer.subscription.deleted`. Die Grenzen des gekauften Tarifs
+gelten, sobald Stripe das Abo meldet. Eine Testphase gibt es nur bei Tarifen und nur einmal pro
+Kunde; wer schon einen Tarif hat, wechselt ihn im Kundenportal.
+
+Verkaufst du einen **Einmalpreis pro App**, wählt der Kunde beim Bestellen eine seiner Apps; erst
+wenn bezahlt ist (bei SEPA erst, wenn das Geld da ist), darf diese App in den Live-Betrieb.
+Staging bleibt frei. Erstattest du die Zahlung in Stripe ganz, ist die App wieder gesperrt; eine
+schon laufende App läuft weiter, nur ihr nächster Livegang braucht die Zahlung.
 
 Kündigen geht ohne Anmeldung unter `https://<deine Forge-Web-Adresse>/kuendigen` (der Link
 „Verträge hier kündigen“ steht auch auf der Anmeldeseite) und für Angemeldete auf der Seite Tarif
 und Abrechnung; jede Kündigung wird sofort per Mail bestätigt, mit Eingangszeit und dem Tag, an dem
-sie wirkt. Was Forge Web nicht selbst zuordnen kann, landet per Mail bei den Admins. Für
+sie wirkt. Was Forge Web nicht selbst zuordnen kann (außerordentliche Kündigungen, kein
+passendes Konto), landet per Mail bei den Admins und oben unter **Verwaltung → Kunden**; dort führst
+du sie aus (zum Periodenende, sofort oder „nichts zu beenden“), und der Kunde bekommt die
+Bestätigung mit dem Tag, an dem sie wirkt. Für
 „Zahlungsart und Rechnungen“ schaltest du in Stripe unter **Einstellungen → Billing →
 Kundenportal** das Portal ein.
 
@@ -890,8 +900,17 @@ Bleibt eine Rechnung offen (Stripe meldet `invoice.payment_failed`; diese Ereign
 `invoice.paid` im Webhook mit auswählen), schreibt Forge Web dem Kunden und hält nach 14 Tagen
 seine gehosteten Apps an. 14 Tage später legt es einen Export an und kündigt das Löschen an; erst
 30 Tage danach, und nur wenn der Export da ist, werden die Apps gelöscht. Konto und Projekte
-bleiben. Wird bezahlt, laufen die Apps wieder. Die Fristen stehen unter `[billing]`
-(`grace_days`, `notice_after_days`, `delete_after_days`).
+bleiben. Wird die offene Rechnung bezahlt (oder stornierst du sie in Stripe; dafür auch
+`invoice.voided` auswählen), laufen die Apps wieder; eine andere bezahlte Rechnung zählt nicht. Die
+Fristen stehen unter `[billing]` (`grace_days`, `notice_after_days`, `delete_after_days`).
+
+**Alles im Griff als Admin:** Unter **Verwaltung → Kunden** siehst du jedes Konto mit dem, was es
+bezahlt, seinem geschenkten Tarif und seiner Mahnung. Öffnest du einen Kunden, siehst du seine
+Grenzen, Abos, Bestellungen, Apps, den Mahnfall und seine Kündigungen, und du kannst eingreifen:
+einen Tarif schenken (dauerhaft oder bis zu einem Tag; er gilt wie ein bezahlter), ein Abo zum
+Periodenende oder sofort beenden, eine App kostenlos freischalten oder sperren, einen Mahnfall
+anhalten, fortsetzen oder schließen (erlassen; angehaltene Apps laufen dann wieder). Jede dieser
+Änderungen steht im Audit-Log.
 
 **Rechtstexte:** Unter **Verwaltung → Abrechnung → Rechtstexte** fügst du die AGB, die
 Datenschutzerklärung, den Vertrag zur Auftragsverarbeitung (mit TOMs und Unterauftragsverarbeitern)

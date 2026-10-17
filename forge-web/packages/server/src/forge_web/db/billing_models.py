@@ -155,6 +155,21 @@ class AppLicense(Base):
     revoked_reason: Mapped[str] = mapped_column(String(200), default="")
 
 
+class PlanGift(Base):
+    """A plan an admin gives a customer for free (W40c), for good or until a date."""
+
+    __tablename__ = "billing_plan_gifts"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[str] = mapped_column(String(40))  # a plan in the catalog
+    until: Mapped[float] = mapped_column(Float, default=0.0)  # 0: for good
+    note: Mapped[str] = mapped_column(String(500), default="")  # why, for the admins
+    granted_by: Mapped[str] = mapped_column(String(32), default="")
+    granted_at: Mapped[float] = mapped_column(Float)
+
+
 class Cancellation(Base):
     """A cancellation as it came in through the cancellation button (§312k BGB, W33b1)."""
 
@@ -191,6 +206,7 @@ class DunningCase(Base):
     stage_at: Mapped[float] = mapped_column(Float)  # when it reached its stage
     closed_at: Mapped[float] = mapped_column(Float, default=0.0)  # paid, or done
     invoices: Mapped[str] = mapped_column(Text, default="")  # JSON: Stripe's unpaid invoices (W40a)
+    held_at: Mapped[float] = mapped_column(Float, default=0.0)  # an admin holds it here (W40c)
 
 
 class LegalText(Base):

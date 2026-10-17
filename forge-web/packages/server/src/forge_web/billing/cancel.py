@@ -7,7 +7,8 @@ kündigen" sends it. A signed-in customer does the same in two clicks on their b
 it came in and confirmed at once by mail, with that time and when it takes effect (§312k (4)).
 An ordinary cancellation of a customer it can match ends their subscriptions at Stripe at the end
 of the paid period; everything else (no matching account, for cause, Stripe away) goes to the
-admins, and the customer still gets the confirmation of receipt.
+admins, who carry it out on their customers page (W40c, `customers.py`), and the customer still
+gets the confirmation of receipt.
 
 The open form proves nothing about who sends it, so its page says only that the cancellation
 came in (never whether an account matched or when its period ends), and the confirmation that

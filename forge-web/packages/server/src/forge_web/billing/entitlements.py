@@ -5,18 +5,20 @@ settings apply as before: projects per user, disk per project, the monthly budge
 AI keys (with its grants), Mac minutes. With billing on, a customer without a subscription (unless
 the admin named a free plan) gets those too, but no hosted app, no own domain and no store
 publishing: those are paid for. A customer with a subscription gets the limits of their plan, plus
-what their add-ons add; hosting bought per app adds hosted apps. Plans set AI budgets in EUR; the
+what their add-ons add; hosting bought per app adds hosted apps. A plan an admin gives for free
+(W40c) counts like a paid one, and above it, until its date. Plans set AI budgets in EUR; the
 gateway counts USD. A plan without an AI budget leaves the server's AI keys to the server's own
 policy (its grants and default budget), never unlimited: they are the admin's money.
 """
 
 import json
+import time
 from dataclasses import dataclass, fields, replace
 
 from sqlalchemy import select
 
 from forge_web.billing.catalog import Limits
-from forge_web.db.billing_models import CatalogItem, Subscription
+from forge_web.db.billing_models import CatalogItem, PlanGift, Subscription
 from forge_web.db.engine import Database
 from forge_web.db.models import Project, User
 from forge_web.gateway.keys import server_key_limit
@@ -87,11 +89,15 @@ class EntitlementEngine:
                 select(Subscription).where(Subscription.user_id == user.id,
                                            Subscription.status.in_(PAID))
                 .order_by(Subscription.created_at.desc())))  # fmt: skip
-            wanted = {s.item_id for s in paid} | {self.settings.billing.free_plan}
+            gift = await session.get(PlanGift, user.id)
+            given = gift.item_id if gift and (not gift.until or gift.until > time.time()) else ""
+            wanted = {s.item_id for s in paid} | {self.settings.billing.free_plan, given}
             items = {i.id: i for i in await session.scalars(
                 select(CatalogItem).where(CatalogItem.id.in_(wanted)))}  # fmt: skip
         plans = [items[s.item_id] for s in paid if s.item_id in items
                  and items[s.item_id].kind == "plan"]  # fmt: skip
+        if given in items and items[given].kind == "plan":
+            plans.insert(0, items[given])  # the admin's gift comes first
         free = items.get(self.settings.billing.free_plan)
         plan = plans[0] if plans else free if free is not None and free.kind == "plan" else None
         if plan is None:

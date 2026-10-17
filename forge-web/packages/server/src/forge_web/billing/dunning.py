@@ -11,7 +11,9 @@ meanwhile changes nothing. Projects and accounts are not touched: dunning is abo
 admin money to keep running.
 
 One case moves one step at a time: a payment that comes in while a step is under way waits for it,
-so a step never reopens a case that was closed meanwhile (W40a).
+so a step never reopens a case that was closed meanwhile (W40a). An admin can hold a case (it
+does not move while held; its dates move on by the time it was held), let it go on, or close it
+whatever its invoices (W40c).
 """
 
 import asyncio
@@ -145,6 +147,20 @@ class Dunning:
             await self.lift(user_id)
         return True
 
+    async def hold(self, user_id: str, now: float, held: bool) -> bool:
+        """Hold the user's open case, or let it go on; whether there was one to change."""
+        async with self.lock, self.db.session() as session, session.begin():
+            case = await session.scalar(select(DunningCase).where(
+                DunningCase.user_id == user_id, DunningCase.closed_at == 0))  # fmt: skip
+            if case is None:
+                return False
+            if held and not case.held_at:
+                case.held_at = now
+            elif not held and case.held_at:
+                case.stage_at += max(now - case.held_at, 0.0)  # the time held does not count
+                case.held_at = 0.0
+        return True
+
     async def lift(self, user_id: str) -> None:
         """Let the apps run again that dunning suspended (not those an admin suspended)."""
         for hosted in await self.apps_of(user_id):
@@ -168,7 +184,7 @@ class Dunning:
         """Move one case on if its date has come (read afresh: it may have closed meanwhile)."""
         async with self.db.session() as session:
             case = await session.get(DunningCase, case_id)
-        if case is None or case.closed_at:
+        if case is None or case.closed_at or case.held_at:
             return ""
         stage = await self.next_stage(case, now)
         if not stage:

@@ -4,6 +4,7 @@ import { adminDe, adminEn } from "./texts/admin";
 import { appleDe, appleEn } from "./texts/apple";
 import { appsDe, appsEn } from "./texts/apps";
 import { billingDe, billingEn } from "./texts/billing";
+import { customersDe, customersEn } from "./texts/customers";
 import { hostingDe, hostingEn } from "./texts/hosting";
 import { listingDe, listingEn } from "./texts/listing";
 import { releaseDe, releaseEn } from "./texts/release";
@@ -224,7 +225,7 @@ export const coreEn = {
   total: "Total",
 };
 
-const en = { ...coreEn, ...adminEn, ...appleEn, ...appsEn, ...releaseEn, ...listingEn, ...submitEn, ...hostingEn, ...billingEn };
+const en = { ...coreEn, ...adminEn, ...appleEn, ...appsEn, ...releaseEn, ...listingEn, ...submitEn, ...hostingEn, ...billingEn, ...customersEn };
 
 type Texts = typeof en;
 
@@ -444,7 +445,7 @@ const coreDe: typeof coreEn = {
   total: "Gesamt",
 };
 
-const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...appsDe, ...releaseDe, ...listingDe, ...submitDe, ...hostingDe, ...billingDe };
+const de: Texts = { ...coreDe, ...adminDe, ...appleDe, ...appsDe, ...releaseDe, ...listingDe, ...submitDe, ...hostingDe, ...billingDe, ...customersDe };
 
 export type TextKey = keyof Texts;
 
