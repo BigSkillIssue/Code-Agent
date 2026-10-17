@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 from forge import toml_writer
+from forge.config_trust import keep_user_rules, restrict_untrusted
 from forge.toml_writer import dumps
 
 log = logging.getLogger(__name__)
@@ -31,9 +32,6 @@ HookEventName = Literal[
     "subagent_stop",
 ]
 
-# Keys an untrusted project may not set: they can run code or send data elsewhere, or (release)
-# change what the release reviewer checks.
-TRUST_GATED_KEYS = ("providers", "mcp_servers", "hooks", "release")
 ENV_PREFIX = "FORGE_"
 # Not config keys: where Forge keeps user files, and which shell executables to use.
 RESERVED_ENV = frozenset({"FORGE_HOME", "FORGE_BASH", "FORGE_POWERSHELL"})
@@ -283,14 +281,15 @@ def load_config(
     user_path = forge_home() / "forge.toml"
     project_path = root / ".forge" / "config.toml"
     user = _checked(str(user_path), _read_toml(user_path))
+    base = deep_merge(ForgeConfig().model_dump(), user)
     project = _read_toml(project_path)
     if project and not is_trusted(root):
-        project = _strip_untrusted(project, project_path, warnings)
-    project = _checked(str(project_path), project)
+        project = _strip_untrusted(project, base, project_path, warnings)
+    project = _keep_user_rules(_checked(str(project_path), project), base)
     env = _checked("FORGE_* environment variables", _env_layer(os.environ))
     cli = _checked("command-line options", _expand_dotted(overrides or {}))
 
-    merged = deep_merge(deep_merge(ForgeConfig().model_dump(), user), project)
+    merged = deep_merge(base, project)
     name = profile or cli.get("profile") or env.get("profile") or merged.get("profile")
     name = str(name or "default")
     merged = _apply_profile(merged, name)
@@ -339,23 +338,38 @@ def _read_toml(path: Path) -> dict[str, Any]:
         raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
 
 
-def _strip_untrusted(layer: dict[str, Any], path: Path, warnings: list[str]) -> dict[str, Any]:
-    cleaned = dict(layer)
-    for key in TRUST_GATED_KEYS:
-        if key in cleaned:
-            del cleaned[key]
-            warnings.append(
-                f"ignored [{key}] from untrusted project config {path}; "
-                "run `forge trust` in the project to allow it"
-            )
-    profiles = cleaned.get("profiles")
+def _strip_untrusted(
+    layer: dict[str, Any], base: dict[str, Any], path: Path, warnings: list[str]
+) -> dict[str, Any]:
+    """An untrusted project's layer, also in its profiles (there measured against the user's
+    profile of the same name): gated tables dropped, nothing looser than the user's own."""
+    cleaned = restrict_untrusted(layer, base, str(path), warnings)
+    profiles = layer.get("profiles")
     if isinstance(profiles, Mapping):
+        mine = base.get("profiles") or {}
         cleaned["profiles"] = {
-            name: {k: v for k, v in body.items() if k not in TRUST_GATED_KEYS}
+            name: restrict_untrusted(
+                body, deep_merge(base, mine.get(name) or {}), f"{path} [profiles.{name}]", warnings
+            )
             for name, body in profiles.items()
             if isinstance(body, Mapping)
         }
     return cleaned
+
+
+def _keep_user_rules(layer: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    """A project layer (and its profiles) that keeps the user's deny and ask rules."""
+    kept = keep_user_rules(layer, base)
+    profiles = layer.get("profiles")
+    if isinstance(profiles, Mapping):
+        mine = base.get("profiles") or {}
+        kept["profiles"] = {
+            name: keep_user_rules(body, deep_merge(base, mine.get(name) or {}))
+            if isinstance(body, Mapping)
+            else body
+            for name, body in profiles.items()
+        }
+    return kept
 
 
 def _apply_profile(merged: dict[str, Any], name: str) -> dict[str, Any]:

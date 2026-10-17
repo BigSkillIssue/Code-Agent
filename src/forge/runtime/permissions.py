@@ -5,6 +5,7 @@ built-in read-only commands -> sandbox mode x approval policy.
 """
 
 import re
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlsplit
@@ -20,6 +21,7 @@ from forge.runtime.rules import (
     parse_rules,
     rule_matches,
     simple_commands,
+    split_segments,
 )
 from forge.runtime.sandbox import launch_for
 
@@ -27,19 +29,50 @@ if TYPE_CHECKING:
     from forge.ctx import Ctx
     from forge.tools import ToolDef
 
+# Programs that only read, called by their bare name (`./ls` could be anything). No wrapper
+# that runs its arguments as a program (env, nice, timeout, xargs) belongs here.
 READ_ONLY_COMMANDS = frozenset(
     {
         "ls", "cat", "head", "tail", "wc", "pwd", "echo", "which", "whoami", "date", "file",
         "stat", "du", "df", "tree", "rg", "grep", "egrep", "fgrep", "diff", "cmp", "sort",
-        "uniq", "cut", "basename", "dirname", "realpath", "env", "printenv", "uname", "true",
+        "uniq", "cut", "basename", "dirname", "realpath", "printenv", "uname", "true",
         "get-childitem", "get-content", "get-location", "get-item", "select-string",
         "test-path", "resolve-path", "measure-object", "dir", "type",
     }
 )  # fmt: skip
-READ_ONLY_GIT = frozenset(
-    {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files", "blame"}
+READ_ONLY_GIT = frozenset({"status", "diff", "log", "show", "rev-parse", "ls-files", "blame"})
+# `git branch` only lists with these options (and `-av` ...); the valued ones take the next word.
+GIT_BRANCH_LISTING = frozenset(
+    {"--all", "--remotes", "--list", "--verbose", "--ignore-case", "--show-current", "--color",
+     "--no-color", "--column", "--no-column", "--abbrev", "--no-abbrev", "--omit-empty"}
+)  # fmt: skip
+GIT_BRANCH_FLAGS = re.compile(r"-[ailrv]+")
+GIT_BRANCH_VALUED = frozenset(
+    {"--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort", "--format"}
 )
-UNSAFE_SHELL = re.compile(r"[>`]|\$\(|&&|\|\||;|\n|\b(?:tee|xargs|sudo)\b")
+# Redirection, command and process substitution, background `&`, several commands in a line.
+UNSAFE_SHELL = re.compile(r"[>`&;\n\r]|[$<]\(|\|\||\b(?:tee|xargs|sudo)\b")
+# PowerShell also runs commands in `(...)`, `@(...)` and script blocks `{...}`.
+UNSAFE_POWERSHELL = re.compile(r"[(){}]")
+# find's actions that delete, write files or run programs.
+FIND_ACTIONS = frozenset(
+    {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"}
+)
+# Long options (also abbreviated, as getopt allows) that write files or run programs.
+WRITING_LONG: dict[str, tuple[str, ...]] = {
+    "sort": ("--output", "--compress-program"),
+    "rg": ("--pre", "--hostname-bin"),
+    "file": ("--compile",),
+    "date": ("--set",),
+}
+# Short options that do the same (also inside `-no`), and the options whose value is the rest
+# of the word, where looking stops (`date -Iseconds` sets nothing).
+WRITING_SHORT: dict[str, tuple[str, str]] = {
+    "sort": ("o", "kStT"),
+    "tree": ("oR", ""),
+    "file": ("C", "efFmP"),
+    "date": ("s", "dfIr"),
+}
 WRITE_GROUPS = frozenset({"files", "memory"})
 
 
@@ -98,7 +131,7 @@ class Permissions:
             return Decision(action="run", reason=f"allowed by rule {allowing[0].text}")  # type: ignore[union-attr]
         if (name, command) in self._remembered:
             return Decision(action="run", reason="approved earlier in this session")
-        if is_read_only_command(command):
+        if is_read_only_command(command, powershell=name == "powershell"):
             return Decision(action="run", reason="read-only command")
         return self.default(tool)
 
@@ -170,21 +203,80 @@ def specifier(tool: "ToolDef", args: dict[str, Any]) -> str:
     return value
 
 
-def is_read_only_command(command: str) -> bool:
-    """True for simple commands (pipes allowed) whose every program only reads."""
-    if not command.strip() or UNSAFE_SHELL.search(command):
+def is_read_only_command(command: str, powershell: bool = False) -> bool:
+    """True for simple commands (pipes allowed) whose every program, with these options, only
+    reads."""
+    unsafe = UNSAFE_SHELL.search(command) or (powershell and UNSAFE_POWERSHELL.search(command))
+    if not command.strip() or unsafe:
         return False
-    for segment in command.split("|"):
-        words = segment.split()
-        if not words:
+    for segment in split_segments(command):
+        try:
+            words = shlex.split(segment)
+        except ValueError:  # unbalanced quotes
             return False
-        program = words[0].lower().rsplit("/", 1)[-1]
-        if program == "git":
-            if len(words) < 2 or words[1] not in READ_ONLY_GIT:
-                return False
-        elif program == "find":
-            if any(w in ("-delete", "-exec", "-execdir", "-fprint", "-fls") for w in words):
-                return False
-        elif program not in READ_ONLY_COMMANDS:
+        if not words or not program_only_reads(words[0].lower(), words[1:]):
             return False
     return True
+
+
+def program_only_reads(program: str, args: list[str]) -> bool:
+    """True if this program, called with these arguments, neither writes nor runs anything."""
+    if program == "git":
+        return bool(args) and git_only_reads(args[0], args[1:])
+    if program == "find":
+        return not any(word in FIND_ACTIONS for word in args)
+    if program not in READ_ONLY_COMMANDS:
+        return False
+    if program == "uniq":  # `uniq IN OUT` writes OUT
+        return len([word for word in args if not word.startswith("-")]) < 2
+    letters, valued = WRITING_SHORT.get(program, ("", ""))
+    return not any(
+        names_option(word, WRITING_LONG.get(program, ())) or short_option(word, letters, valued)
+        for word in args
+    )
+
+
+def git_only_reads(subcommand: str, args: list[str]) -> bool:
+    """`git status`, `log`, ... and `git branch` when it only lists; diff, log and show must not
+    write their output to a file (`--output`)."""
+    if subcommand == "branch":
+        return branch_only_lists(args)
+    if subcommand not in READ_ONLY_GIT:
+        return False
+    return not any(names_option(word, ("--output",)) for word in args)
+
+
+def branch_only_lists(args: list[str]) -> bool:
+    """`git branch` with listing options only; patterns only after `--list` (a bare name
+    makes a branch, and -d, -D, -m, -f ... delete, move or overwrite one)."""
+    rest = list(args)
+    while rest:
+        word = rest.pop(0)
+        name = word.split("=", 1)[0]
+        if name in GIT_BRANCH_VALUED:
+            if "=" not in word and rest and not rest[0].startswith("-"):
+                rest.pop(0)  # the option's value
+        elif name in GIT_BRANCH_LISTING or GIT_BRANCH_FLAGS.fullmatch(word):
+            continue
+        elif word.startswith("-") or "--list" not in args:
+            return False
+    return True
+
+
+def names_option(word: str, options: tuple[str, ...]) -> bool:
+    """True for `--name`, `--name=value` or an abbreviation (`--out=x`) of one of the options."""
+    name = word.split("=", 1)[0]
+    return name.startswith("--") and len(name) > 2 and any(o.startswith(name) for o in options)
+
+
+def short_option(word: str, letters: str, valued: str) -> bool:
+    """True if a short-option word (`-o`, `-no`) holds one of the letters before an option that
+    takes the rest of the word as its value."""
+    if not word.startswith("-") or word.startswith("--"):
+        return False
+    for char in word[1:]:
+        if char in letters:
+            return True
+        if char in valued:
+            return False
+    return False

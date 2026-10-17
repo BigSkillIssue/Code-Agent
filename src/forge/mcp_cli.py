@@ -25,6 +25,7 @@ forge mcp add NAME [--scope user|project] [--env-key VAR]... -- COMMAND [ARGS...
 forge mcp add NAME [--scope user|project] --url URL [--header-env HEADER=VAR]...
 forge mcp add-json NAME '{"command": "npx", "args": [...]}' [--scope user|project]
 forge mcp list [--no-check]      forge mcp get NAME      forge mcp remove NAME [--scope S]"""
+UNTRUSTED = "untrusted project: not started or used until you run `forge trust`"
 
 
 def cmd_mcp(options: argparse.Namespace, rest: list[str]) -> int:
@@ -80,7 +81,10 @@ async def show_list(root: Path, check: bool) -> int:
         print("no MCP servers configured; add one with: forge mcp add NAME -- COMMAND")
         return 0
     for entry in entries:
-        state = await check_server(entry.name, entry.config, root) if check else ""
+        if not entry.trusted:  # checking it would run the project's command
+            state = UNTRUSTED
+        else:
+            state = await check_server(entry.name, entry.config, root) if check else ""
         print(f"{entry.name:<16} {entry.scope:<8} {describe(entry.config)}  {state}".rstrip())
     return 0
 
@@ -91,6 +95,8 @@ def get(root: Path, name: str) -> int:
         if entry.name == name:
             config = entry.config
             print(f"{name} ({entry.scope}, {entry.path})")
+            if not entry.trusted:
+                print(f"  {UNTRUSTED}")
             print(f"  {'url' if config.url else 'command'}: {describe(config)}")
             if config.env_keys:
                 print(f"  env_keys: {', '.join(config.env_keys)}")

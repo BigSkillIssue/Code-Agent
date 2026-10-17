@@ -70,7 +70,8 @@ forge resume [ID]          continue a session's plan
 forge sessions             list this project's sessions
 forge config check         print the effective configuration
 forge config schema        the configuration schema (--markdown: docs/config.md)
-forge trust                let this project's config set providers, MCP servers and hooks
+forge trust                let this project's config set providers, MCP servers, hooks and
+                           looser sandbox, approval and permission settings
 forge eval                 run the benchmark tasks (--fake: offline)
 forge browser install      download the Chromium the browser agent uses
 forge mcp add NAME -- CMD  add an MCP server (also: add-json, list, get, remove)

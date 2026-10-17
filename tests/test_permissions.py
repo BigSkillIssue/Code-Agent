@@ -74,10 +74,81 @@ def test_bad_rule_is_refused() -> None:
         ("find . -delete", False),
         ("echo $(rm x)", False),
         ("python script.py", False),
+        # wrappers run their arguments as a program
+        ("env rm -rf x", False),
+        ("env", False),
+        ("printenv HOME", True),
+        # background jobs, process substitution, and programs given by path
+        ("ls & rm -rf x", False),
+        ("cat <(rm x)", False),
+        ("diff a >(rm x)", False),
+        ("./ls", False),
+        ("/tmp/cat x", False),
+        # options that write files or run programs
+        ("find . -name '*.py'", True),
+        ("find . -okdir rm {} +", False),
+        ("find . -ok rm", False),
+        ("find . -fprint0 out", False),
+        ("find . -fprintf out %p", False),
+        ("find . '-delete'", False),
+        ("sort -u names.txt", True),
+        ("sort -o names.txt names.txt", False),
+        ("sort -uo names.txt names.txt", False),
+        ("sort --output=names.txt names.txt", False),
+        ("sort --out=names.txt names.txt", False),
+        ("sort --compress-program=sh big.txt", False),
+        ("git diff --stat", True),
+        ("git diff --output=patch.txt", False),
+        ("git log --output patch.txt", False),
+        ("git log --oneline -5", True),
+        ("git branch", True),
+        ("git branch -av", True),
+        ("git branch --list 'feat*'", True),
+        ("git branch --contains HEAD --sort=-committerdate", True),
+        ("git branch new-feature", False),
+        ("git branch -D main", False),
+        ("git branch -d old", False),
+        ("git branch -f main HEAD~3", False),
+        ("git branch -m old new", False),
+        ("git branch -M new", False),
+        ("git branch --delete old", False),
+        ("git branch --force main", False),
+        ("git branch --move old new", False),
+        ("tree -L 2", True),
+        ("tree -o out.txt", False),
+        ("tree -ao out.txt", False),
+        ("rg --pre ./script.sh TODO", False),
+        ("rg TODO", True),
+        ("uniq -c", True),
+        ("uniq in.txt out.txt", False),
+        ("date -Iseconds", True),
+        ("date -s 2000-01-01", False),
     ],
 )
 def test_read_only_commands(command: str, expected: bool) -> None:
     assert is_read_only_command(command) is expected
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("Get-ChildItem -Recurse", True),
+        ("Get-Content (Remove-Item x)", False),
+        ("Get-ChildItem @(Remove-Item x)", False),
+        ("Get-ChildItem | Get-Item -Path { Remove-Item x }", False),
+        ("& Remove-Item x", False),
+    ],
+)
+def test_read_only_powershell_commands(command: str, expected: bool) -> None:
+    assert is_read_only_command(command, powershell=True) is expected
+
+
+def test_a_command_with_writing_options_is_not_run_unasked() -> None:
+    cfg = ForgeConfig(approval=ApprovalConfig(policy="always"))
+    assert decide(cfg, "bash", command="git branch -a") == "run"
+    assert decide(cfg, "bash", command="git branch -D main") == "ask"
+    assert decide(cfg, "bash", command="env rm -rf build") == "ask"
+    assert decide(cfg, "powershell", command="Get-Content (Remove-Item x)") == "ask"
 
 
 def decide(cfg: ForgeConfig, tool: str, **args: Any) -> str:
