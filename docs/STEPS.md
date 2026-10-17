@@ -353,7 +353,7 @@ Rules for this phase, in addition to `AGENTS.md`:
 
 - Templates are package data: `src/forge/templates/<kind>/**.tmpl`, so ruff and mypy never check the generated product's code. The generated product's own tests run under the pytest marker `fullstack` (off by default) in a CI job of their own.
 - Packages *inside* a generated product (FastAPI, React, …) belong to the template, not to Forge: pin their versions in the template. They are not Forge dependencies and need no question.
-- Stack of generated products: server Python 3.12 + FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL 16; web React + Vite + TypeScript with a client typed from the OpenAPI snapshot; Apple Swift/SwiftUI (Phase 7); Android Kotlin + Jetpack Compose; Windows .NET 10 LTS + WinUI 3 (MSIX). Android comes before Windows.
+- Stack of generated products: server Python 3.12 + FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL 16; web React + Vite + TypeScript with a client typed from the OpenAPI snapshot; Apple Swift/SwiftUI (Phase 7); Android Kotlin + Jetpack Compose; Windows .NET 10 LTS + WinUI 3, downloaded from the product's website (S73; first MSIX for the Store). Android comes before Windows.
 - Tests never call real services (Stripe, Apple, Google, Microsoft, LLMs).
 - Order: S63–S68 first (Forge builds complete, checkable products), then Forge Web's phase D. S69 and S70 wait for Forge Web's W35, S71 goes with W37 and S72 with W38; `PROGRESS.md` says which comes next.
 
@@ -419,6 +419,11 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Files: `src/forge/windows_template.py`, `src/forge/templates/windows/**.tmpl`, `src/forge/app_cli.py`, `.github/workflows/ci.yml` (Windows job under `fullstack`), `tests/test_windows_template.py`
     - Build: .NET 10 LTS + WinUI 3 packaged as MSIX (the Store signs it), a client from the OpenAPI snapshot, Store purchases for digital goods.
     - Tests: placeholders filled, project files parse as XML; on Windows under `fullstack` the generated app builds and its tests pass.
+    - Verify: `uv run pytest tests/test_windows_template.py -q`
+- [x] **S73 — Windows app downloaded from the website** (with Forge Web's W39; asked for by the user after S72: no Microsoft Store)
+    - Files: `src/forge/windows_template.py`, `src/forge/templates/windows/**.tmpl`, `src/forge/app_template.py`, `src/forge/templates/fullstack/web/src/components/Layout.tsx.tmpl`, `.github/workflows/ci.yml`, `README.md`, `CHANGELOG.md`, `tests/test_windows_template.py`, `tests/windows/test_windows_live.py`
+    - Build: the WinUI 3 app unpackaged and self-contained (no MSIX); Velopack makes an installer, a ZIP to run without installing and update files, and updates the app from `https://<app>/downloads/windows`; no Store purchases (a paid product sells on its website); the web product links its downloads.
+    - Tests: no MSIX manifest and no Store code; Velopack runs before the window and its versions match; the icon is a valid ICO; under `fullstack` on Windows the app is published and packed by `vpk`.
     - Verify: `uv run pytest tests/test_windows_template.py -q`
 
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.

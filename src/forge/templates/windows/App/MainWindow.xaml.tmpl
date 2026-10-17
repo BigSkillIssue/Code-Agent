@@ -6,12 +6,13 @@
     Title="@@title@@">
     <StackPanel Margin="32" Spacing="12" MaxWidth="420" HorizontalAlignment="Left">
         <TextBlock Text="@@title@@" Style="{StaticResource TitleTextBlockStyle}" />
+        <Button x:Name="UpdateButton" Click="OnUpdate" Visibility="Collapsed" />
         <TextBox x:Name="Email" Header="Email" InputScope="EmailSmtpAddress" />
         <PasswordBox x:Name="Password" Header="Password" />
         <Button Content="Sign in" Click="OnSignIn" Style="{StaticResource AccentButtonStyle}" />
         <TextBlock x:Name="Status" TextWrapping="Wrap" />
-@@if digital_goods@@
-        <Button x:Name="BuyPro" Content="Buy Pro" Click="OnBuyPro" IsEnabled="False" />
+@@if payments@@
+        <Button Content="Plans and prices" Click="OnPricing" />
 @@end@@
         <Button x:Name="DeleteButton" Content="Delete my account" Click="OnDelete" IsEnabled="False" />
     </StackPanel>

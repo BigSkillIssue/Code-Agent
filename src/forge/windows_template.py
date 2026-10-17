@@ -1,10 +1,11 @@
-"""The Windows app of a full-stack product (S72): WinUI 3 on .NET 10 from `templates/windows/`,
-packaged as MSIX (the Microsoft Store signs it), with a client of the server's API that Kiota
-writes from its snapshot on every build, sign-in and account deletion in the app, and Microsoft
-Store purchases when the app sells digital goods. It builds on Windows.
+"""The Windows app of a full-stack product (S72, S73): WinUI 3 on .NET 10 from
+`templates/windows/`, with a client of the server's API that Kiota writes from its snapshot on
+every build, sign-in and account deletion in the app. People download it from the product's
+website, as an installer or a ZIP to run without installing; Velopack makes both and updates the
+app from the website. It builds on Windows.
 
-The template's text files are rendered like the full-stack template's; the MSIX's logos are
-drawn here as plain PNGs in the app's colour, so no binary file sits in the templates.
+The template's text files are rendered like the full-stack template's; the app's icon is drawn
+here as plain PNGs in an ICO in the app's colour, so no binary file sits in the templates.
 """
 
 import re
@@ -12,16 +13,9 @@ import struct
 import zlib
 
 KIND = "windows"
-COLOUR = (0x25, 0x63, 0xEB)  # the logos' blue, until the maker draws their own
-LOGOS = {  # the files Package.appxmanifest names, with the scales Windows asks for
-    "Assets/StoreLogo.png": (50, 50),
-    "Assets/Square150x150Logo.scale-200.png": (300, 300),
-    "Assets/Square44x44Logo.scale-200.png": (88, 88),
-    "Assets/Square44x44Logo.targetsize-24_altform-unplated.png": (24, 24),
-    "Assets/Wide310x150Logo.scale-200.png": (620, 300),
-    "Assets/SplashScreen.scale-200.png": (1240, 600),
-    "Assets/LockScreenLogo.scale-200.png": (48, 48),
-}
+COLOUR = (0x25, 0x63, 0xEB)  # the icon's blue, until the maker draws their own
+ICON = "App/App.ico"
+ICON_SIZES = (16, 24, 32, 48, 256)  # what Explorer, the taskbar and the installer show
 
 
 def namespace_of(title: str) -> str:
@@ -44,6 +38,12 @@ def logo(width: int, height: int) -> bytes:
             + chunk(b"IDAT", zlib.compress(row * height, 9)) + chunk(b"IEND", b""))  # fmt: skip
 
 
-def logos() -> dict[str, bytes]:
-    """The app's logos, by their path in the app's project."""
-    return {path: logo(*size) for path, size in LOGOS.items()}
+def icon() -> bytes:
+    """The app's icon: an ICO with one PNG per size (Windows reads PNGs in icons)."""
+    images = [logo(size, size) for size in ICON_SIZES]
+    entries, offset = b"", 6 + 16 * len(images)
+    for size, image in zip(ICON_SIZES, images, strict=True):
+        # width and height 0 mean 256; one plane, 24 bits per pixel; where the image is
+        entries += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 24, len(image), offset)
+        offset += len(image)
+    return struct.pack("<HHH", 0, 1, len(images)) + entries + b"".join(images)

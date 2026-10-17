@@ -4,7 +4,8 @@ import { useAuth } from "../auth";
 
 /**
  * Header, page and footer. The legal pages are plain links: hosting serves /impressum and
- * /datenschutz itself, with the operator's details, on every page of the product.
+ * /datenschutz itself, with the operator's details, on every page of the product (and
+ * /downloads, the Windows app's downloads, when the product has one).
  */
 export function Layout() {
   const { user, signOut } = useAuth();
@@ -39,6 +40,9 @@ export function Layout() {
       <footer>
         <a href="/impressum">Impressum</a>
         <a href="/datenschutz">Datenschutz</a>
+@@if windows@@
+        <a href="/downloads">Download for Windows</a>
+@@end@@
       </footer>
     </div>
   );
