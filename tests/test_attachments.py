@@ -91,7 +91,7 @@ async def test_too_many_or_missing_attachments_stop_the_task_cleanly(tmp_project
 
 
 def test_the_cli_attaches_files_and_the_prompt_explains_them(tmp_project: Path) -> None:
-    (tmp_project / "notes.md").write_text("# notes\n", encoding="utf-8")
+    (tmp_project / "notes.md").write_bytes(b"# notes\n")  # 8 bytes on every OS
     found = attachment_for(tmp_project, "notes.md")
     assert (found.name, found.media_type, found.size) == ("notes.md", "text/markdown", 8)
     options, rest = build_parser().parse_known_args(
