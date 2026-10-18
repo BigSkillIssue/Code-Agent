@@ -36,7 +36,7 @@ from forge.wiring import close_session, install_fake, open_session
 from pydantic import ValidationError
 
 from forge_sandbox.apple_remote import RemoteAppleBuilder
-from forge_sandbox.history import ChatState, Turn, with_history
+from forge_sandbox.history import ChatState, Turn
 from forge_sandbox.methods import ChatOptions
 from forge_sandbox.mux import Writer
 from forge_sandbox.pipe_renderer import PipeRenderer
@@ -178,14 +178,13 @@ class ChatWorker:
 
     async def _run(self, text: str, files: list[Attachment]) -> dict[str, Any]:
         assert self.ctx is not None
-        if not text.startswith("/"):
-            prompt = with_history(text, self.state.turns)
-            return report_fields(await run_task(prompt, self.ctx, attachments=files))
+        if not text.startswith("/"):  # the session's own conversation carries the turns (S76)
+            return report_fields(await run_task(text, self.ctx, attachments=files))
         command = await handle_command(self.ctx, text)
         if command.text:
             await self.out.send({"type": "command_result", "command": text, "text": command.text})
         if command.prompt is not None:
-            report = await run_task(with_history(command.prompt, self.state.turns), self.ctx)
+            report = await run_task(command.prompt, self.ctx)
             return {**report_fields(report), "ran_prompt": True}
         if command.resume:
             plan = await resume(self.ctx)

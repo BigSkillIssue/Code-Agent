@@ -108,3 +108,21 @@ describe("applyMessage", () => {
     expect(data.live.streaming.main).toBeUndefined();
   });
 });
+
+describe("the agent tidying its context (W46)", () => {
+  it("shows a fresh start and a summary, of the lead agent only", () => {
+    const transcript = buildTranscript(
+      numbered([
+        { type: "user", text: "Now the API", attachments: [] },
+        event("compacted", { level: 3, tokens_before: 48_200, tokens_after: 3_100 }),
+        event("compacted", { level: 2, tokens_before: 90_000, tokens_after: 40_000 }),
+        event("compacted", { agent_id: "a1", level: 2, tokens_before: 9_000, tokens_after: 4_000 }),
+      ]),
+    );
+    const notices = transcript.entries.filter((e) => e.kind === "notice").map((e) => (e.kind === "notice" ? e.text : ""));
+    expect(notices).toEqual([
+      expect.stringMatching(/^(Context tidied up|Kontext aufgeräumt): 48k → 3k/),
+      expect.stringMatching(/^(Context summarized|Kontext zusammengefasst): 90k → 40k/),
+    ]);
+  });
+});

@@ -1,6 +1,8 @@
-"""A chat's memory across turns and worker restarts: its Forge session and earlier turns.
+"""A chat's memory across worker restarts: which Forge session it is, and its turns so far.
 
-Kept as JSON in FORGE_HOME/chats/<chat id>.json, outside the workspace.
+Kept as JSON in FORGE_HOME/chats/<chat id>.json, outside the workspace. What the model sees of
+earlier turns is Forge's own conversation in that session (S76, W46): it folds old turns into
+notes and the agent tidies it with compact_context, so the worker no longer adds a history.
 """
 
 import json
@@ -8,13 +10,6 @@ import os
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
-
-from forge_sandbox import prompts
-
-MAX_TURNS = 10  # earlier turns carried into a follow-up prompt
-MAX_PROMPT_CHARS = 2_000
-MAX_SUMMARY_CHARS = 3_000
-MAX_HISTORY_CHARS = 16_000
 
 
 class Turn(BaseModel):
@@ -53,28 +48,3 @@ class ChatState(BaseModel):
 def state_path(home: Path, chat_id: str) -> Path:
     """Where a chat's state lives."""
     return home / "chats" / f"{chat_id}.json"
-
-
-def shorten(text: str, limit: int) -> str:
-    """At most `limit` characters, marking a cut."""
-    text = text.strip()
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
-def with_history(message: str, turns: list[Turn]) -> str:
-    """The message itself on the first turn; later, with the conversation so far before it."""
-    if not turns:
-        return message
-    recent = turns[-MAX_TURNS:]
-    first_number = len(turns) - len(recent) + 1
-    blocks = [
-        prompts.turn(
-            first_number + i,
-            shorten(t.prompt, MAX_PROMPT_CHARS),
-            shorten(t.summary or ("(no result)" if t.ok else "(failed)"), MAX_SUMMARY_CHARS),
-        )
-        for i, t in enumerate(recent)
-    ]
-    while len(blocks) > 1 and sum(len(b) for b in blocks) > MAX_HISTORY_CHARS:
-        blocks.pop(0)
-    return prompts.follow_up("\n\n".join(blocks), message)

@@ -1,4 +1,5 @@
-"""A chat's Forge worker: turns, approvals, questions, cancel, follow-ups, picking up again.
+"""A chat's Forge worker: turns, approvals, questions, cancel, follow-ups, tidying the
+conversation, picking up again.
 
 These run the worker in the test process (fast); test_chats.py runs real worker processes.
 """
@@ -9,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from forge_sandbox.history import ChatState, Turn, with_history
+from forge_sandbox.history import ChatState
 from forge_sandbox.methods import ChatOptions
 from forge_sandbox.worker import AUTO_ALLOW, ChatWorker, build_config, config_overrides
 from support import call, fake_script
@@ -186,6 +187,7 @@ async def test_busy_worker_refuses_a_second_turn(root: Path, home: Path) -> None
 
 
 async def test_follow_up_carries_the_conversation(root: Path, home: Path) -> None:
+    """Forge's own conversation (S76) carries the first turn into the second (W46)."""
     script = fake_script({"text": "Paris."}, {"text": "About 2 million."}, prompts=2)
     worker, out = await started(root, ChatOptions(fake_script=script))
     worker.submit("What is the capital of France?")
@@ -194,10 +196,32 @@ async def test_follow_up_carries_the_conversation(root: Path, home: Path) -> Non
     await out.wait_for("turn")
     assert worker.ctx is not None
     fake = worker.ctx.cfg.instances["fake"]
-    last_user = [m for m in fake.requests[-1].messages if m.role == "user"][-1].text()
-    assert "Earlier in this conversation" in last_user
-    assert "What is the capital of France?" in last_user and "Paris." in last_user
-    assert "How many people live there?" in last_user
+    last = fake.requests[-1]
+    assert "Conversation so far" in last.system
+    assert "What is the capital of France?" in last.system and "Paris." in last.system
+    last_user = [m for m in last.messages if m.role == "user"][-1].text()
+    assert last_user == "How many people live there?"  # the message itself, nothing glued on
+    await worker.close()
+
+
+async def test_the_agent_tidies_the_conversation_for_a_new_task(root: Path, home: Path) -> None:
+    keep = "The user now works on the shop's API; tests run with pytest."
+    script = fake_script(
+        {"text": "Paris."}, call("compact_context", keep=keep), {"text": "On it."}, prompts=2
+    )
+    worker, out = await started(root, ChatOptions(fake_script=script))
+    worker.submit("What is the capital of France?")
+    await out.wait_for("turn")
+    worker.submit("Now add a /health endpoint to the API")
+    await out.wait_for("turn")
+    assert worker.ctx is not None
+    talk = worker.ctx.session.conversation
+    assert talk.notes == keep and [t.prompt for t in talk.turns] == [
+        "Now add a /health endpoint to the API"
+    ]
+    last = worker.ctx.cfg.instances["fake"].requests[-1]
+    assert keep in last.system and "capital of France" not in last.system
+    assert any(e["kind"] == "compacted" and e["level"] == 3 for e in out.events())
     await worker.close()
 
 
@@ -213,6 +237,7 @@ async def test_a_new_worker_picks_the_chat_up_again(root: Path, home: Path) -> N
     assert again.ctx is not None and again.ctx.session.id == session_id
     state = ChatState.load(home, "c1")
     assert state.session_id == session_id and [t.prompt for t in state.turns] == ["first"]
+    assert [t.prompt for t in again.ctx.session.conversation.turns] == ["first"]  # Forge's own
     await again.close()
 
 
@@ -242,14 +267,3 @@ async def test_ready_lists_the_slash_commands(root: Path, home: Path) -> None:
     assert listed["/review"] == {"name": "/review", "usage": "/review [arguments]",
                                  "help": "Review the code", "custom": True}  # fmt: skip
     await worker.close()
-
-
-def test_history_block_is_bounded() -> None:
-    assert with_history("hi", []) == "hi"
-    turns = [
-        Turn(prompt=f"question {i} " + "x" * 5000, summary="y" * 9000, ok=True) for i in range(30)
-    ]
-    prompt = with_history("new message", turns)
-    assert prompt.endswith("new message")
-    assert "[Turn 30]" in prompt and "[Turn 1]" not in prompt
-    assert len(prompt) < 20_000

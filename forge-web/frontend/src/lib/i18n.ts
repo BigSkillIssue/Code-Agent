@@ -62,6 +62,8 @@ export const coreEn = {
   tooManyFiles: "At most {n} files per message",
   fileTooBig: "Larger than {mb} MB",
   pastedPicture: "Pasted picture",
+  contextTidied: "Context tidied up: {before} → {after} tokens. What still matters was kept.",
+  contextSummarized: "Context summarized: {before} → {after} tokens.",
   signIn: "Sign in",
   devSignIn: "Development mode: open the login link printed in the server log, or paste its token.",
   token: "Token",
@@ -294,6 +296,8 @@ const coreDe: typeof coreEn = {
   tooManyFiles: "Höchstens {n} Dateien pro Nachricht",
   fileTooBig: "Größer als {mb} MB",
   pastedPicture: "Eingefügtes Bild",
+  contextTidied: "Kontext aufgeräumt: {before} → {after} Tokens. Was noch wichtig ist, bleibt.",
+  contextSummarized: "Kontext zusammengefasst: {before} → {after} Tokens.",
   signIn: "Anmelden",
   devSignIn:
     "Entwicklungsmodus: Öffne den Anmeldelink aus dem Server-Log oder füge sein Token ein.",

@@ -2,6 +2,7 @@
 // shows: messages, tool cards, approvals, questions, the plan, turn reports. Pure functions, so
 // the same items always give the same transcript.
 
+import { t } from "../lib/i18n";
 import type { GuidelineReview } from "../api/apple";
 import type {
   Attachment,
@@ -253,7 +254,7 @@ function addEvent(b: Builder, seq: number, event: Record<string, unknown>): void
       b.entries.push({ kind: "notice", key, tone: "error", text: String(event.message ?? "") });
       return;
     case "compacted":
-      b.entries.push({ kind: "notice", key, tone: "info", text: "The conversation was compacted." });
+      if (agent === "main") b.entries.push({ kind: "notice", key, tone: "info", text: compactedText(event) });
       return;
     case "agent_finished": {
       const card = b.agents.get(agent);
@@ -363,6 +364,14 @@ function attachAgents(b: Builder): void {
     const entries = builder.entries.map((e) => ("agent" in e ? { ...e, agent: "main" } : e));
     if (entry.kind === "agent") b.entries[index] = { ...entry, entries };
   }
+}
+
+/** "Context tidied up: 48k → 3k tokens" (W46). Level 3 is a fresh start (compact_context, or the
+context was full); level 2 summarized the older part of it. */
+export function compactedText(event: Record<string, unknown>): string {
+  const tokens = (n: unknown) => `${Math.max(1, Math.round(Number(n ?? 0) / 1000))}k`;
+  const values = { before: tokens(event.tokens_before), after: tokens(event.tokens_after) };
+  return t(event.level === 3 ? "contextTidied" : "contextSummarized", values);
 }
 
 export function buildTranscript(items: StoredItem[], live?: LiveState): Transcript {
