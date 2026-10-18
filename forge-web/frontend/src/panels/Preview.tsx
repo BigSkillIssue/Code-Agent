@@ -142,7 +142,7 @@ interface ProgramsProps {
   onError: (message: string) => void;
 }
 
-function Programs({ api, canEdit, overview, onChange, onError }: ProgramsProps) {
+export function Programs({ api, canEdit, overview, onChange, onError }: ProgramsProps) {
   const [command, setCommand] = useState("");
   const [outputOf, setOutputOf] = useState<string | null>(null);
 
@@ -227,7 +227,7 @@ function Programs({ api, canEdit, overview, onChange, onError }: ProgramsProps) 
   );
 }
 
-function Output({ api, program }: { api: ProjectApi; program: Program }) {
+export function Output({ api, program }: { api: ProjectApi; program: Program }) {
   const [lines, setLines] = useState<string[]>([]);
   const since = Math.max(0, program.total_lines - OUTPUT_LINES);
   useEffect(() => {

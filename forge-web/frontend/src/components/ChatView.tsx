@@ -1,5 +1,5 @@
-import { Eraser, Globe, Loader2, PanelRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Eraser, Globe, Loader2, MonitorPlay, PanelRight } from "lucide-react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Chat, ChatEffort, ChatMode, StoredItem } from "../api/types";
 import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
@@ -7,6 +7,7 @@ import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
 import { buildTranscript } from "../state/transcript";
 import { ProjectPanel } from "../panels/ProjectPanel";
+import { BrowserPreview, SplitHandle, usePreviewPane } from "./BrowserPreview";
 import { Composer } from "./Composer";
 import { Select } from "./Select";
 import { TodoPanel } from "./TodoPanel";
@@ -99,7 +100,10 @@ export function ChatView({ chat }: { chat: Chat }) {
   const project = useStore((s) => s.projects.find((p) => p.id === chat.project_id));
   const [panel, setPanel] = useState(storedPanel);
   const turns = useTurnCounter(chat.state);
+  const preview = usePreviewPane(chat.project_id, running, turns);
+  const showPreview = preview.open && !panel; // one pane next to the chat at a time
   const togglePanel = (open: boolean) => {
+    if (open) preview.setOpen(false);
     setPanel(open);
     try {
       window.localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
@@ -154,6 +158,19 @@ export function ChatView({ chat }: { chat: Chat }) {
           )}
           <button
             type="button"
+            title={t("preview")}
+            aria-label={t("preview")}
+            aria-pressed={showPreview}
+            className={`rounded p-1 ${showPreview ? "text-accent" : "text-muted"}`}
+            onClick={() => {
+              if (!showPreview) togglePanel(false);
+              preview.setOpen(!showPreview);
+            }}
+          >
+            <MonitorPlay className="size-4" />
+          </button>
+          <button
+            type="button"
             title={t("showPanel")}
             aria-pressed={panel}
             className={`rounded p-1 ${panel ? "text-accent" : "text-muted"}`}
@@ -195,6 +212,24 @@ export function ChatView({ chat }: { chat: Chat }) {
           />
         )}
       </div>
+      {showPreview && (
+        <>
+          <SplitHandle onResize={preview.resize} />
+          <div
+            className="fixed inset-0 z-30 lg:static lg:z-auto lg:w-[var(--preview-width)] lg:shrink-0"
+            style={{ "--preview-width": `${preview.width}px` } as CSSProperties}
+          >
+            <BrowserPreview
+              projectId={chat.project_id}
+              canEdit={project?.role !== "viewer"}
+              turns={turns}
+              port={preview.port}
+              onClose={() => preview.setOpen(false)}
+              onError={setError}
+            />
+          </div>
+        </>
+      )}
       {panel && (
         <div className="fixed inset-0 z-30 border-line lg:static lg:z-auto lg:w-[clamp(22rem,42vw,46rem)] lg:border-l">
           <ProjectPanel

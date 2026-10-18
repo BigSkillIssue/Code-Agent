@@ -416,5 +416,8 @@ Asked for after the screenshots of 2026-10-17: no native select fields, a plan p
     - Build: the worker keeps the chat's Forge session across messages, so Forge's own conversation (notes, turns, `compact_context`) replaces the last-ten-turns text glued to each message; when the agent tidies its context the transcript says so ("Kontext aufgeräumt: 48k → 3k Tokens").
     - Tests: a follow-up sees the first turn through Forge's conversation and arrives as the plain message; the agent's `compact_context` leaves only what it kept and the new turn; a worker started again has the conversation; the transcript shows a fresh start and a summary of the lead agent.
     - Verify: `uv run pytest tests/test_worker.py -q && cd frontend && npx vitest run src/state`
-- [ ] **W47 — A browser preview like Claude Code**
-    - Build: the preview opens as a resizable split next to the chat (and by itself when a dev server starts), with back, forward, reload, the address, the port, a new tab, device sizes (desktop, tablet, phone), a console with the program's output, and a reload after each turn.
+- [x] **W47 — A browser preview like Claude Code**
+    - Files: `frontend/src/components/{BrowserPreview,ChatView}.tsx`, `frontend/src/panels/Preview.tsx` (shares its dev-server list and output), `frontend/src/lib/i18n.ts`, `frontend/src/components/browserPreview.test.tsx`
+    - Build: the preview opens as a resizable split next to the chat (a "Vorschau" button in the header, and by itself when a dev server starts listening while the agent works), with back, forward, reload, the address, the port, a new tab, device sizes (desktop, tablet, phone), a console with the dev server's output, and a reload after each turn; without a server it offers to start one. No server change: it uses the preview tickets of W12.
+    - Tests: ports that appeared are found; the preview goes to an address, back and forward; phone and tablet sizes; a reload after the agent's turn; a dev server to start when nothing listens, and the console; it opens by itself on a new port and keeps a sensible width.
+    - Verify: `cd frontend && npx vitest run src/components/browserPreview.test.tsx`
