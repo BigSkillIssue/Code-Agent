@@ -78,7 +78,7 @@ def test_app_names_come_from_project_names() -> None:
 
 def test_apple_chats_build_on_macs_with_the_guidelines_checked(tmp_path: Path) -> None:
     settings = dev_settings(tmp_path)
-    chat = SimpleNamespace(mode="edits", model="")
+    chat = SimpleNamespace(mode="edits", model="", effort="auto")
     options_for = chat_options(settings)
     link = {"gateway_port": 47101, "apple": True}
     assert "apple_url" not in options_for(chat, link)  # Apple builds are off on this server

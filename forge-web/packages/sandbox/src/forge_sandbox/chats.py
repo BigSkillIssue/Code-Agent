@@ -245,8 +245,9 @@ class Chats:
         if chat.state == "running":
             raise RpcError("busy", "the chat is still working on the last message")
         chat.state = "running"
-        chat.append({"type": "user", "text": params.text})
-        await chat.write({"type": "prompt", "text": params.text})
+        files = [a.model_dump() for a in params.attachments]
+        chat.append({"type": "user", "text": params.text, "attachments": files})
+        await chat.write({"type": "prompt", "text": params.text, "attachments": files})
         return chat.info()
 
     async def answer(self, params: ChatAnswerParams) -> dict[str, Any]:

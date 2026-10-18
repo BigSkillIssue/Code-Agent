@@ -31,6 +31,7 @@ from forge.pipeline import PipelineError, Report, report_text, resume, run_task
 from forge.ports import SessionNotFoundError
 from forge.providers.base import ProviderError
 from forge.providers.fake import FakeProvider
+from forge.runtime.attachments import Attachment
 from forge.wiring import close_session, install_fake, open_session
 from pydantic import ValidationError
 
@@ -67,6 +68,8 @@ def config_overrides(options: ChatOptions) -> dict[str, Any]:
         overrides["roles"] = roles
     if options.max_cost_usd is not None:
         overrides["limits.max_cost_usd"] = options.max_cost_usd
+    if options.effort != "auto":
+        overrides["effort"] = options.effort
     for name, provider in options.providers.items():
         overrides[f"providers.{name}"] = provider
     if options.apple_review:
@@ -136,11 +139,11 @@ class ChatWorker:
             "commands": slash_commands(self.root),
         })  # fmt: skip
 
-    def submit(self, text: str) -> bool:
-        """Start a turn; False while another one runs."""
+    def submit(self, text: str, files: list[Attachment] | None = None) -> bool:
+        """Start a turn (with files attached to it); False while another one runs."""
         if self.task is not None and not self.task.done():
             return False
-        self.task = asyncio.create_task(self.turn(text))
+        self.task = asyncio.create_task(self.turn(text, files or []))
         return True
 
     async def cancel(self) -> None:
@@ -150,14 +153,14 @@ class ChatWorker:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self.task
 
-    async def turn(self, text: str) -> None:
+    async def turn(self, text: str, files: list[Attachment] | None = None) -> None:
         """Run one prompt or slash command and report how it ended."""
         assert self.ctx is not None
         started = time.time()
         await self.out.send({"type": "status", "state": "running"})
         result: dict[str, Any] = {"type": "turn", "prompt": text, "ok": False}
         try:
-            result.update(await self._run(text))
+            result.update(await self._run(text, files or []))
         except asyncio.CancelledError:
             result.update(cancelled=True, summary="Stopped by the user.")
             self.ctx.session.status = "cancelled"
@@ -173,10 +176,11 @@ class ChatWorker:
         await self.out.send(result)
         await self.out.send({"type": "status", "state": "idle"})
 
-    async def _run(self, text: str) -> dict[str, Any]:
+    async def _run(self, text: str, files: list[Attachment]) -> dict[str, Any]:
         assert self.ctx is not None
         if not text.startswith("/"):
-            return report_fields(await run_task(with_history(text, self.state.turns), self.ctx))
+            prompt = with_history(text, self.state.turns)
+            return report_fields(await run_task(prompt, self.ctx, attachments=files))
         command = await handle_command(self.ctx, text)
         if command.text:
             await self.out.send({"type": "command_result", "command": text, "text": command.text})
@@ -323,7 +327,7 @@ async def handle(worker: ChatWorker, message: dict[str, Any], out: Outbox) -> bo
     """Act on one daemon message; False means stop."""
     kind = message.get("type")
     if kind == "prompt" and isinstance(message.get("text"), str):
-        if not worker.submit(message["text"]):
+        if not worker.submit(message["text"], attachments_of(message)):
             await out.send({"type": "error", "message": "a turn is already running"})
     elif kind == "answer":
         worker.renderer.resolve(str(message.get("id", "")), message.get("answer"))
@@ -332,6 +336,14 @@ async def handle(worker: ChatWorker, message: dict[str, Any], out: Outbox) -> bo
     elif kind == "shutdown":
         return False
     return True
+
+
+def attachments_of(message: dict[str, Any]) -> list[Attachment]:
+    """The files sent with a prompt (the daemon checked them)."""
+    found = message.get("attachments")
+    if not isinstance(found, list):
+        return []
+    return [Attachment.model_validate(a) for a in found if isinstance(a, dict)]
 
 
 async def run_worker(root: Path, chat_id: str = "") -> int:

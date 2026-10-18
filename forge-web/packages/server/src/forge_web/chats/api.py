@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from forge_sandbox.methods import ChatMode
+from forge_sandbox.methods import MAX_ATTACHMENTS, AttachmentIn, ChatMode, Effort
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
 from forge_web.access import RANK, project_role, require_chat, require_project
@@ -40,12 +40,14 @@ class ChatPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     mode: ChatMode | None = None
     model: str | None = Field(default=None, max_length=200)
+    effort: Effort | None = None
 
 
 class MessageIn(BaseModel):
-    """A message to Forge (a prompt, or a slash command)."""
+    """A message to Forge (a prompt, or a slash command), with files uploaded for it (W45)."""
 
     text: str = Field(min_length=1, max_length=100_000)
+    attachments: list[AttachmentIn] = Field(default_factory=list, max_length=MAX_ATTACHMENTS)
 
 
 class AnswerIn(BaseModel):
@@ -64,6 +66,7 @@ class ChatOut(BaseModel):
     state: str
     mode: str
     model: str
+    effort: str
     can_write: bool  # editors and owners send, answer, change and clear
     created_at: float
     updated_at: float
@@ -73,7 +76,8 @@ def chat_out(chat: Chat, role: str) -> ChatOut:
     """The UI view of a chat for a member with this role."""
     return ChatOut(
         id=chat.id, project_id=chat.project_id, title=chat.title, state=chat.state,
-        mode=chat.mode, model=chat.model, can_write=RANK[role] >= RANK["editor"],
+        mode=chat.mode, model=chat.model, effort=chat.effort,
+        can_write=RANK[role] >= RANK["editor"],
         created_at=chat.created_at, updated_at=chat.updated_at,
     )  # fmt: skip
 
@@ -173,7 +177,7 @@ def chats_router() -> APIRouter:
             if row is not None and project is not None:
                 await session.delete(row)
                 await session.flush()  # the project may have one chat only
-                session.add(await new_chat(session, project, row.mode, row.model))
+                session.add(await new_chat(session, project, row.mode, row.model, row.effort))
 
     @router.get("/api/chats/{chat_id}/events")
     async def chat_events(
@@ -199,7 +203,7 @@ def chats_router() -> APIRouter:
             chat.started_by = user.id  # stopped with this member's access (members.stop_chats)
         await check_disk(services, chat.project_id)
         try:
-            await services.runs.send(chat, body.text)
+            await services.runs.send(chat, body.text, body.attachments)
         except (RpcError, ChannelClosed, SandboxError, OSError, TimeoutError) as err:
             raise sandbox_failure(err) from None
         return {"ok": True}

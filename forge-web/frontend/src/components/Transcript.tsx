@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Entry } from "../state/transcript";
+import { MessageFiles } from "./Attachments";
 import { AgentCard } from "./cards/AgentCard";
 import { ApprovalCard, type Answer } from "./cards/ApprovalCard";
 import { Notice, PlanCard, StructuredCard, TurnCard } from "./cards/Cards";
@@ -12,16 +13,18 @@ interface ViewProps {
   entry: Entry;
   onAnswer?: Answer;
   approvalPage?: string; // where an Apple app's approval page is
+  projectId?: string; // whose files a message's pictures are
 }
 
-function EntryView({ entry, onAnswer, approvalPage }: ViewProps) {
+function EntryView({ entry, onAnswer, approvalPage, projectId }: ViewProps) {
   switch (entry.kind) {
     case "user":
       return (
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end">
           <div className="max-w-[85%] rounded-2xl bg-panel px-4 py-2 whitespace-pre-wrap" data-testid="user-message">
             {entry.text}
           </div>
+          <MessageFiles projectId={projectId} files={entry.files} />
         </div>
       );
     case "assistant":
@@ -53,7 +56,7 @@ function EntryView({ entry, onAnswer, approvalPage }: ViewProps) {
   }
 }
 
-export function Transcript({ entries, onAnswer, approvalPage }: { entries: Entry[]; onAnswer?: Answer; approvalPage?: string }) {
+export function Transcript({ entries, onAnswer, approvalPage, projectId }: { entries: Entry[]; onAnswer?: Answer; approvalPage?: string; projectId?: string }) {
   const end = useRef<HTMLDivElement>(null);
   const last = entries[entries.length - 1];
   const lastLength = last?.kind === "assistant" ? last.text.length : 0;
@@ -63,7 +66,7 @@ export function Transcript({ entries, onAnswer, approvalPage }: { entries: Entry
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
       {entries.map((entry) => (
-        <EntryView key={entry.key} entry={entry} onAnswer={onAnswer} approvalPage={approvalPage} />
+        <EntryView key={entry.key} entry={entry} onAnswer={onAnswer} approvalPage={approvalPage} projectId={projectId} />
       ))}
       <div ref={end} />
     </div>

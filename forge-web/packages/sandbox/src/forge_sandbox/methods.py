@@ -220,6 +220,10 @@ class PtyResize(BaseModel):
 
 
 CHAT_ID = r"^[a-z0-9][a-z0-9-]{0,63}$"
+Effort = Literal["auto", "low", "medium", "high"]
+# Where uploads for a message live in the workspace (kept out of commits), one folder deep.
+ATTACHMENT_PATH = r"^\.forge/attachments/[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+MAX_ATTACHMENTS = 10  # files with one message, as Forge allows
 ChatMode = Literal["ask", "edits", "auto"]
 
 
@@ -228,6 +232,7 @@ class ChatOptions(Params):
 
     mode: ChatMode = "edits"  # ask: approve every change; edits: changes run, commands ask; auto
     model: str | None = None  # "provider/model" for every role
+    effort: Effort = "auto"  # how hard reasoning models think (Forge S74); auto: their default
     roles: dict[str, list[str]] = Field(default_factory=dict)  # per-role fallback chains
     providers: dict[str, dict[str, Any]] = Field(default_factory=dict)  # name -> ProviderConfig
     sandbox_mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
@@ -256,10 +261,20 @@ class ChatOpenParams(ChatParams):
     env: dict[str, str] = Field(default_factory=dict, max_length=32)
 
 
+class AttachmentIn(Params):
+    """A file the server uploaded into the workspace for a message (W45)."""
+
+    path: str = Field(pattern=ATTACHMENT_PATH)
+    name: str = Field(min_length=1, max_length=255)
+    media_type: str = Field(default="", max_length=127)
+    size: int = Field(default=0, ge=0)
+
+
 class ChatSendParams(ChatParams):
-    """chat.send: a prompt, or a slash command when it starts with '/'."""
+    """chat.send: a prompt, or a slash command when it starts with '/'; files go with it."""
 
     text: str = Field(min_length=1, max_length=100_000)
+    attachments: list[AttachmentIn] = Field(default_factory=list, max_length=MAX_ATTACHMENTS)
 
 
 class ChatAnswerParams(ChatParams):

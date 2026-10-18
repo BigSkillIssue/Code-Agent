@@ -55,6 +55,6 @@ describe("Composer", () => {
     await act(async () => {
       fireEvent.keyDown(box, { key: "Enter" });
     });
-    expect(onSend).toHaveBeenCalledWith("/he");
+    expect(onSend).toHaveBeenCalledWith("/he", []); // no files with it
   });
 });

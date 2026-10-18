@@ -5,6 +5,15 @@ import type { SlashCommand } from "../lib/completion";
 
 export type Role = "owner" | "editor" | "viewer";
 export type ChatMode = "ask" | "edits" | "auto";
+export type ChatEffort = "auto" | "low" | "medium" | "high"; // how hard the model thinks (W45)
+
+/** A file uploaded into the workspace for a message (W45). */
+export interface Attachment {
+  path: string;
+  name: string;
+  media_type: string;
+  size: number;
+}
 export type ChatState = "idle" | "running" | "waiting" | "stopped";
 
 export interface User {
@@ -32,6 +41,7 @@ export interface Chat {
   state: ChatState;
   mode: ChatMode;
   model: string;
+  effort: ChatEffort;
   can_write: boolean; // editors and owners send, answer, change and clear
   created_at: number;
   updated_at: number;
@@ -86,7 +96,7 @@ export interface ForgeEvent {
 }
 
 export type ChatItem =
-  | { type: "user"; text: string }
+  | { type: "user"; text: string; attachments?: Attachment[] }
   | { type: "ready"; session_id: string; commands?: SlashCommand[] }
   | { type: "status"; state: "running" | "idle" }
   | { type: "event"; event: ForgeEvent }

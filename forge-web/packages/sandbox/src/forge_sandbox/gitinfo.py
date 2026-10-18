@@ -21,7 +21,7 @@ GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "
 # stays visible to git.
 EXCLUDE_HEADER = "# Forge's working files (added by Forge Web)"
 FORGE_EXCLUDES = (".forge/audit.log", ".forge/undo/", ".forge/out/", ".forge/cache/",
-                  ".forge/worktrees/")  # fmt: skip
+                  ".forge/worktrees/", ".forge/attachments/")  # fmt: skip
 
 
 def match_rank(path: str, query: str) -> int | None:

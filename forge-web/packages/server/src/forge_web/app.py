@@ -31,6 +31,7 @@ from forge_web.billing.customers import customers_router
 from forge_web.billing.relay import payments_router
 from forge_web.billing.webhooks import webhook_router
 from forge_web.chats.api import chats_router
+from forge_web.chats.attachments import attachments_router
 from forge_web.containers.driver import ContainerDriver
 from forge_web.files_api import files_router
 from forge_web.gateway.api import keys_router
@@ -81,7 +82,8 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     routers = (
         health_router(), auth_router(), second_factor_router(), oauth_router(), admin_router(),
         admin_api_router(), settings_router(), dev_router(),
-        projects_router(), members_router(), chats_router(), files_router(), git_router(),
+        projects_router(), members_router(), chats_router(), attachments_router(),
+        files_router(), git_router(),
         sources_router(), terminals_router(), preview_router(), preview_hosts_router(),
         keys_router(), apple_admin_router(), worker_router(), screens_router(),
         approvals_router(), asc_key_routes(), release_routes(), listing_routes(),

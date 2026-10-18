@@ -70,6 +70,8 @@ def chat_options(settings: WebSettings) -> Any:
         options: dict[str, Any] = {"mode": chat.mode, "sandbox_mode": sandbox_mode}
         if chat.model:
             options["model"] = chat.model
+        if chat.effort != "auto":
+            options["effort"] = chat.effort
         if link.get("gateway_port"):
             base = f"http://127.0.0.1:{link['gateway_port']}"
             options["providers"] = worker_providers(base, TOKEN_ENV)

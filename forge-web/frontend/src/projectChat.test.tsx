@@ -7,7 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { useStore } from "./state/store";
 
 const chat = (id: string, state: Chat["state"] = "idle"): Chat => ({
-  id, project_id: "p1", title: `chat ${id}`, state, mode: "edits", model: "", can_write: true, created_at: 0, updated_at: 0,
+  id, project_id: "p1", title: `chat ${id}`, state, mode: "edits", model: "", effort: "auto", can_write: true, created_at: 0, updated_at: 0,
 });
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), del: vi.fn() }));

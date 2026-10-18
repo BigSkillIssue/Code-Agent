@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { api, ApiError } from "../api/client";
 import { ForgeSocket } from "../api/socket";
 import type {
+  Attachment,
   Chat,
   ChatItem,
   LiveState,
@@ -49,11 +50,12 @@ interface Store {
   loadChat: (projectId: string) => Promise<Chat>;
   createProject: (body: NewProject) => Promise<Project>;
   forgetProject: (projectId: string) => void;
-  updateChat: (chat: Chat, changes: Partial<Pick<Chat, "title" | "mode" | "model">>) => Promise<void>;
+  updateChat: (chat: Chat, changes: Partial<Pick<Chat, "title" | "mode" | "model" | "effort">>) => Promise<void>;
   clearChat: (chat: Chat) => Promise<void>;
   openChat: (chatId: string) => void;
   closeChat: (chatId: string) => void;
-  send: (chatId: string, text: string) => Promise<void>;
+  send: (chatId: string, text: string, files?: Attachment[]) => Promise<void>;
+  upload: (chatId: string, file: File) => Promise<Attachment>;
   answer: (chatId: string, requestId: string, answer: Record<string, unknown>) => Promise<boolean>;
   cancel: (chatId: string) => Promise<void>;
   handle: (message: ServerMessage) => void;
@@ -193,8 +195,13 @@ export const useStore = create<Store>((set, get) => ({
     get().socket?.unwatch(chatId);
   },
 
-  async send(chatId, text) {
-    await api.post(`/api/chats/${chatId}/messages`, { text });
+  async send(chatId, text, files = []) {
+    await api.post(`/api/chats/${chatId}/messages`, { text, attachments: files });
+  },
+
+  async upload(chatId, file) {
+    const name = encodeURIComponent(file.name || "file");
+    return api.postBytes<Attachment>(`/api/chats/${chatId}/attachments?name=${name}`, file, file.type || undefined);
   },
 
   async answer(chatId, requestId, answer) {

@@ -12,7 +12,11 @@ from forge_web.db.models import Chat, Project, User
 
 
 async def new_chat(
-    session: AsyncSession, project: Project, mode: str = "edits", model: str = ""
+    session: AsyncSession,
+    project: Project,
+    mode: str = "edits",
+    model: str = "",
+    effort: str = "auto",
 ) -> Chat:
     """An empty chat for the project, on its owner's account (not added to the session)."""
     owner = await session.get(User, project.owner_id)
@@ -20,7 +24,7 @@ async def new_chat(
     return Chat(
         id=secrets.token_hex(16), project_id=project.id, user_id=project.owner_id,
         title="New chat", mode=mode, model=model or (owner.default_model if owner else ""),
-        state="idle", shared=True, created_at=now, updated_at=now,
+        effort=effort, state="idle", shared=True, created_at=now, updated_at=now,
     )  # fmt: skip
 
 

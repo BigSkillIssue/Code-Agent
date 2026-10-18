@@ -4,6 +4,7 @@
 
 import type { GuidelineReview } from "../api/apple";
 import type {
+  Attachment,
   ChatItem,
   ChatState,
   LiveState,
@@ -17,7 +18,7 @@ import type {
 } from "../api/types";
 
 export type Entry =
-  | { kind: "user"; key: string; text: string }
+  | { kind: "user"; key: string; text: string; files: Attachment[] }
   | { kind: "assistant"; key: string; agent: string; text: string; streaming: boolean }
   | { kind: "structured"; key: string; agent: string; data: Record<string, unknown> }
   | {
@@ -272,7 +273,7 @@ function addItem(b: Builder, seq: number, item: ChatItem): void {
   const key = `i${seq}`;
   switch (item.type) {
     case "user":
-      b.entries.push({ kind: "user", key, text: item.text });
+      b.entries.push({ kind: "user", key, text: item.text, files: item.attachments ?? [] });
       return;
     case "event":
       addEvent(b, seq, item.event as Record<string, unknown>);

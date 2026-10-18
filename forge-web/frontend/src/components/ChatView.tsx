@@ -1,7 +1,7 @@
 import { Eraser, Globe, Loader2, PanelRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Chat, ChatMode, StoredItem } from "../api/types";
+import type { Chat, ChatEffort, ChatMode, StoredItem } from "../api/types";
 import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
@@ -16,6 +16,14 @@ const MODES: { value: ChatMode; label: string }[] = [
   { value: "ask", label: t("modeAsk") },
   { value: "edits", label: t("modeEdits") },
   { value: "auto", label: t("modeAuto") },
+];
+
+// How hard the model thinks (W45), as Forge's effort; models that do not reason ignore it.
+const EFFORTS: { value: ChatEffort; label: string; description: string }[] = [
+  { value: "auto", label: t("effortAuto"), description: t("effortAutoHint") },
+  { value: "low", label: t("effortLow"), description: t("effortLowHint") },
+  { value: "medium", label: t("effortMedium"), description: t("effortMediumHint") },
+  { value: "high", label: t("effortHigh"), description: t("effortHighHint") },
 ];
 
 /** The slash commands the chat's worker announced last (its own and the project's). */
@@ -77,7 +85,7 @@ function useTurnCounter(state: Chat["state"]): number {
 
 export function ChatView({ chat }: { chat: Chat }) {
   const data = useStore((s) => s.chatData[chat.id]);
-  const { openChat, closeChat, send, answer, cancel, updateChat, clearChat, setError, searchFiles } = useStore();
+  const { openChat, closeChat, send, upload, answer, cancel, updateChat, clearChat, setError, searchFiles } = useStore();
 
   useEffect(() => {
     openChat(chat.id);
@@ -130,6 +138,15 @@ export function ChatView({ chat }: { chat: Chat }) {
             options={MODES}
           />
           <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />
+          <Select
+            compact
+            ariaLabel={t("effort")}
+            className="min-w-0"
+            value={chat.effort}
+            disabled={!chat.can_write}
+            onChange={(effort) => void guard(() => updateChat(chat, { effort }))}
+            options={EFFORTS}
+          />
           {project?.kind === "app" && (
             <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded p-1 text-muted hover:text-accent">
               <Globe className="size-4" />
@@ -163,6 +180,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             entries={transcript.entries}
             onAnswer={chat.can_write ? (id, value) => answer(chat.id, id, value) : undefined}
             approvalPage={project?.kind === "apple" ? `/p/${chat.project_id}/apple` : undefined}
+            projectId={chat.project_id}
           />
         </main>
         <TodoPanel todos={transcript.todos} />
@@ -171,7 +189,8 @@ export function ChatView({ chat }: { chat: Chat }) {
             running={running}
             commands={commands}
             searchFiles={findFiles}
-            onSend={(text) => guard(() => send(chat.id, text)).then(() => undefined)}
+            onSend={(text, files) => guard(() => send(chat.id, text, files)).then(() => undefined)}
+            upload={(file) => upload(chat.id, file)}
             onStop={() => guard(() => cancel(chat.id)).then(() => undefined)}
           />
         )}

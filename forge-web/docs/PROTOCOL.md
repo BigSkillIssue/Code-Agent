@@ -99,7 +99,7 @@ the peer may be untrusted; the details go to the local log. Parameters are valid
 | `git.bundle_in` | `branch` | `{merged, head \| reason}` — takes `.git/forge-transfer/fetch.bundle` as `origin/<branch>` and fast-forwards a checked-out branch |
 | `git.files` | `query`, `limit` | `{files, total}` — files not ignored by git, best matches first (name, then path, then letters in order) |
 | `chat.open` | `chat_id`, `options`, `env` | chat info `{chat_id, state, seq, session_id, pending}` |
-| `chat.send` | `chat_id`, `text` (a prompt, or a `/command`) | chat info; `busy` while a turn runs |
+| `chat.send` | `chat_id`, `text` (a prompt, or a `/command`), `attachments` (W45: up to 10 `{path, name, media_type, size}` under `.forge/attachments/`) | chat info; `busy` while a turn runs |
 | `chat.answer` | `chat_id`, `request_id`, `answer` | `{accepted}` — only the first answer is accepted |
 | `chat.cancel` / `chat.close` / `chat.list` | `chat_id` / `chat_id` / — | chat info / chat info / all chats |
 | `daemon.info` | — | the hello info |
@@ -124,7 +124,7 @@ Every item a chat produces gets the next `seq` (1, 2, 3, …) and stays in the d
 
 | `type` | From | Fields |
 | --- | --- | --- |
-| `user` | daemon | `text` — a message the user sent |
+| `user` | daemon | `text` — a message the user sent; `attachments` — the files that went with it (W45) |
 | `ready` | worker | `session_id`, `turns`, `commands` (`name`, `usage`, `help`, `custom`) — the Forge session is open; the slash commands it understands |
 | `status` | worker | `state`: `running` or `idle` |
 | `event` | worker | `event` — a Forge event (`kind` = `model_delta`, `tool_started`, …) |

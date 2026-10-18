@@ -11,10 +11,11 @@ import json
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from forge_sandbox.fingerprint import forge_fingerprint
@@ -243,10 +244,12 @@ class RunManager:
                 live.relay = asyncio.create_task(self._relay(live, client))
             return live
 
-    async def send(self, chat: Chat, text: str) -> None:
-        """Send a message to the chat (starts the chat in its sandbox if needed)."""
+    async def send(self, chat: Chat, text: str, files: Sequence[BaseModel] = ()) -> None:
+        """Send a message, with the files uploaded for it, to the chat (starts the chat in its
+        sandbox if needed)."""
         self.allow_run(await self.open(chat))
-        await self.call(chat.project_id, "chat.send", {"chat_id": chat.id, "text": text})
+        params = {"chat_id": chat.id, "text": text, "attachments": [f.model_dump() for f in files]}
+        await self.call(chat.project_id, "chat.send", params)
 
     async def answer(self, chat: Chat, request_id: str, answer: dict[str, Any]) -> bool:
         """Answer an open request; False if it was already answered."""

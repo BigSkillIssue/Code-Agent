@@ -13,6 +13,7 @@ from forge.plan import Question
 from forge.providers.base import ToolCall, Usage
 from pydantic import BaseModel, Field, ValidationError
 
+from forge_sandbox.methods import MAX_ATTACHMENTS
 from forge_web.apple.questions import PURPOSE, is_approval
 from forge_web.hosting import questions as go_live
 
@@ -142,6 +143,20 @@ def _ready(item: dict[str, Any]) -> dict[str, Any]:
             "commands": [c for c in found if c is not None]}  # fmt: skip
 
 
+def _user(item: dict[str, Any]) -> dict[str, Any]:
+    """A person's message, with the files that went with it (W45): what each one is, nothing
+    of its content."""
+    found = item.get("attachments")
+    files = [
+        {"path": short(a.get("path"), 200), "name": short(a.get("name"), 255),
+         "media_type": short(a.get("media_type"), 127),
+         "size": a.get("size") if isinstance(a.get("size"), int) else 0}
+        for a in (found[:MAX_ATTACHMENTS] if isinstance(found, list) else [])
+        if isinstance(a, dict)
+    ]  # fmt: skip
+    return {"type": "user", "text": short(item.get("text")), "attachments": files}
+
+
 def _status(item: dict[str, Any]) -> dict[str, Any] | None:
     state = item.get("state")
     return {"type": "status", "state": state} if state in ("running", "idle") else None
@@ -153,7 +168,7 @@ _CHECKS: dict[str, Any] = {
     "request_resolved": _resolved,
     "turn": _turn,
     "status": _status,
-    "user": lambda i: {"type": "user", "text": short(i.get("text"))},
+    "user": _user,
     "ready": _ready,
     "command_result": lambda i: {
         "type": "command_result",

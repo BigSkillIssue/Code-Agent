@@ -73,6 +73,7 @@ class Chat(Base):
     state: Mapped[str] = mapped_column(String(16), default="idle")  # idle|running|waiting|stopped
     mode: Mapped[str] = mapped_column(String(16), default="edits")  # ask | edits | auto
     model: Mapped[str] = mapped_column(String(200), default="")
+    effort: Mapped[str] = mapped_column(String(16), default="auto")  # auto|low|medium|high (W45)
     shared: Mapped[bool] = mapped_column(Boolean, default=True)  # every chat is, since W44
     daemon_boot: Mapped[str] = mapped_column(String(64), default="")
     token_generation: Mapped[int] = mapped_column(Integer, default=1)  # bump to revoke tokens
