@@ -188,14 +188,21 @@ async def world(tmp_path: Path) -> AsyncIterator[dict[str, Any]]:
             ]
         )
         await session.flush()
-        session.add(Project(id="p1", name="P", owner_id="u1", created_at=now, updated_at=now))
+        # One chat per project (W44), on its owner's account: the admin has a project too.
+        session.add_all(
+            [
+                Project(id="p1", name="P", owner_id="u1", created_at=now, updated_at=now),
+                Project(id="p-admin", name="A", owner_id="admin", created_at=now, updated_at=now),
+            ]
+        )
         await session.flush()
         session.add_all(
             [
                 Chat(id="c1", project_id="p1", user_id="u1", created_at=now, updated_at=now),
-                Chat(id="c2", project_id="p1", user_id="admin", created_at=now, updated_at=now),
+                Chat(id="c2", project_id="p-admin", user_id="admin", created_at=now,
+                     updated_at=now),
             ]
-        )
+        )  # fmt: skip
     working = {"c1", "c2"}
     vault = Vault(b"m" * 32)
     gateway = Gateway(db, vault, GatewaySettings(monthly_limit_usd=1.0), lambda c: c in working)

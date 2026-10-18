@@ -1,22 +1,23 @@
-"""Chats over HTTP: create, list, change, delete; send messages, answer requests, stop."""
+"""The project's one chat over HTTP (W44): read it, change it, clear it; send messages, answer
+requests, stop."""
 
 import json
-import secrets
 import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from forge_sandbox.methods import ChatMode
 from forge_sandbox.mux import ChannelClosed
 from forge_sandbox.rpc import RpcError
-from forge_web.access import require_chat, require_project
+from forge_web.access import RANK, project_role, require_chat, require_project
 from forge_web.apple.approvals import note_answer
 from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.chats.one import new_chat, project_chat
 from forge_web.containers.driver import SandboxError
-from forge_web.db.models import Chat, ChatEvent, User
+from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.hosting.golive import note_go_live
 from forge_web.quotas import check_disk
 from forge_web.services import Services, services_of
@@ -25,7 +26,8 @@ MAX_PAGE = 500
 
 
 class ChatIn(BaseModel):
-    """A new chat."""
+    """What clients from before W44 sent to make a chat: the project's one chat is returned,
+    with this mode and model."""
 
     title: str = Field(default="New chat", min_length=1, max_length=200)
     mode: ChatMode = "edits"
@@ -38,7 +40,6 @@ class ChatPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     mode: ChatMode | None = None
     model: str | None = Field(default=None, max_length=200)
-    shared: bool | None = None
 
 
 class MessageIn(BaseModel):
@@ -63,19 +64,23 @@ class ChatOut(BaseModel):
     state: str
     mode: str
     model: str
-    shared: bool
-    mine: bool
+    can_write: bool  # editors and owners send, answer, change and clear
     created_at: float
     updated_at: float
 
 
-def chat_out(chat: Chat, user: User) -> ChatOut:
-    """The UI view of a chat."""
+def chat_out(chat: Chat, role: str) -> ChatOut:
+    """The UI view of a chat for a member with this role."""
     return ChatOut(
         id=chat.id, project_id=chat.project_id, title=chat.title, state=chat.state,
-        mode=chat.mode, model=chat.model, shared=chat.shared, mine=chat.user_id == user.id,
+        mode=chat.mode, model=chat.model, can_write=RANK[role] >= RANK["editor"],
         created_at=chat.created_at, updated_at=chat.updated_at,
     )  # fmt: skip
+
+
+async def role_in(session: Any, user: User, chat: Chat) -> str:
+    """The user's role in the chat's project (require_chat checked that there is one)."""
+    return await project_role(session, user, chat.project_id) or "viewer"
 
 
 async def stored_items(
@@ -104,45 +109,40 @@ def chats_router() -> APIRouter:
     """`/api/projects/{id}/chats` and `/api/chats/...`."""
     router = APIRouter()
 
+    @router.get("/api/projects/{project_id}/chat")
+    async def get_project_chat(project_id: str, request: Request, user: CurrentUser) -> ChatOut:
+        async with services_of(request).db.session() as session, session.begin():
+            project, role = await require_project(session, user, project_id)
+            chat = await project_chat(session, project)
+        return chat_out(chat, role)
+
     @router.get("/api/projects/{project_id}/chats")
     async def list_chats(project_id: str, request: Request, user: CurrentUser) -> list[ChatOut]:
-        async with services_of(request).db.session() as session:
-            await require_project(session, user, project_id)
-            chats = await session.scalars(
-                select(Chat)
-                .where(Chat.project_id == project_id, or_(Chat.user_id == user.id, Chat.shared))
-                .order_by(Chat.updated_at.desc())
-            )
-            return [chat_out(chat, user) for chat in chats]
+        return [await get_project_chat(project_id, request, user)]  # clients from before W44
 
     @router.post("/api/projects/{project_id}/chats", status_code=201)
     async def create_chat(
         project_id: str, body: ChatIn, request: Request, user: CurrentUser
     ) -> ChatOut:
-        now = time.time()
         async with services_of(request).db.session() as session, session.begin():
-            await require_project(session, user, project_id, "editor")
-            chat = Chat(
-                id=secrets.token_hex(16), project_id=project_id, user_id=user.id,
-                title=body.title, mode=body.mode, model=body.model or user.default_model,
-                state="idle",
-                created_at=now, updated_at=now,
-            )  # fmt: skip
-            session.add(chat)
+            project, role = await require_project(session, user, project_id, "editor")
+            chat = await project_chat(session, project)
+            chat.mode, chat.model = body.mode, body.model or chat.model  # what was asked for
         services_of(request).runs.warm(project_id)  # a worker loads while the user types
-        return chat_out(chat, user)
+        return chat_out(chat, role)
 
     @router.get("/api/chats/{chat_id}")
     async def get_chat(chat_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
         services = services_of(request)
         async with services.db.session() as session:
             chat, _ = await require_chat(session, user, chat_id)
+            role = await role_in(session, user, chat)
         snapshot = services.runs.snapshot(chat_id) or {
             "pending": [],
             "streaming": {},
             "outputs": {},
         }
-        return {**chat_out(chat, user).model_dump(), "live": snapshot}
+        return {**chat_out(chat, role).model_dump(), "live": snapshot}
 
     @router.patch("/api/chats/{chat_id}")
     async def patch_chat(
@@ -151,24 +151,29 @@ def chats_router() -> APIRouter:
         services = services_of(request)
         async with services.db.session() as session, session.begin():
             chat, _ = await require_chat(session, user, chat_id, write=True)
+            role = await role_in(session, user, chat)
             for name, value in body.model_dump(exclude_none=True).items():
                 setattr(chat, name, value)
             chat.updated_at = time.time()
         live = services.runs.lives.get(chat_id)
         if live is not None and body.title is not None:
             live.title = body.title
-        return chat_out(chat, user)
+        return chat_out(chat, role)
 
     @router.delete("/api/chats/{chat_id}", status_code=204)
-    async def delete_chat(chat_id: str, request: Request, user: CurrentUser) -> None:
+    async def clear_chat(chat_id: str, request: Request, user: CurrentUser) -> None:
+        """Clear the conversation: the chat and its items go, an empty one takes its place."""
         services = services_of(request)
         async with services.db.session() as session:
             chat, _ = await require_chat(session, user, chat_id, write=True)
         await services.runs.forget_chat(chat)
         async with services.db.session() as session, session.begin():
             row = await session.get(Chat, chat_id)
-            if row is not None:
+            project = await session.get(Project, chat.project_id)
+            if row is not None and project is not None:
                 await session.delete(row)
+                await session.flush()  # the project may have one chat only
+                session.add(await new_chat(session, project, row.mode, row.model))
 
     @router.get("/api/chats/{chat_id}/events")
     async def chat_events(
@@ -189,8 +194,9 @@ def chats_router() -> APIRouter:
         chat_id: str, body: MessageIn, request: Request, user: CurrentUser
     ) -> dict[str, bool]:
         services = services_of(request)
-        async with services.db.session() as session:
+        async with services.db.session() as session, session.begin():
             chat, _ = await require_chat(session, user, chat_id, write=True)
+            chat.started_by = user.id  # stopped with this member's access (members.stop_chats)
         await check_disk(services, chat.project_id)
         try:
             await services.runs.send(chat, body.text)

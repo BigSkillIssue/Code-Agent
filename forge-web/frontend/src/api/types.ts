@@ -32,8 +32,7 @@ export interface Chat {
   state: ChatState;
   mode: ChatMode;
   model: string;
-  shared: boolean;
-  mine: boolean;
+  can_write: boolean; // editors and owners send, answer, change and clear
   created_at: number;
   updated_at: number;
 }

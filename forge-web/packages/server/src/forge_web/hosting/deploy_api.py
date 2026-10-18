@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 
 from forge_hostworker.wire import (
     ENV_NAME,
@@ -362,13 +362,12 @@ async def hosting_overview(services: Services, project_id: str, user_id: str) ->
 
 
 async def release_reviews(session: Any, project_id: str, user_id: str) -> list[dict[str, Any]]:
-    """The newest release review of each stage (request, plan, product) from the chats this
-    user may read: their own and the shared ones."""
+    """The newest release review of each stage (request, plan, product) from the project's
+    chat, which every member reads (W44)."""
     query = (
         select(ChatEvent.chat_id, ChatEvent.data)
         .join(Chat, Chat.id == ChatEvent.chat_id)
-        .where(Chat.project_id == project_id, ChatEvent.kind == "release_review",
-               or_(Chat.shared.is_(True), Chat.user_id == user_id))
+        .where(Chat.project_id == project_id, ChatEvent.kind == "release_review")
         .order_by(ChatEvent.ts.desc()).limit(200)
     )  # fmt: skip
     latest: dict[str, dict[str, Any]] = {}

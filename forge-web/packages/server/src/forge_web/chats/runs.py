@@ -394,15 +394,14 @@ class RunManager:
             live.title = changes["title"] = item["text"].strip().splitlines()[0][:60]
         if changes:
             await self._save(live.chat_id, **changes, updated_at=time.time())
-            self.hub.to_users(
-                {live.user_id},
-                {
-                    "type": "chat_state",
-                    "chat_id": live.chat_id,
-                    "state": live.state,
-                    "title": live.title,
-                },
-            )
+            message = {
+                "type": "chat_state",
+                "chat_id": live.chat_id,
+                "state": live.state,
+                "title": live.title,
+            }
+            self.hub.to_chat(live.chat_id, message)  # every member who has the chat open
+            self.hub.to_users({live.user_id}, message)
 
     async def _save(self, chat_id: str, **values: Any) -> None:
         async with self.db.session() as session, session.begin():

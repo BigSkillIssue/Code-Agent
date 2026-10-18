@@ -316,7 +316,7 @@ async def plain_project(server: LiveServer, client: httpx.AsyncClient) -> str:
 
 
 async def asked(server: LiveServer, client: httpx.AsyncClient, project_id: str) -> tuple[str, Any]:
-    """A new chat of the project, waiting on the go-live question."""
+    """The project's chat, waiting on the go-live question."""
     chat = (await client.post(f"/api/projects/{project_id}/chats", json={})).json()
     async with Browser(server) as tab:
         await tab.send({"type": "subscribe", "chat_id": chat["id"], "after_seq": 0})
@@ -354,6 +354,7 @@ async def test_ready_to_go_live_in_the_chat_approves_the_commit(tmp_path: Path) 
             not_yet = choice(request["id"], NOT_YET)
             assert (await client.post(f"/api/chats/{waiting}/answer", json=not_yet)).json() == {
                 "accepted": True}  # fmt: skip
+            await client.delete(f"/api/chats/{waiting}")  # cleared: the script starts again
             ready, request = await asked(live, client, project_id)
             go = choice(request["id"], GO_LIVE)
             assert (await client.post(f"/api/chats/{ready}/answer", json=go)).json() == {

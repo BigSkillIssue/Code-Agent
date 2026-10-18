@@ -60,19 +60,20 @@ class ProjectMember(Base):
 
 
 class Chat(Base):
-    """One conversation with Forge in a project."""
+    """A project's one conversation with Forge (W44): every member reads it, editors write."""
 
     __tablename__ = "chats"
-    __table_args__ = (Index("chats_by_project", "project_id", "updated_at"),)
+    __table_args__ = (Index("chats_one_per_project", "project_id", unique=True),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))  # whose account runs use
+    started_by: Mapped[str] = mapped_column(String(32), default="")  # who sent the last message
     title: Mapped[str] = mapped_column(String(200), default="New chat")
     state: Mapped[str] = mapped_column(String(16), default="idle")  # idle|running|waiting|stopped
     mode: Mapped[str] = mapped_column(String(16), default="edits")  # ask | edits | auto
     model: Mapped[str] = mapped_column(String(200), default="")
-    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    shared: Mapped[bool] = mapped_column(Boolean, default=True)  # every chat is, since W44
     daemon_boot: Mapped[str] = mapped_column(String(64), default="")
     token_generation: Mapped[int] = mapped_column(Integer, default=1)  # bump to revoke tokens
     created_at: Mapped[float] = mapped_column(Float)

@@ -1,4 +1,5 @@
-// The app's state: who is signed in, projects, chats, and each open chat's items and live state.
+// The app's state: who is signed in, projects, each project's one chat (W44), and each open
+// chat's items and live state.
 // Chat items only ever come from the WebSocket, in order; this store appends them.
 
 import { create } from "zustand";
@@ -7,7 +8,6 @@ import { ForgeSocket } from "../api/socket";
 import type {
   Chat,
   ChatItem,
-  ChatMode,
   LiveState,
   Model,
   Project,
@@ -38,7 +38,7 @@ interface Store {
   user: User | null;
   signedOut: boolean;
   projects: Project[];
-  chats: Record<string, Chat[]>; // project id -> chats
+  chats: Record<string, Chat>; // project id -> its chat
   chatData: Record<string, ChatData>;
   error: string;
   socket: ForgeSocket | null;
@@ -46,12 +46,11 @@ interface Store {
   init: () => Promise<void>;
   loadModels: () => Promise<void>;
   searchFiles: (projectId: string, query: string) => Promise<string[]>;
-  loadChats: (projectId: string) => Promise<void>;
+  loadChat: (projectId: string) => Promise<Chat>;
   createProject: (body: NewProject) => Promise<Project>;
   forgetProject: (projectId: string) => void;
-  createChat: (projectId: string, mode?: ChatMode) => Promise<Chat>;
   updateChat: (chat: Chat, changes: Partial<Pick<Chat, "title" | "mode" | "model">>) => Promise<void>;
-  deleteChat: (chat: Chat) => Promise<void>;
+  clearChat: (chat: Chat) => Promise<void>;
   openChat: (chatId: string) => void;
   closeChat: (chatId: string) => void;
   send: (chatId: string, text: string) => Promise<void>;
@@ -152,14 +151,15 @@ export const useStore = create<Store>((set, get) => ({
     return found.files;
   },
 
-  async loadChats(projectId) {
-    const chats = await api.get<Chat[]>(`/api/projects/${projectId}/chats`);
-    set((s) => ({ chats: { ...s.chats, [projectId]: chats } }));
+  async loadChat(projectId) {
+    const chat = await api.get<Chat>(`/api/projects/${projectId}/chat`);
+    set((s) => ({ chats: { ...s.chats, [projectId]: chat } }));
+    return chat;
   },
 
   async createProject(body) {
     const project = await api.post<Project>("/api/projects", body);
-    set((s) => ({ projects: [project, ...s.projects], chats: { ...s.chats, [project.id]: [] } }));
+    set((s) => ({ projects: [project, ...s.projects] }));
     return project;
   },
 
@@ -167,31 +167,21 @@ export const useStore = create<Store>((set, get) => ({
     set((s) => ({ projects: s.projects.filter((p) => p.id !== projectId) }));
   },
 
-  async createChat(projectId, mode = "edits") {
-    const chat = await api.post<Chat>(`/api/projects/${projectId}/chats`, { mode });
-    set((s) => ({ chats: { ...s.chats, [projectId]: [chat, ...(s.chats[projectId] ?? [])] } }));
-    return chat;
-  },
-
   async updateChat(chat, changes) {
     const updated = await api.patch<Chat>(`/api/chats/${chat.id}`, changes);
-    set((s) => ({
-      chats: {
-        ...s.chats,
-        [chat.project_id]: (s.chats[chat.project_id] ?? []).map((c) => (c.id === chat.id ? updated : c)),
-      },
-    }));
+    set((s) => ({ chats: { ...s.chats, [chat.project_id]: updated } }));
   },
 
-  async deleteChat(chat) {
+  async clearChat(chat) {
+    // The server puts an empty chat in its place; the project then shows that one.
     await api.delete(`/api/chats/${chat.id}`);
     get().closeChat(chat.id);
-    set((s) => ({
-      chats: {
-        ...s.chats,
-        [chat.project_id]: (s.chats[chat.project_id] ?? []).filter((c) => c.id !== chat.id),
-      },
-    }));
+    set((s) => {
+      const chatData = { ...s.chatData };
+      delete chatData[chat.id];
+      return { chatData };
+    });
+    await get().loadChat(chat.project_id);
   },
 
   openChat(chatId) {
@@ -223,11 +213,9 @@ export const useStore = create<Store>((set, get) => ({
     if (message.type === "chat_state") {
       set((s) => ({
         chats: Object.fromEntries(
-          Object.entries(s.chats).map(([projectId, chats]) => [
+          Object.entries(s.chats).map(([projectId, chat]) => [
             projectId,
-            chats.map((c) =>
-              c.id === message.chat_id ? { ...c, state: message.state, title: message.title } : c,
-            ),
+            chat.id === message.chat_id ? { ...chat, state: message.state, title: message.title } : chat,
           ]),
         ),
       }));

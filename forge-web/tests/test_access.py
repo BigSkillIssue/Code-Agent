@@ -93,7 +93,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "MemberIn": {"email": "outsider@example.com", "role": "owner"},
     "RoleIn": {"role": "viewer"},
     "ChatIn": {"title": "Sneaky"},
-    "ChatPatch": {"title": "Renamed", "shared": True},
+    "ChatPatch": {"title": "Renamed"},
     "MessageIn": {"text": "rm -rf /workspace"},
     "AnswerIn": {"request_id": "r1", "answer": {"approved": True}},
     "KeyIn": {"provider": "anthropic", "key": "sk-ant-not-a-real-key"},

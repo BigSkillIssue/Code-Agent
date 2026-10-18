@@ -173,7 +173,7 @@ async def test_a_tab_that_reconnects_mid_turn_misses_nothing(tmp_path: Path) -> 
                 assert seen + again.seqs() == list(range(1, again.seqs()[-1] + 1))
 
 
-async def test_chat_settings_and_deletion(server: LiveServer) -> None:
+async def test_chat_settings_and_clearing(server: LiveServer) -> None:
     async with api(server) as client:
         project_id, chat_id = await new_chat(client, title="Plan", mode="auto")
         patched = await client.patch(
@@ -183,6 +183,8 @@ async def test_chat_settings_and_deletion(server: LiveServer) -> None:
         bad = await client.patch(f"/api/chats/{chat_id}", json={"mode": "yolo"})
         assert bad.status_code == 422
         listed = (await client.get(f"/api/projects/{project_id}/chats")).json()
-        assert [c["id"] for c in listed] == [chat_id] and listed[0]["mine"]
+        assert [c["id"] for c in listed] == [chat_id] and listed[0]["can_write"]
         assert (await client.delete(f"/api/chats/{chat_id}")).status_code == 204
         assert (await client.get(f"/api/chats/{chat_id}")).status_code == 404
+        fresh = (await client.get(f"/api/projects/{project_id}/chat")).json()  # W44: cleared
+        assert fresh["id"] != chat_id and fresh["mode"] == "ask"

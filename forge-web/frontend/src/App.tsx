@@ -1,6 +1,6 @@
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BrowserRouter, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { api } from "./api/client";
 import type { Chat } from "./api/types";
 import { ChatView } from "./components/ChatView";
@@ -30,51 +30,40 @@ function ErrorBar() {
 }
 
 function Empty() {
-  return <div className="flex flex-1 items-center justify-center p-8 text-muted">{t("pickChat")}</div>;
+  return <div className="flex flex-1 items-center justify-center p-8 text-muted">{t("pickProject")}</div>;
 }
 
-function ProjectPage() {
+/** A project is its one chat (W44). */
+export function ProjectPage() {
   const { projectId = "" } = useParams();
-  const chats = useStore((s) => s.chats[projectId]);
-  const { createChat, setError } = useStore();
-  const navigate = useNavigate();
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted">
-      <p>{chats && chats.length > 0 ? t("pickChat") : t("noChats")}</p>
-      <button
-        type="button"
-        className="rounded-md bg-accent px-4 py-2 font-medium text-on-accent"
-        onClick={() =>
-          createChat(projectId)
-            .then((chat) => navigate(`/c/${chat.id}`))
-            .catch((err) => setError(String(err)))
-        }
-      >
-        {t("newChat")}
-      </button>
-    </div>
-  );
-}
-
-function ChatPage() {
-  const { chatId = "" } = useParams();
-  const chat = useStore((s) => Object.values(s.chats).flat().find((c) => c.id === chatId));
-  const { loadChats } = useStore();
+  const chat = useStore((s) => s.chats[projectId]);
+  const { loadChat } = useStore();
   const [missing, setMissing] = useState(false);
   useEffect(() => {
-    if (chat) return;
-    api
-      .get<Chat>(`/api/chats/${chatId}`)
-      .then((found) => loadChats(found.project_id))
-      .catch(() => setMissing(true));
-  }, [chat, chatId, loadChats]);
+    if (!chat) loadChat(projectId).catch(() => setMissing(true));
+  }, [chat, projectId, loadChat]);
   if (missing) return <Empty />;
   if (!chat) return <div className="flex-1" />;
   return <ChatView key={chat.id} chat={chat} />;
 }
 
+/** Links to a chat from before W44 (and the Apple pages' links) lead to its project. */
+export function ChatLink() {
+  const { chatId = "" } = useParams();
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    api
+      .get<Chat>(`/api/chats/${chatId}`)
+      .then((found) => setProjectId(found.project_id))
+      .catch(() => setMissing(true));
+  }, [chatId]);
+  if (missing) return <Empty />;
+  return projectId ? <Navigate replace to={`/p/${projectId}`} /> : <div className="flex-1" />;
+}
+
 function Shell() {
-  const { chatId } = useParams();
+  const { projectId } = useParams();
   const [menu, setMenu] = useState(false); // the sidebar on small screens
   return (
     <div className="flex h-full">
@@ -82,7 +71,7 @@ function Shell() {
       <div
         className={`fixed inset-y-0 left-0 z-40 transition-transform md:static md:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <Sidebar activeChat={chatId} onNavigate={() => setMenu(false)} />
+        <Sidebar activeProject={projectId} onNavigate={() => setMenu(false)} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-line px-3 py-2 md:hidden">
@@ -126,7 +115,7 @@ export function App() {
           <Route path="p/:projectId/apple/release" element={<AppleReleasePage />} />
           <Route path="p/:projectId/apple/listing" element={<AppleListingPage />} />
           <Route path="p/:projectId/live" element={<GoLivePage />} />
-          <Route path="c/:chatId" element={<ChatPage />} />
+          <Route path="c/:chatId" element={<ChatLink />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="admin" element={<AdminPage />} />

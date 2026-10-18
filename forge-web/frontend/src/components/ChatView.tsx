@@ -1,6 +1,6 @@
-import { Globe, Loader2, PanelRight, Trash2 } from "lucide-react";
+import { Eraser, Globe, Loader2, PanelRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { Chat, ChatMode, StoredItem } from "../api/types";
 import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
 import { t } from "../lib/i18n";
@@ -39,7 +39,7 @@ function ModelPicker({ chat, onChange }: { chat: Chat; onChange: (model: string)
       ariaLabel={t("model")}
       className="max-w-[12rem] min-w-0"
       value={chat.model}
-      disabled={!chat.mine}
+      disabled={!chat.can_write}
       onChange={onChange}
       options={[
         { value: "", label: t("defaultModel") },
@@ -77,8 +77,7 @@ function useTurnCounter(state: Chat["state"]): number {
 
 export function ChatView({ chat }: { chat: Chat }) {
   const data = useStore((s) => s.chatData[chat.id]);
-  const { openChat, closeChat, send, answer, cancel, updateChat, deleteChat, setError, searchFiles } = useStore();
-  const navigate = useNavigate();
+  const { openChat, closeChat, send, answer, cancel, updateChat, clearChat, setError, searchFiles } = useStore();
 
   useEffect(() => {
     openChat(chat.id);
@@ -126,7 +125,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             ariaLabel={t("mode")}
             className="min-w-0"
             value={chat.mode}
-            disabled={!chat.mine}
+            disabled={!chat.can_write}
             onChange={(mode) => void guard(() => updateChat(chat, { mode }))}
             options={MODES}
           />
@@ -145,33 +144,29 @@ export function ChatView({ chat }: { chat: Chat }) {
           >
             <PanelRight className="size-4" />
           </button>
-          {chat.mine && (
+          {chat.can_write && (
             <button
               type="button"
-              title={t("deleteChat")}
+              title={t("clearChat")}
+              aria-label={t("clearChat")}
               className="rounded p-1 text-muted hover:text-bad"
               onClick={() => {
-                if (window.confirm(t("confirmDelete"))) {
-                  void guard(async () => {
-                    await deleteChat(chat);
-                    navigate(`/p/${chat.project_id}`);
-                  });
-                }
+                if (window.confirm(t("confirmClear"))) void guard(() => clearChat(chat));
               }}
             >
-              <Trash2 className="size-4" />
+              <Eraser className="size-4" />
             </button>
           )}
         </header>
         <main className="flex-1 overflow-y-auto">
           <Transcript
             entries={transcript.entries}
-            onAnswer={chat.mine ? (id, value) => answer(chat.id, id, value) : undefined}
+            onAnswer={chat.can_write ? (id, value) => answer(chat.id, id, value) : undefined}
             approvalPage={project?.kind === "apple" ? `/p/${chat.project_id}/apple` : undefined}
           />
         </main>
         <TodoPanel todos={transcript.todos} />
-        {chat.mine && (
+        {chat.can_write && (
           <Composer
             running={running}
             commands={commands}

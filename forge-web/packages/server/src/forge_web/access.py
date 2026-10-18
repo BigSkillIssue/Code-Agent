@@ -31,16 +31,14 @@ async def require_project(
 async def require_chat(
     session: AsyncSession, user: User, chat_id: str, *, write: bool = False
 ) -> tuple[Chat, Project]:
-    """The chat and its project. Reading: the chat's owner, or any member if it is shared.
-    Writing (sending, answering, settings): the chat's owner, who must be an editor."""
+    """The chat and its project. The project's one chat (W44): every member reads it; writing
+    (sending, answering, settings, clearing) needs the editor role."""
     chat = await session.get(Chat, chat_id)
     if chat is None:
         raise HTTPException(404, "no such chat")
-    project, role = await require_project(session, user, chat.project_id)
-    if chat.user_id != user.id and not chat.shared:
-        raise HTTPException(404, "no such chat")
-    if write and (chat.user_id != user.id or RANK[role] < RANK["editor"]):
-        raise HTTPException(403, "only the chat's owner can do that")
+    project, _ = await require_project(
+        session, user, chat.project_id, "editor" if write else "viewer"
+    )
     return chat, project
 
 

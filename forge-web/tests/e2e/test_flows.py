@@ -27,8 +27,7 @@ async def new_project_and_chat(page: Any, name: str) -> None:
     await page.locator("[role=dialog] input").first.fill(name)
     await page.locator("[role=dialog] button[type=submit]").click()
     await page.wait_for_url(re.compile(r"/p/"))
-    await page.get_by_role("button", name="Neuer Chat").last.click()
-    await page.locator("textarea").wait_for()
+    await page.locator("textarea").wait_for()  # a project opens on its one chat (W44)
 
 
 async def test_a_chat_edit_needs_approval_and_shows_its_diff(page: Any, server: LiveServer) -> None:

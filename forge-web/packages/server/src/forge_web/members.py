@@ -12,6 +12,7 @@ from forge_web.access import require_project
 from forge_web.audit import audit
 from forge_web.auth.mail import mail_enabled
 from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.chats.one import follow_owner
 from forge_web.db.models import Chat, Project, ProjectMember, User
 from forge_web.services import Services, services_of
 
@@ -43,6 +44,7 @@ async def hand_on(session: AsyncSession, project_id: str, leaving: str) -> None:
         ProjectMember.user_id != leaving).order_by(ProjectMember.user_id).limit(1))  # fmt: skip
     if heir is not None:
         project.owner_id = heir
+        await follow_owner(session, project_id, heir)
 
 
 async def owners_left(session: AsyncSession, project_id: str, without: str) -> int:
@@ -60,8 +62,8 @@ async def owners_left(session: AsyncSession, project_id: str, without: str) -> i
 
 
 async def stop_chats(services: Services, user_id: str, project_id: str | None = None) -> None:
-    """Stop the running turns of a user's chats (in one project, or everywhere)."""
-    query = select(Chat).where(Chat.user_id == user_id, Chat.state.in_(("running", "waiting")))
+    """Stop the running turns a user started (in one project, or everywhere)."""
+    query = select(Chat).where(Chat.started_by == user_id, Chat.state.in_(("running", "waiting")))
     if project_id is not None:
         query = query.where(Chat.project_id == project_id)
     async with services.db.session() as session:

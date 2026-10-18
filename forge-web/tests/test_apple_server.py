@@ -47,10 +47,13 @@ async def world(tmp_path: Path) -> AsyncIterator[SimpleNamespace]:
             User(id="admin", email="c@x", role="admin", status="active", created_at=now),
         ])  # fmt: skip
         await session.flush()
-        session.add(Project(id="p1", name="P", owner_id="u1", created_at=now, updated_at=now))
+        # One chat per project (W44), on its owner's account: each person has a project.
+        session.add_all([Project(id=p, name="P", owner_id=u, created_at=now, updated_at=now)
+                         for p, u in (("p1", "u1"), ("p2", "u2"), ("p3", "admin"))])  # fmt: skip
         await session.flush()
-        session.add_all([Chat(id=c, project_id="p1", user_id=u, created_at=now, updated_at=now)
-                         for c, u in (("c1", "u1"), ("c2", "u2"), ("c3", "admin"))])  # fmt: skip
+        session.add_all([Chat(id=c, project_id=p, user_id=u, created_at=now, updated_at=now)
+                         for c, p, u in (("c1", "p1", "u1"), ("c2", "p2", "u2"),
+                                         ("c3", "p3", "admin"))])  # fmt: skip
     settings = WebSettings(data_dir=tmp_path)
     settings.apple.enabled = True
     jobs = AppleJobs(db, settings.apple, tmp_path)

@@ -18,6 +18,7 @@ from forge_web.apps import template as app_template
 from forge_web.audit import audit
 from forge_web.auth.admin_role import acts_as_admin
 from forge_web.auth.sessions import CurrentUser, client_ip
+from forge_web.chats.one import new_chat
 from forge_web.db.hosting_models import HostedApp
 from forge_web.db.models import Project, ProjectMember, User
 from forge_web.gitsync import check_remote, clone
@@ -100,6 +101,7 @@ def projects_router() -> APIRouter:
             session.add(project)
             await session.flush()
             session.add(ProjectMember(project_id=project.id, user_id=user.id, role="owner"))
+            session.add(await new_chat(session, project))  # the project's one chat (W44)
         if folder is not None:
             services.driver.folders[project.id] = folder
         try:

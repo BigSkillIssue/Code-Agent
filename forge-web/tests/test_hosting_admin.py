@@ -15,8 +15,9 @@ import pytest
 from sqlalchemy import select
 
 from forge_hostworker.wire import JobResult
+from forge_web.chats.one import project_chat
 from forge_web.db.hosting_models import HostServer
-from forge_web.db.models import AuditEntry, Chat, ChatEvent
+from forge_web.db.models import AuditEntry, ChatEvent, Project
 from host_standin import HostStandIn, host_online
 from support import LiveServer, person
 from test_hosting_deploy import (
@@ -46,7 +47,7 @@ async def client(server: LiveServer) -> AsyncIterator[httpx.AsyncClient]:
 
 
 async def reviewed(server: LiveServer, project_id: str, user_id: str) -> None:
-    """A chat of the project with the release reviewer's verdict on the finished product."""
+    """The project's chat with the release reviewer's verdict on the finished product."""
     now = time.time()
     event = {
         "kind": "release_review",
@@ -56,13 +57,13 @@ async def reviewed(server: LiveServer, project_id: str, user_id: str) -> None:
         "findings": [],
     }
     async with server.services.db.session() as session, session.begin():
-        session.add(Chat(id="c-review", project_id=project_id, user_id=user_id, created_at=now,
-                         updated_at=now))  # fmt: skip
-        await session.flush()
+        project = await session.get(Project, project_id)
+        assert project is not None
+        chat = await project_chat(session, project)
         data = json.dumps({"event": event})
         session.add(
             ChatEvent(
-                chat_id="c-review", seq=1, ts=now, type="event", kind="release_review", data=data
+                chat_id=chat.id, seq=1, ts=now, type="event", kind="release_review", data=data
             )
         )
 
