@@ -33,6 +33,7 @@ export function Select<T extends string>(props: SelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [upwards, setUpwards] = useState(false);
+  const [rightAligned, setRightAligned] = useState(false);
   const typed = useRef({ text: "", at: 0 });
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -55,6 +56,7 @@ export function Select<T extends string>(props: SelectProps<T>) {
     if (props.disabled) return;
     const rect = button.current?.getBoundingClientRect();
     setUpwards(Boolean(rect && window.innerHeight - rect.bottom < ROOM && rect.top > window.innerHeight - rect.bottom));
+    setRightAligned(Boolean(rect && rect.left > window.innerWidth / 2)); // keeps the list on the screen
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
   };
@@ -125,7 +127,7 @@ export function Select<T extends string>(props: SelectProps<T>) {
       </button>
       {open && (
         <div
-          className={`absolute left-0 z-50 min-w-full max-w-[min(26rem,90vw)] overflow-hidden rounded-xl border border-line bg-card shadow-lg ${upwards ? "bottom-full mb-1" : "top-full mt-1"}`}
+          className={`absolute z-50 w-max min-w-full max-w-[min(22rem,90vw)] overflow-hidden rounded-xl border border-line bg-card shadow-lg ${rightAligned ? "right-0" : "left-0"} ${upwards ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           <ul id={`${id}-list`} role="listbox" aria-labelledby={props.label ? `${id}-label` : undefined} aria-label={props.label ? undefined : props.ariaLabel} className="max-h-72 overflow-y-auto p-1">
             {options.map((option, index) => (
