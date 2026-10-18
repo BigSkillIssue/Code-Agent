@@ -354,25 +354,37 @@ class AgentRegistry:
     # ------------------------------------------------------------------ team mode
 
     async def run_team(self, ctx: Ctx, plan: Plan) -> None:
-        """Team mode: background workers take tasks from the board until none is ready."""
+        """Team mode: background workers take tasks from the board until none is ready; a
+        plan with areas (`api: …`) gets one worker per area, named after it (S77)."""
         ctx.state.team_mode = True
         isolation = "worktree" if await is_repo(ctx.root) else "none"
         limits = ctx.cfg.limits
-        workers = max(1, min(limits.max_parallel_agents - self.running(), len(plan.ready_steps())))
         turns = min(200, limits.max_turns_per_step * len(plan.steps))
-        for number in range(1, workers + 1):
+        for name, task in self.worker_tasks(ctx, plan):
             await self.spawn(
                 ctx,
                 "coder",
-                prompts.render("team_task"),
+                task,
                 background=True,
                 isolation=isolation,
                 max_turns=turns,
-                name=f"worker-{number}",
+                name=name,
             )
         handles = [a.task_handle for a in self.agents.values() if a.task_handle is not None]
         await asyncio.gather(*handles, return_exceptions=True)
         self.take_messages("main")  # the workers' reports are already reflected in the plan
+
+    def worker_tasks(self, ctx: Ctx, plan: Plan) -> list[tuple[str, str]]:
+        """(name, task) of each team worker: one per area of the plan, else worker-1 … n."""
+        free = max(1, ctx.cfg.limits.max_parallel_agents - self.running())
+        areas = [a for a in board.plan_areas(plan) if self.find(a) is None][:free]
+        if len(areas) >= 2:
+            return [
+                (area, prompts.render("team_area_task", material=area_brief(area, areas)))
+                for area in areas
+            ]
+        workers = max(1, min(free, len(plan.ready_steps())))
+        return [(f"worker-{n}", prompts.render("team_task")) for n in range(1, workers + 1)]
 
     # ------------------------------------------------------------------ worktrees
 
@@ -447,6 +459,12 @@ async def stop_job(ctx: Ctx, job_id: str) -> bool:
 def relative(root: Path, path: Path) -> str:
     """A path relative to the project root, with forward slashes."""
     return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
+
+
+def area_brief(area: str, areas: list[str]) -> str:
+    """Which area a worker owns and which agents own the others."""
+    others = ", ".join(a for a in areas if a != area)
+    return f"Your area: {area}. The other areas, each with its own agent of that name: {others}."
 
 
 def first_user_text(ctx: Ctx) -> str:

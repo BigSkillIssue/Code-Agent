@@ -186,6 +186,18 @@ class Session(BaseModel):
     plan: "Plan | None" = None
     messages: list[Message] = []     # full transcript, never compacted
     summary: str = ""                # latest compaction summary
+    conversation: Conversation = Conversation()  # S76: carried from task to task
+
+class Turn(BaseModel):               # S76: one finished task of the conversation
+    prompt: str
+    result: str                      # the report's summary
+    files: list[str] = []
+    ok: bool = True
+    ts: float = 0.0
+
+class Conversation(BaseModel):       # S76
+    notes: str = ""                  # older turns folded together, or what compact_context kept
+    turns: list[Turn] = []           # the recent turns word for word, oldest first
 
 class Store(Protocol):
     async def create_session(self, project_root: str) -> Session: ...
@@ -360,7 +372,8 @@ class Plan(BaseModel):
 
 ```python
 # pipeline.py — public entry points
-async def run_task(prompt: str, ctx: "Ctx") -> "Report": ...      # whole pipeline
+async def run_task(prompt: str, ctx: "Ctx",
+                   attachments: Sequence[Attachment] = ()) -> "Report": ...  # whole pipeline
 async def refine(prompt: str, ctx: "Ctx") -> TaskSpec: ...
 async def clarify(spec: TaskSpec, ctx: "Ctx") -> TaskSpec: ...
 async def make_plan(spec: TaskSpec, ctx: "Ctx") -> Plan: ...
@@ -380,6 +393,27 @@ class Report(BaseModel):
     host_summary: str = ""           # S67b: why the product may (not) go live, with the checked commit
 ```
 
+**Conversation (added in S76)** — `src/forge/conversation.py`. A session is one conversation of tasks: when `run_task` ends, the request and the report (summary up to 2000 characters, changed files, ok) become a `Turn` in `Session.conversation`. When the turns grow past 12000 characters, the oldest are folded (newest two always stay, until half the room is free) into `notes` by the `compressor` role (`prompts.FOLD_TURNS`); without an answer the old turns stay as text in the notes, which are cut to 8000 characters. The lead agent (agent id `main`) sees the conversation in its ENVIRONMENT and the refiner in its project context (`prompts.CONVERSATION`); sub-agents do not. A server keeps a chat's conversation by opening its session again (`open_session(..., session=...)`).
+
+```python
+async def record_turn(ctx: Ctx, prompt: str, ok: bool, summary: str, files: list[str]) -> None: ...
+def conversation_text(ctx: Ctx) -> str: ...   # "" for sub-agents and an empty conversation
+```
+
+**Attachments (added in S75)** — `src/forge/runtime/attachments.py`, also exported by `forge.api`:
+
+```python
+class Attachment(BaseModel):
+    path: str                        # relative to the project root, or absolute
+    name: str = ""                   # as the user called it; the file's own name when empty
+    media_type: str = ""             # guessed from the name when empty
+    size: int = 0                    # bytes; measured when the attachment is checked
+
+MAX_ATTACHMENTS = 10
+```
+
+`run_task` checks the attachments before anything else: more than `MAX_ATTACHMENTS` or a missing file ends the task with a report that says why (`AttachmentError`), before any model is asked. While the task runs they are in `SessionState.attachments`; every agent's ENVIRONMENT lists them (`prompts.ATTACHED`: path, name, type, size) so it can `read_file` them. Images (PNG, JPEG, GIF, WebP up to 5 MB, recognised by their header) are also shown, as `ImagePart`s on the first message, to the refiner, the planner and the agent of a trivial task, when that role's model can see. `forge.api.Forge.run(prompt, attachments=())` and `Forge.stream(prompt, attachments=())` pass them on; `forge run --attach FILE` (repeatable) attaches files from the command line.
+
 ## Agent loop — `src/forge/agent.py`
 
 ```python
@@ -391,7 +425,8 @@ class AgentResult(BaseModel):
 
 async def run_agent(ctx: Ctx, task: str, *, role: str = "coder",
                     history: list[Message] | None = None,
-                    max_turns: int = 40) -> AgentResult:
+                    max_turns: int = 40,
+                    images: Sequence[ImagePart] = ()) -> AgentResult:  # S75: shown with the task
     """Loop: build request (prompts.render(role)), stream via the role's fallback chain,
     run tool calls with call_tool (parallel only if the model asked for several and
     all are read_only), append results, compact if needed, repeat until the model
@@ -483,6 +518,7 @@ class HookOutcome(BaseModel):
 
 ```toml
 profile = "default"                    # selected profile, overridable with -p
+effort = "auto"                        # auto | low | medium | high: how hard reasoning models think (S74)
 
 [providers.openai]
 kind = "openai_compat"                 # openai_compat | anthropic | google | litellm
@@ -551,7 +587,7 @@ approval = { policy = "never" }
 limits = { max_cost_usd = 1.0 }
 ```
 
-Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. A project config may **not** set `providers.*`, `mcp_servers.*`, `hooks.*`, `release.*` or `browser.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning. An untrusted project may make `sandbox`, `approval`, `permissions.allow` and `limits` only stricter than the user's own, and no project, trusted or not, drops the user's `permissions.deny` and `ask` rules (security review after S73).
+Loading order, later wins: built-in defaults → `~/.forge/forge.toml` → `<project>/.forge/config.toml` → `FORGE_*` env vars (`FORGE_SANDBOX__MODE=read-only`) → CLI flags. `effort` also has `/effort` and `--effort`, which set it for one session (`SessionState.effort_override`); it reaches `ChatRequest.reasoning_effort` only for models whose `Capabilities.reasoning` is true, and `auto` sends nothing (S74). A project config may **not** set `providers.*`, `mcp_servers.*`, `hooks.*`, `release.*` or `browser.*` unless the project is trusted (`forge trust`); untrusted values are ignored with a warning. An untrusted project may make `sandbox`, `approval`, `permissions.allow` and `limits` only stricter than the user's own, and no project, trusted or not, drops the user's `permissions.deny` and `ask` rules (security review after S73).
 
 ## App manifest — `src/forge/app_manifest.py`
 

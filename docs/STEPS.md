@@ -426,4 +426,29 @@ Rules for this phase, in addition to `AGENTS.md`:
     - Tests: no MSIX manifest and no Store code; Velopack runs before the window and its versions match; the icon is a valid ICO; under `fullstack` on Windows the app is published and packed by `vpk`.
     - Verify: `uv run pytest tests/test_windows_template.py -q`
 
+## Phase 9 · Like Claude (asked for after Phase 8)
+
+The user asked for Forge Web to feel like Claude: an effort setting, files and images attached to a message, one ongoing conversation per project that the agent keeps tidy itself (compacting what an old task left behind, keeping the program organised in Markdown files), and much more use of several agents that talk to each other (one for the database, one for the API …). These four steps give the core what Forge Web's W44–W47 build on.
+
+- [x] **S74 — Effort**
+    - Files: `src/forge/config.py`, `src/forge/config_docs.py`, `src/forge/ctx.py`, `src/forge/modelcall.py`, `src/forge/commands.py`, `src/forge/cli.py`, `docs/config.md`, `docs/CONTRACTS.md`, `forge.example.toml`, `tests/test_effort.py`
+    - Build: `effort = "auto" | "low" | "medium" | "high"` in the config (a project may set it), `/effort` and `--effort` for one session; the request asks a reasoning model for that effort, `auto` and other models send none.
+    - Tests: the request carries the effort; `auto` and models that do not reason send none; `/effort` overrides the config for the session; `--effort` and an untrusted project's config set it.
+    - Verify: `uv run pytest tests/test_effort.py -q`
+- [x] **S75 — Files attached to a message**
+    - Files: `src/forge/runtime/attachments.py` (new), `src/forge/pipeline.py`, `src/forge/agent.py`, `src/forge/ctx.py`, `src/forge/api.py`, `src/forge/prompts.py`, `src/forge/cli.py`, `docs/CONTRACTS.md`, `tests/test_attachments.py`
+    - Build: `Attachment(path, name, media_type, size)`; `run_task(prompt, ctx, attachments=())` and `Forge.run/stream(…, attachments=())`; images up to 5 MB reach a model that can see as image parts of the task's first message, every other file (and images for a blind model) is named with its path for `read_file`; at most 10; `forge run --attach FILE`.
+    - Tests: an image reaches the provider as an image part; a PDF is named with its path; a blind model gets the list only; more than 10 attachments or a missing file is a clean error.
+    - Verify: `uv run pytest tests/test_attachments.py -q`
+- [x] **S76 — One ongoing conversation that the agent keeps tidy**
+    - Files: `src/forge/conversation.py` (new), `src/forge/ports.py`, `src/forge/pipeline.py`, `src/forge/agent.py`, `src/forge/compress.py`, `src/forge/context.py`, `src/forge/ctx.py`, `src/forge/tools.py` (`compact_context`), `src/forge/prompts.py`, `docs/CONTRACTS.md`, `docs/TOOLS.md`, `tests/test_conversation.py`
+    - Build: the session keeps the conversation across runs (notes plus recent turns); each run opens with it and adds its own turn; turns over the budget are folded into the notes by the compressor; the tool `compact_context(keep)` drops what an earlier task left behind; the prompts tell the agent to compact when a new task starts and to keep the program organised in Markdown (`FORGE.md`, `docs/architecture.md`, `docs/decisions.md`, `docs/progress.md`).
+    - Tests: a second run sees the first run's turn; turns over the budget fold into the notes; `compact_context` drops the earlier turns but keeps what it was told to; the prompts carry the Markdown rule; a new session starts empty.
+    - Verify: `uv run pytest tests/test_conversation.py -q`
+- [x] **S77 — A team of agents that talk to each other**
+    - Files: `src/forge/prompts.py`, `src/forge/pipeline.py`, `src/forge/team.py`, `src/forge/board.py`, `src/forge/blueprint.py`, `docs/TOOLS.md`, `tests/test_team_pressure.py`
+    - Build: the lead starts one named agent per area of a larger task (`database`, `api`, `web` …) that share `docs/architecture.md` and agree on interfaces with `send_message`; agents are told who else works and to tell those their change affects; the planner names each step's area (`api: …`), a plan with several areas runs as a team with one worker per area, named after it; a blueprint's components are the areas.
+    - Tests: the lead's, the members' and the planner's prompts carry the rules; areas come from step titles and a plan with several gets a team unless the user chose the mode; a blueprint asks for its components as areas; team workers carry the areas' names and message each other by name.
+    - Verify: `uv run pytest tests/test_team_pressure.py -q`
+
 **After v1.0 — server (not in scope now):** write `PostgresStore`, `RedisBus`, `DockerExecutor` and a `WebSocketRenderer` against the S43 suite, then add `src/forge/server/` (FastAPI + worker). No change to `pipeline.py`, `agent.py`, `tools.py` or `prompts.py` should be needed.

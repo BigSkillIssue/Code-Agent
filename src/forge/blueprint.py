@@ -196,7 +196,8 @@ def planned_spec(spec: TaskSpec, blueprint: Blueprint, problems: list[str]) -> T
     constraints = [
         f"Follow the blueprint in {ARCHITECTURE.as_posix()} ({BLUEPRINT.as_posix()}); plan one "
         f"group of steps per component, in this order: {groups}; start each step's title with "
-        "its component's name.",
+        "its component's name and a colon (`server: add the orders table`): each component "
+        "gets its own agent.",
         *problems,
     ]
     return spec.model_copy(update={"constraints": [*spec.constraints, *constraints]})

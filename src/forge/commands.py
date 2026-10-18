@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from forge.config import forge_home
+from forge.config import EFFORTS, forge_home
 from forge.ctx import Ctx
 from forge.mcp_cli import mcp_command
 from forge.plan import checklist
@@ -32,6 +32,7 @@ HELP = {
     "/context": "tokens used by the last request, by category",
     "/undo": "roll back the last step or file change",
     "/mode [MODE]": "show or set the sandbox mode or approval policy",
+    "/effort [LEVEL]": "show or set how hard reasoning models think (auto, low, medium, high)",
     "/tasks [stop] [ID]": "background jobs, agents and monitors; show or stop one",
     "/mcp [add|remove|reconnect]": "MCP servers: status, or change them without a restart",
     "/jobs": "background jobs and their status",
@@ -82,6 +83,7 @@ async def run_builtin(ctx: Ctx, name: str, args: str) -> SlashResult | None:
         "/context": lambda: context_report(ctx),
         "/plan": lambda: checklist(ctx.session.plan) if ctx.session.plan else "no plan yet",
         "/mode": lambda: set_mode(ctx, args),
+        "/effort": lambda: set_effort(ctx, args),
         "/tasks": lambda: tasks_command(ctx, args),
         "/mcp": lambda: mcp_command(ctx, args),
         "/jobs": lambda: jobs_report(ctx),
@@ -317,6 +319,15 @@ def set_mode(ctx: Ctx, mode: str) -> str:
     elif mode:
         return f"unknown mode {mode}; use one of {', '.join(SANDBOX_MODES + APPROVAL_POLICIES)}"
     return f"sandbox: {cfg.sandbox.mode}, approval: {cfg.approval.policy}"
+
+
+def set_effort(ctx: Ctx, level: str) -> str:
+    """Show or change how hard reasoning models think for this session (S74)."""
+    if level in EFFORTS:
+        ctx.state.effort_override = level
+    elif level:
+        return f"unknown effort {level}; use one of {', '.join(EFFORTS)}"
+    return f"effort: {ctx.state.effort_override or ctx.cfg.effort}"
 
 
 def jobs_report(ctx: Ctx) -> str:

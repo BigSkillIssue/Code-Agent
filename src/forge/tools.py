@@ -45,6 +45,7 @@ from forge.ctx import Ctx, McpTools, Team
 from forge.events import PlanUpdated, TodosUpdated, ToolOutput
 from forge.modelcall import complete
 from forge.plan import Plan, Question, Step, TaskSpec, checklist
+from forge.ports import NOTES_CHARS as KEEP_CHARS
 from forge.ports import (
     AppleAction,
     AppleBuilder,
@@ -117,7 +118,9 @@ READ_ONLY_ROLES = frozenset(
     {"reviewer", "explore", "researcher", "planner", "apple_reviewer", "apple_writer"}
     | {"release_reviewer", "architect"}
 )
-LEAD_ONLY_TOOLS = frozenset({"ask_user", "spawn_agent", "submit_plan", "research"})
+LEAD_ONLY_TOOLS = frozenset(
+    {"ask_user", "spawn_agent", "submit_plan", "research", "compact_context"}
+)
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TOOL_GROUPS = frozenset(
@@ -1651,6 +1654,27 @@ async def todo_write(
         )
     )
     return "\n".join(todo_lines(todos))
+
+
+@tool(group="plan", permission="auto", read_only=True)
+async def compact_context(
+    ctx: Ctx,
+    keep: Annotated[
+        str,
+        "What still matters from everything so far: decisions, conventions, open problems, "
+        "what the user asked you to remember (at most 8000 characters).",
+    ],
+) -> str:
+    """Drop the conversation and your context so far, keeping only `keep`. Use it when the user's new request is a different task, or after a large piece of work."""
+    require(keep.strip() != "", "say what to keep; it may be short")
+    require(len(keep) <= KEEP_CHARS, f"keep is limited to {KEEP_CHARS} characters")
+    talk = ctx.session.conversation
+    talk.notes, talk.turns = keep.strip(), []
+    ctx.state.compact_keep[ctx.agent_id] = (
+        keep.strip()
+    )  # the agent loop compacts before its next turn
+    await ctx.store.save_session(ctx.session)
+    return "Compacted: the earlier conversation and context are replaced by what you kept."
 
 
 @tool(group="plan", permission="auto", read_only=True)

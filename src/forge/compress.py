@@ -73,11 +73,18 @@ async def compact(
     tools: Sequence[ToolSpec],
     task: str,
 ) -> list[Message]:
-    """The messages to send next: trimmed, and summarized or reset when they grow too large."""
+    """The messages to send next: trimmed, and summarized or reset when they grow too large
+    (or when the agent called compact_context)."""
     messages = trim(messages)
     budget = input_budget(ctx, role)
     before = request_tokens(system, messages, tools)
     record_usage(ctx, system, messages, tools, budget)
+    keep = ctx.state.compact_keep.pop(ctx.agent_id, None)
+    if keep is not None:  # compact_context (S76): the agent said itself what still matters
+        await ctx.hooks.run("pre_compact", {"level": 3, "tokens": before}, ctx)
+        ctx.session.summary = keep
+        kept = compacted_message(ctx, keep, [], touched_files(messages), task)
+        return await announce(ctx, 3, before, [kept], system, tools, budget)
     limits = ctx.cfg.limits
     level, ctx.state.compact_request = ctx.state.compact_request, 0
     if not level:
@@ -94,6 +101,19 @@ async def compact(
     result = await summarize(ctx, messages, budget, task) if level == 2 else None
     if result is None or request_tokens(system, result, tools) >= limits.reset_at * budget:
         level, result = 3, await reset(ctx, messages, budget, task)
+    return await announce(ctx, level, before, result, system, tools, budget)
+
+
+async def announce(
+    ctx: Ctx,
+    level: int,
+    before: int,
+    result: list[Message],
+    system: str,
+    tools: Sequence[ToolSpec],
+    budget: int,
+) -> list[Message]:
+    """Record the compacted request's size, publish Compacted and return the messages."""
     after = request_tokens(system, result, tools)
     record_usage(ctx, system, result, tools, budget)
     await ctx.bus.publish(

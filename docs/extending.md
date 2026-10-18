@@ -139,6 +139,10 @@ asyncio.run(main())
 renderer answers questions and approvals, a store keeps sessions elsewhere. See
 `examples/embed.py`.
 
+Files go with a task as attachments: `await forge.run("Build this screen",
+[Attachment(path="mockup.png")])` (`from forge.api import Attachment`; at most 10). Models that
+can see get the images with the request; every agent of the task gets the list of files.
+
 ## New ports
 
 The core only talks to the interfaces in `src/forge/ports.py`: `Store` (+ `BoardStore`),

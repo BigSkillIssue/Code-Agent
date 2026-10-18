@@ -25,8 +25,29 @@ class JobNotFoundError(LookupError):
         self.known = known
 
 
+NOTES_CHARS = 8_000  # the most a conversation's notes may hold (S76)
+
+
+class Turn(BaseModel):
+    """One finished task of a conversation: what the user asked and how it ended (S76)."""
+
+    prompt: str
+    result: str  # the report's summary
+    files: list[str] = []  # files the task changed
+    ok: bool = True
+    ts: float = 0.0
+
+
+class Conversation(BaseModel):
+    """What a session's earlier tasks leave for the next one (S76)."""
+
+    notes: str = ""  # older turns folded together, or what compact_context kept
+    turns: list[Turn] = []  # the recent turns word for word, oldest first
+
+
 class Session(BaseModel):
-    """One task from prompt to report; saved after every step so it can resume."""
+    """One conversation of tasks, each from prompt to report; saved after every step so it
+    can resume."""
 
     id: str  # uuid4 hex
     project_root: str
@@ -36,6 +57,7 @@ class Session(BaseModel):
     plan: Plan | None = None
     messages: list[Message] = []  # full transcript, never compacted
     summary: str = ""  # latest compaction summary
+    conversation: Conversation = Conversation()  # S76: carried from task to task
 
 
 class Store(Protocol):
