@@ -238,3 +238,86 @@ async def test_native_search_uses_the_coder_provider(tmp_project: Path) -> None:
     register_provider(cfg, fake)
     result = await run(make_ctx(tmp_project, cfg=cfg), "web_search", query="cats")
     assert "backend: native" in result.text and "found cats" in result.text
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "100.64.0.1",  # shared address space (CGNAT)
+        "100.100.100.200",  # a cloud metadata service in that space
+        "::ffff:127.0.0.1",
+        "2002:7f00:1::1",  # 6to4 of 127.0.0.1
+        "224.0.0.1",
+        "0.0.0.0",
+        "fe80::1%eth0",
+        "169.254.169.254",
+        "fd00::1",
+    ],
+)
+def test_non_public_addresses_count_as_local(address: str) -> None:
+    assert web.is_local(address)
+
+
+@pytest.mark.parametrize("address", ["93.184.216.34", "2606:4700:4700::1111"])
+def test_public_addresses_are_not_local(address: str) -> None:
+    assert not web.is_local(address)
+
+
+async def test_the_connection_checks_the_address_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpcore
+
+    from forge.runtime.public_http import PublicOnlyBackend
+
+    connected: list[str] = []
+
+    async def fake_connect(host: str, port: int, *args: Any) -> Any:
+        connected.append(host)
+        return "stream"
+
+    async def rebound(host: str) -> list[str]:
+        return ["127.0.0.1"]  # public when it was checked, local when the connection is made
+
+    async def public(host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+    backend = PublicOnlyBackend(rebound)
+    with pytest.raises(httpcore.ConnectError, match="local or private"):
+        await backend.connect_tcp("docs.example.com", 443)
+    backend = PublicOnlyBackend(public)
+    monkeypatch.setattr(backend._inner, "connect_tcp", fake_connect)
+    assert await backend.connect_tcp("docs.example.com", 443) == "stream"
+    assert connected == ["93.184.216.34"]  # the checked address, not a second lookup
+
+
+async def test_web_fetch_connects_through_the_checking_transport(
+    ctx: Ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made: list[object] = []
+
+    def spy(resolve: object = None) -> httpx.AsyncBaseTransport:
+        made.append(resolve)
+        return httpx.MockTransport(lambda request: html())
+
+    monkeypatch.setattr(web, "public_transport", spy)
+    result = await run(ctx, "web_fetch", url="https://docs.example.com/spy")
+    assert result.ok and made == [None]
+
+
+@respx.mock
+async def test_an_unknown_charset_falls_back_to_utf8(ctx: Ctx) -> None:
+    headers = {"content-type": "text/html; charset=no-such-charset"}
+    respx.get("https://docs.example.com/cs").mock(
+        return_value=httpx.Response(200, content=PAGE.encode(), headers=headers)
+    )
+    result = await run(ctx, "web_fetch", url="https://docs.example.com/cs")
+    assert result.ok and "Task groups" in result.text
+
+
+@respx.mock
+async def test_the_page_cache_is_outside_the_project(ctx: Ctx) -> None:
+    from forge.config import forge_home
+
+    respx.get("https://docs.example.com/cached").mock(return_value=html())
+    assert (await run(ctx, "web_fetch", url="https://docs.example.com/cached")).ok
+    assert list((forge_home() / "cache" / "web").glob("*.json"))
+    assert not (ctx.root / ".forge" / "cache" / "web").exists()

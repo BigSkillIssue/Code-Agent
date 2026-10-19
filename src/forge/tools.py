@@ -1209,7 +1209,7 @@ async def web_fetch(
 ) -> str:
     """Download a web page and return it as Markdown, or answer a question about it."""
     require(1000 <= max_chars <= 100_000, "max_chars must be between 1000 and 100000")
-    page = await fetch_page(ctx.root, url)
+    page = await fetch_page(url)
     if page.redirect:
         return f"redirected to {page.redirect}; call web_fetch again with that URL if you trust it"
     content = page.content

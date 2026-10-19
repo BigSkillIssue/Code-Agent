@@ -17,7 +17,8 @@ covered.
 | Approvals | `ask` decisions go to the user; headless runs refuse unless `--yes` | renderers |
 | Secret masking | Tool output is scanned for key formats and secret environment values before the model sees it | `runtime/secrets.py` |
 | Trust | A project's `.forge/config.toml` may set providers, MCP servers, hooks, the release rules or the browser only after `forge trust`; before that its sandbox, approval, permission and limit settings may only be stricter than the user's, and no project drops the user's deny and ask rules | `config.py`, `config_trust.py` |
-| Browser | The browser agent has no profile, no downloads and no file access; every request to a local or private host is aborted; `browser_open` asks like `web_fetch` | `local/playwright_browser.py`, `tools.py` |
+| Browser | The browser agent has no profile, no downloads and no file access; every request and WebSocket to a local or private host (or one that does not resolve) is aborted, checked again for every request; a page whose response came from a local address anyway (DNS rebinding) is not shown; `browser_open` asks like `web_fetch` | `local/playwright_browser.py`, `tools.py` |
+| Web fetch | Only public addresses (not private, loopback, link-local, CGNAT, multicast or IPv6 forms of them); the address is checked again when the connection is made, so a name cannot point elsewhere in between; fetched pages are cached in the user's Forge folder, not in the project | `runtime/public_http.py`, `runtime/web.py` |
 | Prompt structure | Fetched pages and repo files are data; the WEB_EXTRACT prompt tells the model to ignore instructions in them | `prompts.py` |
 
 ## What the security tests check

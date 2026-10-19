@@ -120,3 +120,21 @@ async def test_local_requests_are_blocked_by_default(site: str) -> None:
         await page.close()
         await factory.close()
     assert Pages.hits == []
+
+
+async def test_a_page_from_a_local_address_is_not_shown(
+    site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from forge.local import playwright_browser
+
+    async def looks_public(host: str) -> bool:
+        return False  # as if the name pointed elsewhere when the guard asked (DNS rebinding)
+
+    monkeypatch.setattr(playwright_browser, "host_is_local", looks_public)
+    factory, page = await started(allow_local=False)
+    try:
+        with pytest.raises(BrowserError, match="local or private address"):
+            await page.open(site + "/")
+    finally:
+        await page.close()
+        await factory.close()

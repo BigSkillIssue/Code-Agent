@@ -4,15 +4,11 @@ These run inside the Forge process (not in the command sandbox), so the local-ta
 here are what keeps a model from reaching localhost or cloud metadata services.
 """
 
-import asyncio
 import contextlib
 import hashlib
-import ipaddress
 import json
 import re
-import socket
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -21,8 +17,12 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import httpx
 
 from forge import __version__
+from forge.config import forge_home
 from forge.runtime.errors import ToolError
 from forge.runtime.nofollow import read_below, write_below
+from forge.runtime.public_http import Resolver, is_ip, is_local, public_transport, resolve_host
+
+__all__ = ["is_ip", "is_local", "resolve_host"]  # also used by the browser
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 5
@@ -43,8 +43,6 @@ TEXT_TYPES = (
 )
 LOCAL_HINT = "use bash with curl for local servers"
 
-Resolver = Callable[[str], Awaitable[list[str]]]
-
 
 @dataclass
 class Page:
@@ -58,12 +56,6 @@ class Page:
     content: str
     redirect: str = ""  # set when the server redirected to another host
     cached: bool = False
-
-
-async def resolve_host(host: str) -> list[str]:
-    """IP addresses of `host` (DNS)."""
-    infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    return [str(info[4][0]) for info in infos]
 
 
 async def checked_url(url: str, resolve: Resolver | None = None) -> str:
@@ -85,25 +77,7 @@ async def checked_url(url: str, resolve: Resolver | None = None) -> str:
     return urlunsplit(("https", parts.netloc, parts.path or "/", parts.query, ""))
 
 
-def is_ip(host: str) -> bool:
-    """True for an IPv4 or IPv6 literal."""
-    try:
-        ipaddress.ip_address(host.strip("[]"))
-    except ValueError:
-        return False
-    return True
-
-
-def is_local(address: str) -> bool:
-    """Private, loopback, link-local (incl. cloud metadata), reserved or unspecified."""
-    ip = ipaddress.ip_address(address.split("%")[0].strip("[]"))
-    return (
-        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified
-    )
-
-
 async def fetch_page(
-    root: Path,
     url: str,
     *,
     resolve: Resolver | None = None,
@@ -111,12 +85,12 @@ async def fetch_page(
 ) -> Page:
     """Fetch `url` (or its cached copy) and convert it; raises ToolError on failures."""
     url = await checked_url(url, resolve)
-    cached = read_cache(root, url)
+    cached = read_cache(url)
     if cached is not None:
         return cached
     try:
         async with httpx.AsyncClient(
-            timeout=TIMEOUT, transport=transport, headers=HEADERS
+            timeout=TIMEOUT, transport=transport or public_transport(resolve), headers=HEADERS
         ) as client:
             page = await _get(client, url, resolve)
     except httpx.TimeoutException as exc:
@@ -124,7 +98,7 @@ async def fetch_page(
     except httpx.HTTPError as exc:
         raise ToolError("network", f"{type(exc).__name__}: {exc}") from exc
     if not page.redirect:
-        write_cache(root, page)
+        write_cache(page)
     return page
 
 
@@ -152,8 +126,7 @@ async def _get(client: httpx.AsyncClient, url: str, resolve: Resolver | None) ->
                 )
             body = await read_limited(response)
             content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-            charset = response.charset_encoding or "utf-8"
-            title, content = convert(body.decode(charset, errors="replace"), content_type)
+            title, content = convert(decode_body(body, response.charset_encoding), content_type)
             return Page(
                 url=url,
                 status=response.status_code,
@@ -163,6 +136,14 @@ async def _get(client: httpx.AsyncClient, url: str, resolve: Resolver | None) ->
                 content=content,
             )
     raise ToolError("http_status", f"more than {MAX_REDIRECTS} redirects for {url}")
+
+
+def decode_body(body: bytes, charset: str | None) -> str:
+    """The page's text in its declared charset, or UTF-8 when that is missing or unknown."""
+    try:
+        return body.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
 
 
 async def read_limited(response: httpx.Response) -> bytes:
@@ -207,16 +188,17 @@ def html_to_markdown(html: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", markdown).strip()
 
 
-def cache_path(root: Path, url: str) -> Path:
-    """Where a fetched page is cached."""
-    return root / ".forge" / "cache" / "web" / f"{hashlib.sha256(url.encode()).hexdigest()}.json"
+def cache_path(url: str) -> Path:
+    """Where a fetched page is cached: in the user's Forge folder, which sandboxed commands
+    cannot write (a project's `.forge/` they can, and could plant a fake page there)."""
+    name = f"{hashlib.sha256(url.encode()).hexdigest()}.json"
+    return forge_home() / "cache" / "web" / name
 
 
-def read_cache(root: Path, url: str) -> Page | None:
+def read_cache(url: str) -> Page | None:
     """A cached page younger than 15 minutes."""
-    path = cache_path(root, url)
     try:
-        data = json.loads(read_below(root, path).decode("utf-8"))
+        data = json.loads(read_below(forge_home(), cache_path(url)).decode("utf-8"))
     except (OSError, ValueError):
         return None
     if time.time() - float(data.pop("fetched_at", 0)) > CACHE_SECONDS:
@@ -224,12 +206,11 @@ def read_cache(root: Path, url: str) -> Page | None:
     return Page(**{**data, "cached": True})
 
 
-def write_cache(root: Path, page: Page) -> None:
+def write_cache(page: Page) -> None:
     """Cache a page; failures only cost a refetch."""
-    path = cache_path(root, page.url)
     data = json.dumps({**asdict(page), "fetched_at": time.time()}).encode("utf-8")
     with contextlib.suppress(OSError):
-        write_below(root, path, data)
+        write_below(forge_home(), cache_path(page.url), data)
 
 
 def size_text(size: int) -> str:

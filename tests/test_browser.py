@@ -211,3 +211,15 @@ async def test_browser_research_needs_a_vision_model(tmp_project: Path) -> None:
     ctx, _, _ = research_ctx(tmp_project, vision=False)
     result = await run(ctx, "research", question="q", browser=True)
     assert result.code == "unsupported" and "cannot see images" in result.text
+
+
+async def test_a_name_that_does_not_resolve_counts_as_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from forge.local import playwright_browser
+
+    async def fails(host: str) -> list[str]:
+        raise OSError("no such name")
+
+    monkeypatch.setattr(playwright_browser, "resolve_host", fails)
+    assert await playwright_browser.host_is_local("only-chromium-knows.example")

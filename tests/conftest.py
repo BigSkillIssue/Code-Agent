@@ -9,6 +9,14 @@ from forge.providers.fake import FakeProvider
 from support import init_repo, make_ctx
 
 
+@pytest.fixture(autouse=True)
+def private_forge_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every test gets an empty user Forge folder of its own, never the real ~/.forge."""
+    monkeypatch.setenv("FORGE_HOME", str(tmp_path_factory.mktemp("forge-home")))
+
+
 @pytest.fixture
 def tmp_project(tmp_path: Path) -> Path:
     """An empty git repository in a temporary folder."""

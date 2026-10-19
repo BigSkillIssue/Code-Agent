@@ -1,5 +1,6 @@
 """The Browser port with Playwright: one Chromium per session, a fresh context per agent."""
 
+import asyncio
 import base64
 import contextlib
 import re
@@ -14,7 +15,14 @@ from forge.runtime.web import is_ip, is_local, resolve_host
 
 if TYPE_CHECKING:
     from playwright.async_api import Browser as PwBrowser
-    from playwright.async_api import BrowserContext, Page, Playwright, Route
+    from playwright.async_api import (
+        BrowserContext,
+        Page,
+        Playwright,
+        Response,
+        Route,
+        WebSocketRoute,
+    )
 
 INSTALL_HINT = 'run `forge browser install` once, or set [browser] channel = "chrome"'
 MAX_TEXT = 20_000
@@ -30,7 +38,6 @@ class PlaywrightBrowsers:
         self.allow_local = allow_local  # tests serve pages from localhost
         self._playwright: Playwright | None = None
         self._browser: PwBrowser | None = None
-        self._local_hosts: dict[str, bool] = {}
 
     async def new_browser(self, viewport: tuple[int, int] | None = None) -> Browser:
         """A fresh page in its own context: no cookies, no downloads, local hosts blocked
@@ -44,7 +51,10 @@ class PlaywrightBrowsers:
         )
         context.set_default_timeout(self.cfg.timeout_s * 1000)
         await context.route("**/*", self._guard)
-        return PlaywrightPage(context, await context.new_page())
+        await context.route_web_socket("**/*", self._guard_socket)
+        return PlaywrightPage(
+            context, await context.new_page(), check_addresses=not self.allow_local
+        )
 
     async def close(self) -> None:
         """Stop the browser and Playwright."""
@@ -83,13 +93,18 @@ class PlaywrightBrowsers:
         if parts.scheme in UNCHECKED_SCHEMES or self.allow_local:
             await route.continue_()
             return
-        host = parts.hostname or ""
-        if host not in self._local_hosts:
-            self._local_hosts[host] = await host_is_local(host)
-        if self._local_hosts[host]:
+        # checked for every request, not remembered: a name may point elsewhere a moment later
+        if await host_is_local(parts.hostname or ""):
             await route.abort("blockedbyclient")
         else:
             await route.continue_()
+
+    async def _guard_socket(self, socket: "WebSocketRoute") -> None:
+        """WebSockets bypass `route`: the same check before they connect."""
+        if self.allow_local or not await host_is_local(urlsplit(socket.url).hostname or ""):
+            socket.connect_to_server()
+        else:
+            await socket.close(code=1008, reason="local or private address")
 
 
 async def host_is_local(host: str) -> bool:
@@ -99,16 +114,43 @@ async def host_is_local(host: str) -> bool:
     try:
         addresses = [host] if is_ip(host) else await resolve_host(host)
     except OSError:
-        return False  # the browser will fail to connect on its own
-    return any(is_local(address) for address in addresses)
+        return True  # unknown: the browser might resolve it differently, so it counts as local
+    return not addresses or any(is_local(address) for address in addresses)
 
 
 class PlaywrightPage:
     """Browser: one page; every action waits for the page to settle, then shows it."""
 
-    def __init__(self, context: "BrowserContext", page: "Page") -> None:
+    def __init__(
+        self, context: "BrowserContext", page: "Page", *, check_addresses: bool = False
+    ) -> None:
         self.context = context
         self.page = page
+        # The request guard checks a name before Chromium resolves it again; the address a
+        # response really came from is checked too, so a page from a local address is not shown.
+        self._checks: list[asyncio.Task[None]] = []
+        self._local_answer = ""
+        if check_addresses:
+            context.on("response", self._note_response)
+
+    def _note_response(self, response: "Response") -> None:
+        self._checks.append(asyncio.ensure_future(self._check_address(response)))
+
+    async def _check_address(self, response: "Response") -> None:
+        with contextlib.suppress(Exception):  # a response without an address is not local
+            address = await response.server_addr()
+            if address and is_local(address["ipAddress"]):
+                self._local_answer = address["ipAddress"]
+
+    async def _refuse_local(self) -> None:
+        """Raise when anything on the page came from a local or private address."""
+        checks, self._checks = self._checks, []
+        await asyncio.gather(*checks)
+        if self._local_answer:
+            answer, self._local_answer = self._local_answer, ""
+            with contextlib.suppress(Exception):
+                await self.page.goto("about:blank")
+            raise BrowserError(f"the page came from a local or private address ({answer})")
 
     async def open(self, url: str) -> PageView:
         """Load `url`."""
@@ -144,12 +186,14 @@ class PlaywrightPage:
 
     async def view(self) -> PageView:
         """URL, title and a screenshot of what is visible."""
+        await self._refuse_local()
         shot = await self._do(self.page.screenshot(type="jpeg", quality=70))
         image = ImagePart(media_type="image/jpeg", data_b64=base64.b64encode(shot).decode("ascii"))
         return PageView(url=self.page.url, title=await self.page.title(), image=image)
 
     async def read(self) -> str:
         """The visible text of the page, capped."""
+        await self._refuse_local()
         text: str = await self._do(self.page.inner_text("body"))
         return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + "\n[text truncated]"
 
