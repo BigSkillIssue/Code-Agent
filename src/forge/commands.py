@@ -15,12 +15,14 @@ from forge.ctx import Ctx
 from forge.mcp_cli import mcp_command
 from forge.plan import checklist
 from forge.runtime.checkpoint import CheckpointError, restore
+from forge.runtime.errors import ToolError
 from forge.runtime.files import (
     FileChange,
     apply_changes,
     display_path,
     journal_dir,
     undo_last_change,
+    writable_roots,
 )
 from forge.runtime.ignore import project_files
 from forge.tasks_view import stop_task, task_detail, tasks_report
@@ -283,7 +285,10 @@ async def undo(ctx: Ctx) -> str:
             step.status, step.attempts, step.notes = "todo", 0, ""
             await ctx.store.save_session(ctx.session)
         return f"undid step {step_id}: {len(changed)} files restored"
-    restored = undo_last_change(journal_dir(ctx))
+    try:
+        restored = undo_last_change(journal_dir(ctx), ctx.root, writable_roots(ctx.root, ctx.cfg))
+    except ToolError as err:
+        return f"undo refused: {err.message}"
     if not restored:
         return "nothing to undo"
     return "undid the last change: " + ", ".join(display_path(ctx.root, p) for p in restored)

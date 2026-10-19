@@ -1,6 +1,8 @@
 """Rule bypass attempts: the other shell, wrappers and chained commands."""
 
 import base64
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -126,3 +128,41 @@ def test_allow_rule_still_covers_harmless_redirection() -> None:
     assert decide("bash", "git status 2>&1", allow=["bash(git status*)"]) == "run"
     assert decide("bash", "git status > /dev/null", allow=["bash(git status*)"]) == "run"
     assert decide("bash", "sudo apt update", allow=["bash(sudo apt update)"]) == "run"
+
+
+def decide_path(root: Path, path: str, cwd: Path | None = None, **rules: list[str]) -> str:
+    cfg = ForgeConfig(permissions=PermissionsConfig(**rules))
+    ctx = make_ctx(root, cfg=cfg)
+    ctx.cwd = (cwd or root).resolve()
+    return Permissions(cfg).check(REGISTRY["read_file"], {"path": path}, ctx).action
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need admin rights on Windows")
+def test_a_deny_rule_on_a_path_also_catches_a_link_to_it(tmp_project: Path) -> None:
+    (tmp_project / "secrets").mkdir()
+    (tmp_project / "secrets" / "key").write_text("k\n")
+    os.symlink(tmp_project / "secrets", tmp_project / "innocent", target_is_directory=True)
+    deny = ["read_file(./secrets/**)"]
+    assert decide_path(tmp_project, "innocent/key", deny=deny) == "deny"
+    assert decide_path(tmp_project, "secrets/key", deny=deny) == "deny"
+
+
+def test_a_deny_rule_on_a_path_holds_in_another_folder(tmp_project: Path) -> None:
+    (tmp_project / "sub").mkdir()
+    deny = ["read_file(./secrets/**)"]
+    assert decide_path(tmp_project, "../secrets/key", cwd=tmp_project / "sub", deny=deny) == "deny"
+    assert decide_path(tmp_project, "secrets/key", cwd=tmp_project / "sub", deny=deny) == "run"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need admin rights on Windows")
+def test_an_allow_rule_on_a_path_does_not_cover_a_link_out_of_it(tmp_project: Path) -> None:
+    (tmp_project / "docs").mkdir()
+    (tmp_project / "private").mkdir()
+    os.symlink(tmp_project / "private", tmp_project / "docs" / "more", target_is_directory=True)
+    cfg = ForgeConfig(
+        permissions=PermissionsConfig(allow=["write_file(./docs/**)"]),
+        approval=ApprovalConfig(policy="always"),
+    )
+    ctx = make_ctx(tmp_project, cfg=cfg)
+    args = {"path": "docs/more/x.txt", "content": "x"}
+    assert Permissions(cfg).check(REGISTRY["write_file"], args, ctx).action == "ask"

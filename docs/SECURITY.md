@@ -8,7 +8,9 @@ covered.
 
 | Layer | What it does | Where |
 | --- | --- | --- |
-| Path checks | Writes only inside the project and `sandbox.writable_roots`; `.git/` and `.forge/` are protected; paths are resolved (symlinks, `..`) before the check | `runtime/files.py` |
+| Path checks | Writes only inside the project and `sandbox.writable_roots`; `.git/` and `.forge/` are protected (in any letter case); paths are resolved (symlinks, `..`) before the check | `runtime/files.py` |
+| No links followed | Forge's own reads and writes (the model's file changes, job logs, spilled output, the audit log, the undo journal, caches, reports, merges from worktrees) open every folder below the project root without following a link, so a link a sandboxed command planted makes them fail instead of reaching another place | `runtime/nofollow.py` |
+| Git without repository programs | The git Forge runs itself (snapshots, /undo, worktrees, reviews, status) switches off every program the repository's config can name: hooks, fsmonitor, filters, diff and merge drivers | `runtime/gitops.py` (`run_git`) |
 | Permission rules | `deny` → `ask` → `allow` → read-only list → sandbox × approval policy | `runtime/permissions.py`, `runtime/rules.py` |
 | OS sandbox | Shell commands write only to the project, temp folders and `/dev`; outgoing network off | `runtime/sandbox.py` (Landlock/bubblewrap on Linux, Seatbelt on macOS) |
 | Approvals | `ask` decisions go to the user; headless runs refuse unless `--yes` | renderers |
@@ -36,6 +38,13 @@ covered.
 - **Secrets** (`test_secrets.py`): OpenAI, Anthropic, GitHub, AWS, Slack, Google and GitLab
   key formats, PEM private keys and the values of secret-named environment variables are
   replaced by `[masked secret]` in every tool result (also in spill files).
+- **Planted links** (`test_planted_links.py`): links a command plants for a job log, spilled
+  output, the audit log, the undo journal or a folder swapped in after the path check are never
+  followed; `/undo` never writes outside the project or into `.git/`/`.forge/`; a review diff
+  shows a new link instead of reading it; `.GIT/config` counts as `.git/config`.
+- **Repository config** (`test_git_config.py`): a `.git/config` naming an fsmonitor, hooks,
+  filters, a textconv, an external diff or a merge driver runs none of them when Forge takes a
+  snapshot, undoes a step, merges a worktree, lists files or shows the status.
 - **Prompt injection** (`test_injection.py`): a model that *obeys* instructions planted in a
   README still cannot weaken its own rules: writing `.forge/config.toml` is `protected_path`,
   the user config is `outside_root`, and `remember` always asks. A fetched page reaches the
@@ -46,7 +55,11 @@ covered.
 - **Windows** has no OS sandbox yet; commands rely on approvals and path checks there
   (see PROGRESS.md, S28).
 - **Landlock** cannot protect `.git/` and `.forge/` inside a writable project root; only
-  Forge's own file tools enforce `protected_path`. A shell command can still write there.
+  Forge's own file tools enforce `protected_path`. A shell command can still write there. What
+  Forge itself does with these folders is hardened (no links followed, git without the
+  repository's programs, `/undo` checks every path of its journal); a command that rewrites
+  `.git/config` in the instant between Forge reading the driver names and starting git could
+  still slip one driver through.
 - **`full-access`** mode turns the sandbox off by design.
 - **Command parsing** is a best effort over shell syntax (it does not expand variables or
   aliases, e.g. `$CMD` holding `rm -rf`). Deny rules are a guard rail, not a sandbox; the OS

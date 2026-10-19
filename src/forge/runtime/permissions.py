@@ -15,7 +15,14 @@ from pydantic import BaseModel
 from forge.config import ForgeConfig, forge_home
 from forge.ports import SandboxPolicy
 from forge.runtime.commandline import Found, commands_in, split_segments
-from forge.runtime.rules import COMMAND_TOOLS, PATH_TOOLS, Rule, parse_rules, rule_matches
+from forge.runtime.rules import (
+    COMMAND_TOOLS,
+    PATH_TOOLS,
+    Rule,
+    absolute,
+    parse_rules,
+    rule_matches,
+)
 from forge.runtime.sandbox import launch_for
 
 if TYPE_CHECKING:
@@ -88,25 +95,31 @@ class Permissions:
 
     def check(self, tool: "ToolDef", args: dict[str, Any], ctx: "Ctx") -> Decision:
         """Deny rules, ask rules, allow rules, read-only list, then sandbox mode x approval."""
-        return self.decide(tool.name, specifier(tool, args), tool, ctx.root)
+        return self.decide(tool.name, specifier(tool, args), tool, ctx.root, ctx.cwd)
 
     def check_path(self, tool: "ToolDef", path: str, root: Path) -> Decision:
         """The same check for one path of a multi-file tool (apply_patch)."""
         return self.decide(tool.name, path, tool, root)
 
-    def decide(self, name: str, spec: str, tool: "ToolDef", root: Path) -> Decision:
-        """Evaluate the rules and defaults for one call of `name` with specifier `spec`."""
+    def decide(
+        self, name: str, spec: str, tool: "ToolDef", root: Path, cwd: Path | None = None
+    ) -> Decision:
+        """Evaluate the rules and defaults for one call of `name` with specifier `spec`; a path
+        is matched as written (from the agent's folder `cwd`) and with its links resolved:
+        deny and ask rules catch either, an allow rule must cover both."""
         if name in COMMAND_TOOLS:
             return self.decide_command(name, spec, tool, root)
-        if rule := first_match(self.deny, name, spec, root):
+        forms = path_forms(spec, cwd or root) if name in PATH_TOOLS else [spec]
+        if rule := first_match_any(self.deny, name, forms, root):
             return Decision(action="deny", reason=f"denied by rule {rule.text}")
-        if rule := first_match(self.ask, name, spec, root):
+        if rule := first_match_any(self.ask, name, forms, root):
             return Decision(action="ask", reason=f"rule {rule.text} asks first")
-        if rule := first_match(self.allow, name, spec, root):
-            return Decision(action="run", reason=f"allowed by rule {rule.text}")
+        allowing = [first_match(self.allow, name, form, root) for form in forms]
+        if all(allowing):
+            return Decision(action="run", reason=f"allowed by rule {allowing[0].text}")  # type: ignore[union-attr]
         if (name, spec) in self._remembered:
             return Decision(action="run", reason="approved earlier in this session")
-        if tool.read_only and name in PATH_TOOLS and reads_outside(spec, root, self.cfg):
+        if tool.read_only and name in PATH_TOOLS and reads_outside(forms[-1], root, self.cfg):
             return Decision(action="ask", reason=f"{name} reads {spec}, outside the project")
         return self.default(tool)
 
@@ -187,6 +200,13 @@ def allowing_rule(rules: list[Rule], name: str, part: Found, root: Path) -> Rule
         ),
         None,
     )
+
+
+def path_forms(spec: str, cwd: Path) -> list[str]:
+    """A path made absolute from the agent's folder, as written and with links resolved."""
+    path = Path(spec or ".").expanduser()
+    path = path if path.is_absolute() else cwd / path
+    return list(dict.fromkeys([absolute(str(path), cwd), path.resolve().as_posix()]))
 
 
 def reads_outside(spec: str, root: Path, cfg: ForgeConfig) -> bool:

@@ -10,10 +10,15 @@ changed are written into the main tree; a conflict changes nothing and lists the
 import asyncio
 import tempfile
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from forge.runtime.checkpoint import IDENTITY
-from forge.runtime.proc import ProcResult, run_argv
+from forge.runtime.errors import ToolError
+from forge.runtime.files import check_writable
+from forge.runtime.gitops import run_git, safe_options
+from forge.runtime.nofollow import read_below, symlink_below, unlink_below, write_below
+from forge.runtime.proc import ProcResult
 
 GIT_TIMEOUT_S = 120
 
@@ -48,7 +53,7 @@ async def git(cwd: Path, *args: str, index: Path | None = None, check: bool = Tr
     env = dict(IDENTITY)
     if index is not None:
         env["GIT_INDEX_FILE"] = str(index)
-    result = await run_argv(["git", *args], cwd, env=env, timeout_s=GIT_TIMEOUT_S)
+    result = await run_git(cwd, *args, env=env, timeout_s=GIT_TIMEOUT_S)
     if check and result.code != 0:
         raise WorktreeError(f"git {args[0]} failed: {(result.stderr or result.stdout).strip()}")
     return result
@@ -68,14 +73,18 @@ async def tree_commit(cwd: Path, message: str) -> str:
 
 async def exclude_forge_dir(root: Path) -> None:
     """Keep `.forge/` (worktrees, logs) out of git's view, via .git/info/exclude."""
-    common = (await git(root, "rev-parse", "--git-common-dir")).stdout.strip()
-    exclude = (root / common / "info" / "exclude").resolve()
-    text = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    common = Path((await git(root, "rev-parse", "--git-common-dir")).stdout.strip())
+    folder = common if common.is_absolute() else root / common
+    # inside the project (where commands can plant links) nothing below the root is followed
+    base = root if folder.is_relative_to(root) else folder
+    exclude = folder / "info" / "exclude"
+    try:
+        text = read_below(base, exclude).decode("utf-8")
+    except FileNotFoundError:
+        text = ""
     if ".forge/" not in text.splitlines():
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        exclude.write_text(
-            text + ("" if not text or text.endswith("\n") else "\n") + ".forge/\n", encoding="utf-8"
-        )
+        text += ("" if not text or text.endswith("\n") else "\n") + ".forge/\n"
+        write_below(base, exclude, text.encode("utf-8"))
 
 
 async def create_worktree(root: Path, session_id: str, agent_id: str) -> Worktree:
@@ -120,7 +129,7 @@ async def prepare_merge(root: Path, wt: Worktree, message: str) -> PreparedMerge
     if merged.code != 0 or not lines:
         raise WorktreeError(f"git merge-tree failed: {merged.stderr.strip()}")
     tree = lines[0].strip()
-    diff = (await git(root, "diff", current, tree)).stdout
+    diff = (await git(root, "diff", "--no-ext-diff", "--no-textconv", current, tree)).stdout
     return PreparedMerge(True, [], current, tree, tip, diff)
 
 
@@ -137,26 +146,47 @@ async def publish_main(root: Path, commit: str, branch: str) -> None:
 
 
 async def write_tree_changes(root: Path, current: str, tree: str) -> list[str]:
-    """Make the main tree's files match `tree` where it differs from `current`."""
-    listing = await git(root, "diff", "--name-status", "--no-renames", "-z", current, tree)
-    fields = [f for f in listing.stdout.split("\0") if f]
-    changed: list[str] = []
-    for status, name in zip(fields[::2], fields[1::2], strict=True):
-        target = root / name
+    """Make the main tree's files match `tree` where it differs from `current`.
+
+    An agent's commit can hold any path, so each one is checked like a write of the model's
+    (inside the project, not in .git/ or .forge/, not through a link) before anything is
+    written; a refused path raises WorktreeError and changes nothing."""
+    listing = await git(root, "diff", "--raw", "--no-renames", "-z", current, tree)
+    fields = listing.stdout.split("\0")
+    entries = [(fields[i].split()[1], fields[i].split()[4], fields[i + 1])
+               for i in range(0, len(fields) - 1, 2) if fields[i].startswith(":")]  # fmt: skip
+    base = root.resolve()
+    targets = {name: merge_target(base, name) for _, _, name in entries}
+    for mode, status, name in entries:
+        target = targets[name]
         if status == "D":
-            target.unlink(missing_ok=True)
-        else:
+            await asyncio.to_thread(unlink_below, base, target)
+        elif mode == "120000":
+            link = (await run_bytes(root, f"{tree}:{name}")).decode("utf-8", "surrogateescape")
+            await asyncio.to_thread(symlink_below, base, target, link)
+        elif mode != "160000":  # a submodule's commit is not a file
             blob = await run_bytes(root, f"{tree}:{name}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(blob)
-        changed.append(name)
-    return changed
+            await asyncio.to_thread(
+                partial(write_below, base, target, blob, executable=mode == "100755")
+            )
+    return [name for _, _, name in entries]
+
+
+def merge_target(base: Path, name: str) -> Path:
+    """Where a merged path is written: its folder resolved, the file itself never followed."""
+    target = (base / name).parent.resolve() / Path(name).name
+    try:
+        check_writable(base, [base], target)
+    except ToolError as err:
+        raise WorktreeError(f"the merge would write {name}: {err.message}") from err
+    return target
 
 
 async def run_bytes(root: Path, spec: str) -> bytes:
     """A blob's exact bytes (run_argv decodes text, which would change binary files)."""
     proc = await asyncio.create_subprocess_exec(
         "git",
+        *safe_options(),
         "cat-file",
         "blob",
         spec,

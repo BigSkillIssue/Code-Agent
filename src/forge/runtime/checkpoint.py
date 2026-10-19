@@ -7,8 +7,8 @@ are never touched. Refs: refs/forge/<session>/<step>.
 import tempfile
 from pathlib import Path
 
-from forge.runtime.gitops import is_repo
-from forge.runtime.proc import ProcResult, run_argv
+from forge.runtime.gitops import is_repo, run_git
+from forge.runtime.proc import ProcResult
 
 IDENTITY = {
     "GIT_AUTHOR_NAME": "Forge",
@@ -31,7 +31,7 @@ async def _git(root: Path, *args: str, index: Path | None = None) -> ProcResult:
     env = dict(IDENTITY)
     if index is not None:
         env["GIT_INDEX_FILE"] = str(index)
-    result = await run_argv(["git", *args], root, env=env)
+    result = await run_git(root, *args, env=env)
     if result.code != 0:
         raise CheckpointError(f"git {args[0]} failed: {result.stderr.strip()}")
     return result
@@ -45,7 +45,7 @@ async def snapshot(root: Path, session_id: str, step_id: str) -> str | None:
         index = Path(folder) / "index"
         await _git(root, "add", "-A", ".", index=index)
         tree = (await _git(root, "write-tree", index=index)).stdout.strip()
-    head = await run_argv(["git", "rev-parse", "--verify", "--quiet", "HEAD"], root)
+    head = await run_git(root, "rev-parse", "--verify", "--quiet", "HEAD")
     parent = ["-p", head.stdout.strip()] if head.code == 0 else []
     message = f"forge checkpoint {session_id} {step_id}"
     commit = (
@@ -86,8 +86,8 @@ def _remove_empty_parents(root: Path, path: Path) -> None:
 
 async def drop_refs(root: Path, session_id: str) -> None:
     """Delete every snapshot ref of a session."""
-    listing = await run_argv(
-        ["git", "for-each-ref", "--format=%(refname)", f"refs/forge/{session_id}/"], root
+    listing = await run_git(
+        root, "for-each-ref", "--format=%(refname)", f"refs/forge/{session_id}/"
     )
     for ref in listing.stdout.split():
-        await run_argv(["git", "update-ref", "-d", ref], root)
+        await run_git(root, "update-ref", "-d", ref)

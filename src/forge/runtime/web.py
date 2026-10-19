@@ -5,6 +5,7 @@ here are what keeps a model from reaching localhost or cloud metadata services.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -21,6 +22,7 @@ import httpx
 
 from forge import __version__
 from forge.runtime.errors import ToolError
+from forge.runtime.nofollow import read_below, write_below
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 5
@@ -214,7 +216,7 @@ def read_cache(root: Path, url: str) -> Page | None:
     """A cached page younger than 15 minutes."""
     path = cache_path(root, url)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(read_below(root, path).decode("utf-8"))
     except (OSError, ValueError):
         return None
     if time.time() - float(data.pop("fetched_at", 0)) > CACHE_SECONDS:
@@ -225,11 +227,9 @@ def read_cache(root: Path, url: str) -> Page | None:
 def write_cache(root: Path, page: Page) -> None:
     """Cache a page; failures only cost a refetch."""
     path = cache_path(root, page.url)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({**asdict(page), "fetched_at": time.time()}), encoding="utf-8")
-    except OSError:
-        pass
+    data = json.dumps({**asdict(page), "fetched_at": time.time()}).encode("utf-8")
+    with contextlib.suppress(OSError):
+        write_below(root, path, data)
 
 
 def size_text(size: int) -> str:

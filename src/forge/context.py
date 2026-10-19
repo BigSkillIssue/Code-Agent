@@ -3,8 +3,9 @@
 from forge.conversation import conversation_text
 from forge.ctx import Ctx
 from forge.memory import load_memory, render_memory
+from forge.runtime.gitops import run_git
 from forge.runtime.ignore import project_files
-from forge.runtime.proc import run_argv, which
+from forge.runtime.proc import which
 from forge.runtime.tree import build_tree, render_tree
 
 TREE_DEPTH = 3
@@ -30,7 +31,7 @@ async def git_status(ctx: Ctx) -> str:
     """`git status --short`, or a note when this is not a git repository."""
     if which("git") is None:
         return "(git not installed)"
-    result = await run_argv(["git", "status", "--short", "--branch"], ctx.root)
+    result = await run_git(ctx.root, "status", "--short", "--branch")
     if result.code != 0:
         return "(not a git repository)"
     lines = result.stdout.splitlines()

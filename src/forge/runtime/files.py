@@ -3,8 +3,6 @@
 import asyncio
 import base64
 import json
-import os
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +10,7 @@ from typing import TYPE_CHECKING
 from forge.config import ForgeConfig
 from forge.runtime.errors import ToolError
 from forge.runtime.ledger import ReadLedger
+from forge.runtime.nofollow import read_below, unlink_below, write_below
 
 if TYPE_CHECKING:
     from forge.ctx import Ctx
@@ -66,8 +65,9 @@ def writable_roots(root: Path, cfg: ForgeConfig) -> list[Path]:
     return [root, *extra]
 
 
-def check_writable(root: Path, roots: list[Path], path: Path) -> None:
-    """Raise ToolError unless `path` may be written: inside a writable root and not protected."""
+def check_writable(root: Path, roots: list[Path], path: Path) -> Path:
+    """Raise ToolError unless `path` may be written: inside a writable root and not protected;
+    returns the writable root it is in."""
     display = display_path(root, path)
     owner = next((r for r in roots if is_within(path, r)), None)
     if owner is None:
@@ -76,11 +76,13 @@ def check_writable(root: Path, roots: list[Path], path: Path) -> None:
             f"{display} is outside the project",
             hint="only files inside the project or sandbox.writable_roots can be changed",
         )
-    parts = path.relative_to(owner).parts
+    # case-insensitive file systems (macOS, Windows) open `.GIT/config` as `.git/config`
+    parts = tuple(part.casefold() for part in path.relative_to(owner).parts)
     if ".git" in parts or (owner == root and parts[:1] == (".forge",)):
         raise ToolError(
             "protected_path", f"{display} is protected", hint=".git/ and .forge/ are off limits"
         )
+    return owner
 
 
 def format_size(size: int) -> str:
@@ -147,22 +149,27 @@ def journal_dir(ctx: "Ctx") -> Path:
 async def apply_changes(ctx: "Ctx", changes: list[FileChange]) -> None:
     """Check, journal (for /undo), write atomically, and update the ledger — all or nothing."""
     roots = writable_roots(ctx.root, ctx.cfg)
-    for change in changes:
-        check_writable(ctx.root, roots, change.path)
-    await asyncio.to_thread(_apply_sync, ctx.ledger, journal_dir(ctx), changes)
+    owners = {change.path: check_writable(ctx.root, roots, change.path) for change in changes}
+    await asyncio.to_thread(_apply_sync, ctx.ledger, ctx.root, journal_dir(ctx), changes, owners)
 
 
-def _apply_sync(ledger: ReadLedger, journal: Path, changes: list[FileChange]) -> None:
+def _apply_sync(
+    ledger: ReadLedger,
+    root: Path,
+    journal: Path,
+    changes: list[FileChange],
+    owners: dict[Path, Path],
+) -> None:
     old = {c.path: (c.path.read_bytes() if c.path.is_file() else None) for c in changes}
-    _journal(journal, old)
+    _journal(root, journal, old)
     done: list[Path] = []
     try:
         for change in changes:
-            _write_one(change.path, change.content)
+            write_one(owners[change.path], change.path, change.content)
             done.append(change.path)
     except OSError:
         for path in done:  # put back what was already changed, then report the failure
-            _write_one(path, old[path])
+            write_one(owners[path], path, old[path])
         raise
     for change in changes:
         if change.content is None:
@@ -171,37 +178,39 @@ def _apply_sync(ledger: ReadLedger, journal: Path, changes: list[FileChange]) ->
             ledger.record(change.path, change.content, change.path.stat().st_mtime_ns, full=True)
 
 
-def _write_one(path: Path, content: bytes | None) -> None:
+def write_one(base: Path, path: Path, content: bytes | None) -> None:
+    """Write or delete (`content=None`) one file inside `base`, never through a link."""
     if content is None:
-        path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.parent / f".{path.name}.forge-{uuid.uuid4().hex[:8]}.tmp"
-    temp.write_bytes(content)
-    os.replace(temp, path)
+        unlink_below(base, path)
+    else:
+        write_below(base, path, content)
 
 
-def _journal(folder: Path, old: dict[Path, bytes | None]) -> None:
+def _journal(root: Path, folder: Path, old: dict[Path, bytes | None]) -> None:
     """Append one undo record: the previous content of every file in this change."""
-    folder.mkdir(parents=True, exist_ok=True)
     record = {
         str(path): None if data is None else base64.b64encode(data).decode("ascii")
         for path, data in old.items()
     }
-    with (folder / "journal.jsonl").open("a", encoding="utf-8") as journal:
-        journal.write(json.dumps(record) + "\n")
+    write_below(root, folder / "journal.jsonl", (json.dumps(record) + "\n").encode(), append=True)
 
 
-def undo_last_change(journal_dir: Path) -> list[Path]:
-    """Restore the files of the most recent journal record; returns the paths restored."""
+def undo_last_change(journal_dir: Path, root: Path, roots: list[Path]) -> list[Path]:
+    """Restore the files of the most recent journal record; returns the paths restored.
+
+    The journal lies in `.forge/`, which sandboxed commands can write: every path in it is
+    checked like a write of the model's (ToolError) before anything is restored."""
     journal = journal_dir / "journal.jsonl"
-    if not journal.is_file():
+    try:
+        lines = read_below(root, journal).decode("utf-8").splitlines()
+    except FileNotFoundError:
         return []
-    lines = journal.read_text(encoding="utf-8").splitlines()
     if not lines:
         return []
     record: dict[str, str | None] = json.loads(lines[-1])
+    targets = {name: Path(name).resolve() for name in record}
+    owners = {name: check_writable(root, roots, target) for name, target in targets.items()}
     for name, data in record.items():
-        _write_one(Path(name), None if data is None else base64.b64decode(data))
-    journal.write_text("".join(line + "\n" for line in lines[:-1]), encoding="utf-8")
+        write_one(owners[name], targets[name], None if data is None else base64.b64decode(data))
+    write_below(root, journal, "".join(line + "\n" for line in lines[:-1]).encode("utf-8"))
     return [Path(name) for name in record]

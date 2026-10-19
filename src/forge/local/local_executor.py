@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from forge.ports import Command, CommandResult, JobNotFoundError, SandboxPolicy
+from forge.runtime.nofollow import open_below, read_below
 from forge.runtime.proc import run_argv
 from forge.runtime.sandbox import Launch, is_denied, launch_for
 from forge.runtime.shell import (
@@ -176,7 +177,11 @@ class LocalExecutor:
         return job
 
     async def _pump(self, job: Job, shell: ShellSession, outcome: ShellOutcome) -> None:
-        with job.log_path.open("ab") as log:
+        try:
+            fd = self._open_log(job.log_path)
+        except OSError:  # a link planted in .forge/jobs: the output is dropped, not misplaced
+            fd = os.open(os.devnull, os.O_WRONLY)
+        with os.fdopen(fd, "ab") as log:
             log.write(outcome.stdout.encode("utf-8"))
 
             def write(data: bytes) -> None:
@@ -197,9 +202,11 @@ class LocalExecutor:
         if argv is None:
             return CommandResult(exit_code=127, stdout="", stderr=f"{cmd.shell} is not installed")
         job_id = self._next_id()
-        log_path = self._log_path(job_id)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("ab") as log:
+        try:
+            log_fd = self._open_log(self._log_path(job_id))
+        except OSError as exc:  # e.g. a link planted in .forge/jobs
+            return CommandResult(exit_code=126, stdout="", stderr=f"cannot open the job log: {exc}")
+        with os.fdopen(log_fd, "ab") as log:
             proc = await asyncio.create_subprocess_exec(
                 *launch.argv(argv),
                 cwd=cmd.cwd,
@@ -248,12 +255,15 @@ class LocalExecutor:
 
     def _register(self, job_id: str, proc: asyncio.subprocess.Process) -> Job:
         job = Job(job_id, proc, self._log_path(job_id), time.time())
-        job.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.jobs[job_id] = job
         return job
 
     def _log_path(self, job_id: str) -> Path:
         return self.root / ".forge" / "jobs" / f"{job_id}.log"
+
+    def _open_log(self, path: Path) -> int:
+        """Open a job log for appending; a link planted in its place is refused (LinkError)."""
+        return open_below(self.root, path, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
 
     def _job(self, job_id: str) -> Job:
         if job_id not in self.jobs:
@@ -261,9 +271,11 @@ class LocalExecutor:
         return self.jobs[job_id]
 
     def _log_lines(self, job: Job) -> list[str]:
-        if not job.log_path.is_file():
+        try:
+            data = read_below(self.root, job.log_path)
+        except OSError:
             return []
-        return clean_output(job.log_path.read_bytes()).splitlines()
+        return clean_output(data).splitlines()
 
     def _job_result(self, job: Job, text: str, total: int) -> CommandResult:
         return CommandResult(

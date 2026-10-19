@@ -1,5 +1,7 @@
 """Agent worktrees and merging them back (runtime/worktree.py, team merge flow)."""
 
+import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from forge.providers.base import ToolCall, ToolResult
 from forge.providers.fake import FakeProvider, FakeToolCall, FakeTurn
 from forge.providers.registry import register_provider
 from forge.runtime.worktree import (
+    WorktreeError,
     apply_merge,
     create_worktree,
     prepare_merge,
@@ -136,3 +139,43 @@ async def test_board_task_conflict_goes_back_to_its_owner(repo: Path) -> None:
     assert ctx.session.plan.steps[0].status == "doing"
     assert team.take_messages("main") == []  # the lead hears nothing until it merges
     assert (repo / "a.py").read_text() == "A = 'lead'\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need admin rights on Windows")
+async def test_a_merge_never_writes_through_an_ignored_link(repo: Path, tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".gitignore").write_text("build\n")
+    os.symlink(outside, repo / "build", target_is_directory=True)  # planted by a command
+    tree = await create_worktree(repo, "s1", "a1")
+    (tree.path / "build").mkdir()
+    (tree.path / "build" / "pwned.txt").write_text("x\n")
+    git(tree.path, "add", "-f", "build/pwned.txt")
+    prepared = await prepare_merge(repo, tree, "work")
+    with pytest.raises(WorktreeError, match="outside"):
+        await apply_merge(repo, tree, prepared)
+    assert list(outside.iterdir()) == []
+
+
+async def test_a_merge_never_writes_forge_settings(repo: Path) -> None:
+    tree = await create_worktree(repo, "s1", "a1")
+    (tree.path / ".forge").mkdir(exist_ok=True)
+    (tree.path / ".forge" / "config.toml").write_text("[hooks]\n")
+    git(tree.path, "add", "-f", ".forge/config.toml")
+    (tree.path / "a.py").write_text("A = 2\n")
+    prepared = await prepare_merge(repo, tree, "work")
+    with pytest.raises(WorktreeError, match="protected"):
+        await apply_merge(repo, tree, prepared)
+    assert not (repo / ".forge" / "config.toml").exists()
+    assert (repo / "a.py").read_text() == "A = 1\n"  # all or nothing
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+async def test_a_merge_keeps_the_executable_bit(repo: Path) -> None:
+    tree = await create_worktree(repo, "s1", "a1")
+    script = tree.path / "run.sh"
+    script.write_text("#!/bin/sh\necho hi\n")
+    script.chmod(0o755)
+    prepared = await prepare_merge(repo, tree, "work")
+    await apply_merge(repo, tree, prepared)
+    assert os.access(repo / "run.sh", os.X_OK)

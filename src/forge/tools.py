@@ -83,6 +83,7 @@ from forge.runtime.files import (
 )
 from forge.runtime.ignore import expand_braces, glob_regex, matches_glob, project_files
 from forge.runtime.ledger import sha256_of
+from forge.runtime.nofollow import write_below
 from forge.runtime.patch import FileOp, PatchSyntaxError, apply_hunks, parse_patch
 from forge.runtime.readers import IMAGE_TYPES, read_image, read_notebook, read_pdf, read_text
 from forge.runtime.repomap import build_map, render_map
@@ -443,7 +444,12 @@ async def cap_output(root: Path, result: ToolResult) -> ToolResult:
     if result.ok and len(text) > OUTPUT_CAP_OK:
         name = re.sub(r"[^A-Za-z0-9_.-]", "_", result.call_id or "output")
         rel = f".forge/out/{name}.txt"
-        await asyncio.to_thread(_write_text, root / ".forge" / "out" / f"{name}.txt", text)
+        path = root / ".forge" / "out" / f"{name}.txt"
+        try:
+            await asyncio.to_thread(write_below, root, path, text.encode("utf-8"))
+        except OSError as exc:
+            note = f"[output truncated: {len(text)} chars total; it could not be saved: {exc}]"
+            return result.model_copy(update={"text": f"{text[:OUTPUT_PREVIEW]}\n{note}"})
         note = f"[output truncated: {len(text)} chars total, full output in {rel}]"
         return result.model_copy(
             update={"text": f"{text[:OUTPUT_PREVIEW]}\n{note}", "spill_path": rel}
@@ -454,11 +460,6 @@ async def cap_output(root: Path, result: ToolResult) -> ToolResult:
         cut = f"{text[:half]}\n[... {omitted} chars omitted ...]\n{text[-half:]}"
         return result.model_copy(update={"text": cut})
     return result
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 async def _post_tool_hooks(ctx: Ctx, call: ToolCall, result: ToolResult) -> ToolResult:
@@ -491,10 +492,11 @@ def _append_audit(ctx: Ctx, call: ToolCall, result: ToolResult, decision: str) -
         "chars": len(result.text),
         "decision": decision,
     }
-    path = ctx.root / ".forge" / "audit.log"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    line = json.dumps(entry, ensure_ascii=False) + "\n"
+    try:
+        write_below(ctx.root, ctx.root / ".forge" / "audit.log", line.encode("utf-8"), append=True)
+    except OSError as exc:  # e.g. a link planted in .forge/: the call itself still counts
+        log.warning("audit log not written: %s", exc)
 
 
 def _short(value: Any, limit: int = 200) -> Any:
@@ -1007,11 +1009,12 @@ async def run_shell(
         if live is not None:
             await live.close()
     if background:
-        if ctx.state.team is not None and result.job_id:
+        if result.job_id is None:
+            raise ToolError("exit_nonzero", "the command could not start", body=result.stderr)
+        if ctx.state.team is not None:
             ctx.state.team.note_job(ctx.agent_id, result.job_id)
         label = description or command.strip().splitlines()[0][:60]
-        if result.job_id:
-            ctx.state.job_labels[result.job_id] = label
+        ctx.state.job_labels[result.job_id] = label
         return job_started(result, label)
     if result.sandbox_denied:
         result = await outside_sandbox(ctx, cmd, result)
