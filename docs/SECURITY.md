@@ -23,11 +23,16 @@ covered.
   file or folder (also via `apply_patch`), the protected `.git/` and `.forge/` folders, and
   reading outside the project (also through a symlink) only after the user approves.
 - **Rule bypass** (`test_rule_bypass.py`): a `deny` rule also catches the command when it is
-  chained (`a; b`, `&&`, `||`, `|`, `&`, new lines), substituted (`$(...)`, backticks), grouped
-  (`( ... )`), wrapped (`sh -c`, `bash -c`, `pwsh -Command`, `sudo`, `env`, `nohup`, `xargs`,
-  `VAR=1 cmd`) or sent to the other shell (a `bash(...)` rule covers `powershell` too). An
-  `allow` rule applies only when *every* command in the line is allowed, so
-  `git status; rm -rf /` is not allowed by `bash(git status*)`.
+  chained (`a; b`, `&&`, `||`, `|`, `&`, new lines), substituted (`$(...)`, `<(...)`,
+  backticks), grouped (`( ... )`, `{ ...; }`, `if`/`then`/`do`, `!`), wrapped (`sh -c`,
+  `bash -lc`, `bash <<< ...`, `echo ... | sh`, `pwsh -Command` also abbreviated,
+  `-EncodedCommand`, `cmd /c`, `eval`, `find -exec`, `sudo -u root`, `env -u X`, `env -S`,
+  `nice -n 10`, `timeout 5`, `nohup`, `xargs -n 1`, `VAR=1 cmd`) or sent to the other shell (a
+  `bash(...)` rule covers `powershell` too). An `allow` rule applies only when *every* command
+  in the line is allowed, so `git status; rm -rf /` is not allowed by `bash(git status*)`; a
+  command run with `sudo` (or `doas`, `su` ...) or writing a file with `>` is only allowed by a
+  rule that names it (`bash(sudo apt update)`). A command with a NUL byte is refused: bash
+  would run what follows the byte as a command of its own.
 - **Secrets** (`test_secrets.py`): OpenAI, Anthropic, GitHub, AWS, Slack, Google and GitLab
   key formats, PEM private keys and the values of secret-named environment variables are
   replaced by `[masked secret]` in every tool result (also in spill files).

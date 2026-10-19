@@ -901,6 +901,7 @@ async def monitor(
 ) -> str:
     """Run a command in the background and receive each new output line as a message."""
     require(command.strip() != "", "command must not be empty")
+    require("\0" not in command, "command must not contain a NUL byte")
     require(
         0 < len(description) <= 80 and "\n" not in description, "description: one line, 1-80 chars"
     )
@@ -982,6 +983,7 @@ async def run_shell(
         command.strip() != "" and len(command) <= 100_000,
         "command must be 1-100,000 characters, not only whitespace",
     )
+    require("\0" not in command, "command must not contain a NUL byte")
     require(1 <= timeout_s <= MAX_SHELL_TIMEOUT_S, "timeout_s must be between 1 and 600")
     require(
         len(description) <= 80 and "\n" not in description,

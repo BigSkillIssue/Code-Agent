@@ -15,7 +15,7 @@ import pytest
 from forge.ctx import Ctx
 from forge.local.local_executor import LocalExecutor
 from forge.providers.base import ToolCall, ToolResult
-from forge.runtime.shell import clean_output, find_shell
+from forge.runtime.shell import clean_output, find_shell, wrap_bash
 from forge.tools import call_tool, first_program, shell_succeeded
 from support import make_ctx
 
@@ -264,3 +264,16 @@ def test_utf16_stderr_is_decoded() -> None:
     raw = codecs.BOM_UTF16_LE + "bad thing\r\n".encode("utf-16-le")
     assert clean_output(raw) == "bad thing\n"
     assert clean_output(codecs.BOM_UTF8 + b"ok") == "ok"
+
+
+@no_bash
+async def test_a_nul_byte_in_a_command_is_refused(sh: Ctx) -> None:
+    result = await run(sh, "bash", command="true\x00touch planted")
+    assert not result.ok
+    assert result.code == "permission_denied"
+    assert not (sh.root / "planted").exists()
+
+
+def test_the_bash_wrapper_never_sends_a_nul_byte() -> None:
+    with pytest.raises(ValueError, match="NUL"):
+        wrap_bash("true\x00touch planted", Path("."), "n", Path("err"))

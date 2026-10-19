@@ -14,15 +14,8 @@ from pydantic import BaseModel
 
 from forge.config import ForgeConfig, forge_home
 from forge.ports import SandboxPolicy
-from forge.runtime.rules import (
-    COMMAND_TOOLS,
-    PATH_TOOLS,
-    Rule,
-    parse_rules,
-    rule_matches,
-    simple_commands,
-    split_segments,
-)
+from forge.runtime.commandline import Found, commands_in, split_segments
+from forge.runtime.rules import COMMAND_TOOLS, PATH_TOOLS, Rule, parse_rules, rule_matches
 from forge.runtime.sandbox import launch_for
 
 if TYPE_CHECKING:
@@ -120,13 +113,16 @@ class Permissions:
     def decide_command(self, name: str, command: str, tool: "ToolDef", root: Path) -> Decision:
         """Deny/ask rules match if any command inside the line matches (`a; b`, `sh -c`,
         `$(...)`, `sudo` ...); allow rules only if every command inside is allowed."""
-        parts = simple_commands(command) or [command]
-        candidates = [command, *parts]
+        if "\0" in command:
+            # bash reads a command up to a NUL byte and runs what follows as a command of its own
+            return Decision(action="deny", reason="the command contains a NUL byte")
+        found = commands_in(command) or [Found(command, command)]
+        candidates = [command, *(f.text for f in found), *(f.written for f in found)]
         if rule := first_match_any(self.deny, name, candidates, root):
             return Decision(action="deny", reason=f"denied by rule {rule.text}")
         if rule := first_match_any(self.ask, name, candidates, root):
             return Decision(action="ask", reason=f"rule {rule.text} asks first")
-        allowing = [first_match(self.allow, name, part, root) for part in parts]
+        allowing = [allowing_rule(self.allow, name, part, root) for part in found]
         if all(allowing):
             return Decision(action="run", reason=f"allowed by rule {allowing[0].text}")  # type: ignore[union-attr]
         if (name, command) in self._remembered:
@@ -175,6 +171,24 @@ def first_match_any(rules: list[Rule], name: str, specs: list[str], root: Path) 
     return next((r for r in rules for spec in specs if rule_matches(r, name, spec, root)), None)
 
 
+def allowing_rule(rules: list[Rule], name: str, part: Found, root: Path) -> Rule | None:
+    """The allow rule that covers one command; a command run with `sudo` or writing a file with
+    `>` is only covered by a rule that names that as written (or by one allowing everything)."""
+    if not part.marks:
+        return first_match(rules, name, part.text, root)
+    return next(
+        (
+            rule
+            for rule in rules
+            if rule_matches(rule, name, part.written, root)
+            and (
+                rule.pattern in (None, "", "*", "**") or all(m in rule.pattern for m in part.marks)
+            )
+        ),
+        None,
+    )
+
+
 def reads_outside(spec: str, root: Path, cfg: ForgeConfig) -> bool:
     """True if a path (symlinks resolved) is outside the project, the writable roots and the
     user's Forge skills (which agents are told to read)."""
@@ -207,7 +221,7 @@ def is_read_only_command(command: str, powershell: bool = False) -> bool:
     """True for simple commands (pipes allowed) whose every program, with these options, only
     reads."""
     unsafe = UNSAFE_SHELL.search(command) or (powershell and UNSAFE_POWERSHELL.search(command))
-    if not command.strip() or unsafe:
+    if not command.strip() or unsafe or "\0" in command:
         return False
     for segment in split_segments(command):
         try:

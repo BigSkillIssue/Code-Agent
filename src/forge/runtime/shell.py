@@ -110,8 +110,11 @@ def wrap_bash(command: str, cwd: Path, nonce: str, err: Path) -> str:
     """The text sent to bash for one command: read literally from stdin up to a NUL byte.
 
     No here-document, because bash 3.2 (macOS) writes those to /tmp, which a read-only
-    sandbox forbids; a command can never contain a NUL byte itself.
+    sandbox forbids. The tools refuse a command with a NUL byte: bash would run what follows it
+    as a command of its own.
     """
+    if "\0" in command:
+        raise ValueError("a command must not contain a NUL byte")
     return (
         "IFS= read -r -d '' __FORGE_CMD\n"
         f"{command}\n\0"
