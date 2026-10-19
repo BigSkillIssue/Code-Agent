@@ -252,7 +252,9 @@ def test_an_untrusted_project_cannot_let_commands_see_the_model_keys(
 ) -> None:
     from forge.providers.catalog import model_key_variables
 
-    write(project / ".forge" / "config.toml", '[sandbox]\nenv_passthrough = ["ANTHROPIC_API_KEY"]\n')
+    write(
+        project / ".forge" / "config.toml", '[sandbox]\nenv_passthrough = ["ANTHROPIC_API_KEY"]\n'
+    )
     cfg = load_config(project)
     assert cfg.sandbox.env_passthrough == []
     assert "ANTHROPIC_API_KEY" in model_key_variables(cfg)
