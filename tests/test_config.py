@@ -245,3 +245,17 @@ def test_config_check_prints_toml_with_masked_secrets(
     assert 'api_key_env = "CORP_KEY"' in out
     assert "sk-secret-value" not in out
     assert "***" in out
+
+
+def test_an_untrusted_project_cannot_let_commands_see_the_model_keys(
+    home: Path, project: Path
+) -> None:
+    from forge.providers.catalog import model_key_variables
+
+    write(project / ".forge" / "config.toml", '[sandbox]\nenv_passthrough = ["ANTHROPIC_API_KEY"]\n')
+    cfg = load_config(project)
+    assert cfg.sandbox.env_passthrough == []
+    assert "ANTHROPIC_API_KEY" in model_key_variables(cfg)
+    write(home / "forge.toml", '[sandbox]\nenv_passthrough = ["OPENAI_API_KEY"]\n')
+    keys = model_key_variables(load_config(project))
+    assert "OPENAI_API_KEY" not in keys and "GEMINI_API_KEY" in keys

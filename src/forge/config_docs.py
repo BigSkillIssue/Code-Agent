@@ -86,6 +86,7 @@ DOCS: dict[str, str] = {
     "mode": "`read-only`, `workspace-write` (project + temp folders) or `full-access` (no sandbox).",
     "network": "Allow outgoing network from shell commands.",
     "writable_roots": "Extra folders commands and file tools may write to.",
+    "env_passthrough": "Variables holding Forge's own model keys that commands may still see (by default they are left out).",
     "policy": "`on-request` (ask when leaving the sandbox), `always` (ask before changes) or `never`.",
     "allow": "Rules that run without asking, e.g. `bash(git status*)`.",
     "ask": "Rules that always ask, e.g. `bash(git push *)`.",

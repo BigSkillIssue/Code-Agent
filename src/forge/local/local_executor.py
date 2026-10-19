@@ -10,7 +10,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,8 +55,9 @@ class Job:
 class LocalExecutor:
     """Runs commands locally: scripts in pooled persistent shells, jobs with log files."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, hidden_env: Collection[str] = ()) -> None:
         self.root = root
+        self.hidden_env = frozenset(hidden_env)  # Forge's own model keys: not for commands
         self.jobs: dict[str, Job] = {}
         self.last_policy: SandboxPolicy | None = None
         self._shells: list[ShellSession] = []
@@ -163,7 +164,7 @@ class LocalExecutor:
             ):
                 shell.busy = True
                 return shell
-        shell = ShellSession(kind, exe, env=launch.env, launch=launch)
+        shell = ShellSession(kind, exe, env=launch.env, launch=launch, hidden=self.hidden_env)
         await shell.start()
         shell.busy = True
         self._shells.append(shell)
@@ -213,9 +214,8 @@ class LocalExecutor:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=log,
                 stderr=asyncio.subprocess.STDOUT,
-                env=shell_env({**launch.env, **cmd.env}),
+                env=shell_env({**launch.env, **cmd.env}, self.hidden_env),
                 **new_process_group(),  # type: ignore[arg-type]
-                preexec_fn=launch.preexec,
             )
         job = self._register(job_id, proc)
         job.task = asyncio.create_task(self._watch(job))
@@ -235,6 +235,7 @@ class LocalExecutor:
             timeout_s=cmd.timeout_s,
             env={**launch.env, **cmd.env},
             launch=launch,
+            hidden=self.hidden_env,
         )
         timed_out = result.code == -1 and result.stderr.startswith("timed out")
         return CommandResult(

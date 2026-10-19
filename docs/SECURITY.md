@@ -12,7 +12,8 @@ covered.
 | No links followed | Forge's own reads and writes (the model's file changes, job logs, spilled output, the audit log, the undo journal, caches, reports, merges from worktrees) open every folder below the project root without following a link, so a link a sandboxed command planted makes them fail instead of reaching another place | `runtime/nofollow.py` |
 | Git without repository programs | The git Forge runs itself (snapshots, /undo, worktrees, reviews, status) switches off every program the repository's config can name: hooks, fsmonitor, filters, diff and merge drivers | `runtime/gitops.py` (`run_git`) |
 | Permission rules | `deny` → `ask` → `allow` → read-only list → sandbox × approval policy | `runtime/permissions.py`, `runtime/rules.py` |
-| OS sandbox | Shell commands write only to the project, temp folders and `/dev`; outgoing network off | `runtime/sandbox.py` (Landlock/bubblewrap on Linux, Seatbelt on macOS) |
+| OS sandbox | Shell commands write only to the project, temp folders and `/dev`; outgoing network off; the git and Forge settings inside the project (`.git/config`, `.git/hooks`, `.git/info`, `.forge/config.toml`, `.forge/hooks`) stay read-only (bubblewrap, Seatbelt); other programs' sockets (session bus, X11, Docker) are out of reach (Landlock: abstract sockets from Linux 6.12, path sockets from ABI 9; bubblewrap: hidden; Seatbelt: no Apple events, no `launchctl`/`osascript`/`open`) | `runtime/sandbox.py`, `runtime/landlock.py` (Landlock/bubblewrap on Linux, Seatbelt on macOS) |
+| Environment | Commands do not see the variables that hold Forge's own model keys (every provider's `api_key_env`, the web search key) unless `sandbox.env_passthrough` names them; an untrusted project cannot add to that list | `providers/catalog.py`, `local/local_executor.py` |
 | Approvals | `ask` decisions go to the user; headless runs refuse unless `--yes` | renderers |
 | Secret masking | Tool output is scanned for key formats and secret environment values before the model sees it | `runtime/secrets.py` |
 | Trust | A project's `.forge/config.toml` may set providers, MCP servers, hooks, the release rules or the browser only after `forge trust`; before that its sandbox, approval, permission and limit settings may only be stricter than the user's, and no project drops the user's deny and ask rules | `config.py`, `config_trust.py` |
@@ -54,9 +55,11 @@ covered.
 
 - **Windows** has no OS sandbox yet; commands rely on approvals and path checks there
   (see PROGRESS.md, S28).
-- **Landlock** cannot protect `.git/` and `.forge/` inside a writable project root; only
-  Forge's own file tools enforce `protected_path`. A shell command can still write there. What
-  Forge itself does with these folders is hardened (no links followed, git without the
+- **Landlock** cannot protect `.git/` and `.forge/` inside a writable project root (bubblewrap
+  and Seatbelt keep their settings files read-only); only Forge's own file tools enforce
+  `protected_path`. A shell command can still write there. Before Landlock ABI 9 it
+  cannot refuse path Unix sockets either, so a command can reach e.g. the user's session bus.
+  What Forge itself does with these folders is hardened (no links followed, git without the
   repository's programs, `/undo` checks every path of its journal); a command that rewrites
   `.git/config` in the instant between Forge reading the driver names and starting git could
   still slip one driver through.

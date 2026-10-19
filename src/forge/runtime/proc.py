@@ -6,7 +6,7 @@ Commands the model asks for go through the Executor port instead.
 import asyncio
 import os
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,16 +36,18 @@ async def run_argv(
     timeout_s: float = 60,
     env: Mapping[str, str] | None = None,
     launch: Launch | None = None,
+    hidden: Collection[str] = (),
 ) -> ProcResult:
-    """Run a program to completion with stdin closed; returns code -1 on timeout."""
+    """Run a program to completion with stdin closed; returns code -1 on timeout. The `hidden`
+    variables of Forge's own environment are left out."""
+    base = {name: value for name, value in os.environ.items() if name not in hidden}
     proc = await asyncio.create_subprocess_exec(
         *(launch.argv(list(argv)) if launch is not None else argv),
         cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, **QUIET_ENV, **(env or {})},
-        preexec_fn=launch.preexec if launch is not None else None,
+        env={**base, **QUIET_ENV, **(env or {})},
     )
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout_s)

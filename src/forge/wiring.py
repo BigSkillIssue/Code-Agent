@@ -17,6 +17,7 @@ from forge.local.xcode_builder import XcodeBuilder
 from forge.mcp_client import McpHub
 from forge.modelcall import publish_error
 from forge.ports import EventBus, Executor, Renderer, Session, Store
+from forge.providers.catalog import model_key_variables
 from forge.providers.fake import FakeProvider
 from forge.providers.registry import register_provider
 from forge.runtime.ledger import ReadLedger
@@ -85,7 +86,7 @@ async def open_session(
         cwd=root,
         store=store,
         bus=bus or MemoryBus(),
-        executor=executor or LocalExecutor(root),
+        executor=executor or LocalExecutor(root, hidden_env=model_key_variables(cfg)),
         renderer=renderer,
         ledger=ReadLedger(),
         permissions=Permissions(cfg),
