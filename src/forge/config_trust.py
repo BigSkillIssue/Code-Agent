@@ -49,7 +49,11 @@ def looser(table: str, key: str, value: Any, current: Any) -> bool:
         return value is True and current is not True
     if table == "approval" and key == "policy":
         return _rank(APPROVAL_POLICIES, value) > _rank(APPROVAL_POLICIES, current)
-    if (table, key) in (("sandbox", "writable_roots"), ("permissions", "allow")):
+    if (table, key) in (
+        ("sandbox", "writable_roots"),
+        ("sandbox", "env_passthrough"),
+        ("permissions", "allow"),
+    ):
         allowed = current if isinstance(current, list) else []
         return isinstance(value, list) and any(item not in allowed for item in value)
     if table == "limits" and _number(value) and _number(current):

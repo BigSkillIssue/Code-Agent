@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from forge.ports import Command, CommandResult, Executor, SandboxPolicy
+from forge.runtime.sandbox import scratch_dir
 
 USER = "forge"
 DATABASE = "app"
@@ -98,7 +99,8 @@ async def start_postgres(executor: Executor, policy: SandboxPolicy) -> Postgres:
             "PostgreSQL refuses to run as root",
             hint="run Forge as a normal user, or pass --database-url with a throwaway database",
         )
-    folder = Path(tempfile.mkdtemp(prefix="forge-pg-"))
+    # in Forge's scratch folder: the one place sandboxed commands may reach Unix sockets
+    folder = Path(tempfile.mkdtemp(prefix="forge-pg-", dir=scratch_dir()))
     unix = sys.platform != "win32"
     pg = Postgres(bin_dir, folder / "data", str(folder) if unix else "127.0.0.1", 5432)
     if not unix:

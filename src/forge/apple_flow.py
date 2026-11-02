@@ -25,6 +25,7 @@ from forge.ports import AppleBuilder, AppleBuildError, ApplePlatform, AppleScree
 from forge.questions import ask
 from forge.release_flow import CheckpointStopped, Outcome, Replan
 from forge.runtime.apple import build_report
+from forge.runtime.nofollow import write_below
 from forge.tools import keep_screen
 
 GO_ON = "Go on anyway"
@@ -170,11 +171,7 @@ async def save_screen(root: Path, screen: AppleScreen) -> None:
     path = root / SCREENS / f"{screen.platform}-{'dark' if screen.dark else 'light'}.png"
     data = base64.b64decode(screen.image.data_b64)
 
-    def write() -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-
-    await asyncio.to_thread(write)
+    await asyncio.to_thread(write_below, root, path, data)
 
 
 def apple_platforms(root: Path) -> list[ApplePlatform]:

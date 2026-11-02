@@ -22,6 +22,7 @@ from forge.config import ForgeConfig, McpServerConfig
 from forge.ctx import Ctx
 from forge.providers.base import ImagePart, ToolResult, ToolSpec
 from forge.runtime.errors import ToolError, failure
+from forge.runtime.nofollow import open_below
 from forge.runtime.web import size_text
 from forge.tools import ToolDef, model_has_vision
 
@@ -93,9 +94,13 @@ class McpConnection:
         )
 
     def _errlog(self, stack: AsyncExitStack) -> TextIO:
-        folder = self.root / ".forge" / "mcp"
-        folder.mkdir(parents=True, exist_ok=True)
-        return stack.enter_context((folder / f"{self.name}.log").open("a", encoding="utf-8"))
+        path = self.root / ".forge" / "mcp" / f"{self.name}.log"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        try:
+            fd = open_below(self.root, path, flags)
+        except OSError:  # a link planted in .forge/mcp: the server's stderr is dropped
+            fd = os.open(os.devnull, os.O_WRONLY)
+        return stack.enter_context(os.fdopen(fd, "a", encoding="utf-8"))
 
     @property
     def alive(self) -> bool:

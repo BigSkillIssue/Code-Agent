@@ -4,19 +4,25 @@
 /dev; `read-only` only Forge's scratch folder and /dev; without `network` outgoing TCP is blocked.
 Reads are never restricted. `full-access` runs commands unsandboxed. Windows has no OS
 sandbox yet (see PROGRESS.md); there, only Forge's own path checks and approvals apply.
+
+Inside a writable root, the settings that make git or Forge run programs (`.git/config`,
+`.git/hooks`, `.git/info`, `.forge/config.toml`, `.forge/hooks`) stay read-only under bubblewrap
+and Seatbelt; Landlock cannot carve them out. Sockets that lead out of the sandbox (the user's
+session bus, X11, Docker) are hidden or refused as far as each mechanism allows.
 """
 
-import ctypes
+import atexit
 import functools
+import json
 import os
 import shutil
 import sys
 import tempfile
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from forge.ports import SandboxPolicy
+from forge.runtime import landlock
 
 DENIED_MARKERS = (
     "read-only file system",
@@ -28,15 +34,19 @@ DENIED_MARKERS = (
     "network is unreachable",
     "could not resolve host",
 )
+# Relative to each writable root: settings that run programs when git or Forge reads them.
+PROTECTED = (".git/config", ".git/hooks", ".git/info", ".forge/config.toml", ".forge/hooks")
+# Sockets of other programs that would let a command act outside the sandbox.
+SOCKET_FOLDERS = ("/tmp/.X11-unix",)
+SOCKET_FILES = ("/run/docker.sock", "/var/run/docker.sock", "/run/podman/podman.sock")
 
 
 @dataclass
 class Launch:
-    """How to start a process under a policy: an argv prefix and/or a pre-exec hook."""
+    """How to start a process under a policy: an argv prefix and extra environment."""
 
     mechanism: str  # "landlock", "bubblewrap", "seatbelt" or "none"
     prefix: list[str] = field(default_factory=list)
-    preexec: Callable[[], None] | None = None
     key: str = ""  # equal keys mean equal sandboxes (shells are reused only between those)
     env: dict[str, str] = field(default_factory=dict)  # extra environment for the process
 
@@ -60,17 +70,18 @@ def launch_for(policy: SandboxPolicy) -> Launch:
 def os_launch(policy: SandboxPolicy) -> Launch:
     """The OS mechanism for a restricted policy."""
     writable = writable_paths(policy)
+    protected = protected_paths(policy)
     key = f"{policy.mode}|{policy.network}|{'|'.join(writable)}"
     if sys.platform == "darwin" and shutil.which("sandbox-exec"):
-        profile = seatbelt_profile(writable, policy.network)
+        profile = seatbelt_profile(writable, policy.network, protected)
         return Launch("seatbelt", ["sandbox-exec", "-p", profile], key="seatbelt|" + key)
     if sys.platform.startswith("linux"):
-        abi = landlock_abi()
+        abi = landlock.abi()
         if abi >= 1 and (policy.network or abi >= 4):
-            hook = functools.partial(apply_landlock, abi, writable, policy.network)
-            return Launch("landlock", preexec=hook, key="landlock|" + key)
+            return Launch("landlock", landlock_prefix(policy, writable), key="landlock|" + key)
         if shutil.which("bwrap"):
-            return Launch("bubblewrap", bwrap_prefix(writable, policy.network), key="bwrap|" + key)
+            prefix = bwrap_prefix(writable, policy.network, protected)
+            return Launch("bubblewrap", prefix, key="bwrap|" + key)
     return Launch("none", key="none")
 
 
@@ -84,10 +95,28 @@ def writable_paths(policy: SandboxPolicy) -> list[str]:
     return list(dict.fromkeys(real))
 
 
+def protected_paths(policy: SandboxPolicy) -> list[str]:
+    """The settings files and folders inside the writable roots that commands may not change."""
+    if policy.mode != "workspace-write":
+        return []
+    roots = [os.path.realpath(root) for root in policy.writable_roots]
+    return [os.path.join(root, *rel.split("/")) for root in roots for rel in PROTECTED]
+
+
+def socket_paths(policy: SandboxPolicy) -> list[str]:
+    """Where Landlock (ABI 9) lets commands reach Unix sockets: the writable roots and the
+    scratch folder, not the shared temp folders (X11, other programs' agents)."""
+    roots = policy.writable_roots if policy.mode == "workspace-write" else []
+    paths = [*roots, str(scratch_dir())]
+    return list(dict.fromkeys(os.path.realpath(p) for p in paths if os.path.exists(p)))
+
+
+@functools.cache
 def scratch_dir() -> Path:
-    """A private temp folder for Forge's own files (shell stderr captures)."""
-    folder = Path(tempfile.gettempdir()) / "forge-scratch"
-    folder.mkdir(exist_ok=True)
+    """This Forge process's private temp folder (mode 0700) for its own files: shell stderr
+    captures and the local Postgres; removed when Forge exits."""
+    folder = Path(tempfile.mkdtemp(prefix="forge-scratch-"))
+    atexit.register(shutil.rmtree, folder, ignore_errors=True)
     return folder
 
 
@@ -105,18 +134,31 @@ def is_denied(policy: SandboxPolicy, exit_code: int | None, output: str) -> bool
 DEVICES = '(literal "/dev/null") (regex #"^/dev/tty") (regex #"^/dev/fd/")'
 
 
-def seatbelt_profile(writable: list[str], network: bool) -> str:
-    """A Seatbelt profile: allow everything except writes outside `writable` (and network)."""
-    subpaths = " ".join(f'(subpath "{escape(p)}")' for p in writable)
+# Programs that hand work to processes outside the sandbox (launchd jobs, other apps).
+MAC_DELEGATES = ("/bin/launchctl", "/usr/bin/osascript", "/usr/bin/open", "/usr/bin/shortcuts")
+
+
+def seatbelt_profile(writable: list[str], network: bool, protected: list[str] | None = None) -> str:
+    """A Seatbelt profile: allow everything except writes outside `writable` (and network),
+    writes to the protected settings, Apple events and programs that start work elsewhere."""
     lines = [
         "(version 1)",
         "(allow default)",
         "(deny file-write*)",
-        f"(allow file-write* {subpaths} {DEVICES})",
+        f"(allow file-write* {filters('subpath', writable)} {DEVICES})",
     ]
+    if protected:  # later rules win, so these beat the writable roots they lie in
+        lines.append(f"(deny file-write* {filters('subpath', protected)})")
+    lines.append("(deny appleevent-send)")
+    lines.append(f"(deny process-exec {filters('literal', list(MAC_DELEGATES))})")
     if not network:
         lines.append("(deny network*)")
     return "\n".join(lines)
+
+
+def filters(kind: str, paths: list[str]) -> str:
+    """`(subpath "/a") (subpath "/b")` for a list of paths."""
+    return " ".join(f'({kind} "{escape(p)}")' for p in paths)
 
 
 def escape(path: str) -> str:
@@ -127,105 +169,55 @@ def escape(path: str) -> str:
 # ----------------------------------------------------------------------------- Linux: bubblewrap
 
 
-def bwrap_prefix(writable: list[str], network: bool) -> list[str]:
-    """bwrap arguments: the whole filesystem read-only, writable folders bound back read-write."""
-    args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--die-with-parent"]
+def bwrap_prefix(
+    writable: list[str], network: bool, protected: list[str] | None = None
+) -> list[str]:
+    """bwrap arguments: the whole filesystem read-only, writable folders bound back read-write,
+    the protected settings read-only again, other programs' sockets hidden, own process and IPC
+    namespaces and a new session (no keystrokes into the user's terminal)."""
+    args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"]
+    args += ["--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"]
     for path in writable:
         if path != "/dev":
             args += ["--bind", path, path]
+    for path in protected or []:
+        args += ["--ro-bind-try", path, path]
+    for folder in hidden_socket_folders(writable):
+        args += ["--tmpfs", folder]
+    for socket in dict.fromkeys(os.path.realpath(p) for p in SOCKET_FILES if os.path.exists(p)):
+        args += ["--ro-bind", "/dev/null", socket]
     if not network:
         args.append("--unshare-net")
     return [*args, "--"]
 
 
+def hidden_socket_folders(writable: list[str]) -> list[str]:
+    """Folders of other programs' sockets (the user's runtime folder, X11) that exist and hold
+    no writable root."""
+    folders = [*SOCKET_FOLDERS]
+    if hasattr(os, "getuid"):
+        folders.append(f"/run/user/{os.getuid()}")
+    return [
+        folder
+        for folder in folders
+        if os.path.isdir(folder) and not any(Path(p).is_relative_to(folder) for p in writable)
+    ]
+
+
 # ----------------------------------------------------------------------------- Linux: Landlock
 
-SYS_CREATE_RULESET, SYS_ADD_RULE, SYS_RESTRICT_SELF = 444, 445, 446  # same on x86_64 and arm64
-PR_SET_NO_NEW_PRIVS = 38
-O_PATH = 0o10000000
-O_CLOEXEC = 0o2000000  # Linux values; this code only runs on Linux
-RULE_PATH_BENEATH = 1
-NET_BIND_TCP, NET_CONNECT_TCP = 1, 2
 
-# Write rights by the ABI version that introduced them (reads are never restricted).
-FS_WRITE_RIGHTS = {
-    1: (1 << 1)
-    | (1 << 4)
-    | (1 << 5)
-    | (1 << 6)
-    | (1 << 7)
-    | (1 << 8)
-    | (1 << 9)
-    | (1 << 10)
-    | (1 << 11)
-    | (1 << 12),
-    2: 1 << 13,  # REFER
-    3: 1 << 14,  # TRUNCATE
-    5: 1 << 15,  # IOCTL_DEV
-}
+def landlock_prefix(policy: SandboxPolicy, writable: list[str]) -> list[str]:
+    """The command line that restricts itself with Landlock and then runs the command."""
+    rules = {"writable": writable, "network": policy.network, "sockets": socket_paths(policy)}
+    return [*forge_entry(), "__landlock", json.dumps(rules), "--"]
 
 
-class RulesetAttr(ctypes.Structure):
-    """struct landlock_ruleset_attr."""
-
-    _fields_ = [("handled_access_fs", ctypes.c_uint64), ("handled_access_net", ctypes.c_uint64)]
-
-
-class PathBeneathAttr(ctypes.Structure):
-    """struct landlock_path_beneath_attr (packed)."""
-
-    _pack_ = 1
-    _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
+def forge_entry() -> list[str]:
+    """How to start Forge itself: the single-file binary, or this Python with the package."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-I", "-m", "forge"]
 
 
-@functools.cache
-def landlock_abi() -> int:
-    """The kernel's Landlock ABI version, 0 when Landlock is not available."""
-    if not sys.platform.startswith("linux"):
-        return 0
-    try:
-        libc = ctypes.CDLL(None, use_errno=True)
-        version = int(
-            libc.syscall(SYS_CREATE_RULESET, None, 0, 1)
-        )  # LANDLOCK_CREATE_RULESET_VERSION
-    except (OSError, AttributeError):
-        return 0
-    return max(version, 0)
-
-
-def write_rights(abi: int) -> int:
-    """All filesystem write rights this ABI knows."""
-    rights = 0
-    for version, bits in FS_WRITE_RIGHTS.items():
-        if abi >= version:
-            rights |= bits
-    return rights
-
-
-def apply_landlock(abi: int, writable: list[str], network: bool) -> None:
-    """Restrict the current process (runs in the child between fork and exec)."""
-    libc = ctypes.CDLL(None, use_errno=True)
-    rights = write_rights(abi)
-    attr = RulesetAttr(rights, 0 if network or abi < 4 else NET_BIND_TCP | NET_CONNECT_TCP)
-    size = ctypes.sizeof(RulesetAttr) if abi >= 4 else 8
-    ruleset = libc.syscall(SYS_CREATE_RULESET, ctypes.byref(attr), size, 0)
-    if ruleset < 0:
-        raise OSError(ctypes.get_errno(), "landlock_create_ruleset failed")
-    try:
-        for path in writable:
-            fd = os.open(path, O_PATH | O_CLOEXEC)
-            try:
-                rule = PathBeneathAttr(rights, fd)
-                if (
-                    libc.syscall(SYS_ADD_RULE, ruleset, RULE_PATH_BENEATH, ctypes.byref(rule), 0)
-                    < 0
-                ):
-                    raise OSError(ctypes.get_errno(), f"landlock_add_rule failed for {path}")
-            finally:
-                os.close(fd)
-        if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0:
-            raise OSError(ctypes.get_errno(), "prctl(NO_NEW_PRIVS) failed")
-        if libc.syscall(SYS_RESTRICT_SELF, ruleset, 0) < 0:
-            raise OSError(ctypes.get_errno(), "landlock_restrict_self failed")
-    finally:
-        os.close(ruleset)
+# ----------------------------------------------------------------------------- Linux: Landlock

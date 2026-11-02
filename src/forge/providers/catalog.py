@@ -5,7 +5,7 @@ config `[models."<provider>/<model>"]` entries override any value, and unknown m
 safe defaults.
 """
 
-from forge.config import ModelOverride, ProviderConfig
+from forge.config import ForgeConfig, ModelOverride, ProviderConfig
 from forge.providers.base import Capabilities
 
 # Provider presets: used when a role names a provider that has no [providers.<name>] entry.
@@ -130,3 +130,12 @@ def capabilities_for(
         return caps
     changes = {k: v for k, v in override.model_dump().items() if v is not None}
     return caps.model_copy(update=changes)
+
+
+def model_key_variables(cfg: ForgeConfig) -> frozenset[str]:
+    """Environment variables holding Forge's own keys (every preset's and configured provider's,
+    and the web search key), minus `sandbox.env_passthrough`: commands do not get them."""
+    names = {p.api_key_env for p in [*PRESETS.values(), *cfg.providers.values()] if p.api_key_env}
+    if cfg.web.search_api_key_env:
+        names.add(cfg.web.search_api_key_env)
+    return frozenset(names - set(cfg.sandbox.env_passthrough))

@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from forge.app_manifest import MANIFEST, AppManifest, Service, load_manifest
 from forge.ports import Command, CommandResult, Executor, SandboxPolicy
+from forge.runtime.nofollow import write_below
 from forge.runtime.postgres import Postgres, PostgresError, start_postgres, stop_postgres
 from forge.runtime.secret_scan import scan_secrets
 
@@ -420,8 +421,7 @@ async def head_commit(checker: Checker) -> tuple[str, bool]:
 def save_report(root: Path, report: AppCheckReport) -> Path:
     """Write the report to `.forge/out/app/checks.json`."""
     path = root / REPORT
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    write_below(root, path, (report.model_dump_json(indent=2) + "\n").encode("utf-8"))
     return path
 
 

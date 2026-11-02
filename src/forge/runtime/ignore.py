@@ -8,7 +8,8 @@ import os
 import re
 from pathlib import Path
 
-from forge.runtime.proc import run_argv, which
+from forge.runtime.gitops import run_git
+from forge.runtime.proc import which
 
 BUILTIN_IGNORES = frozenset(
     {
@@ -48,9 +49,7 @@ def is_hidden(rel: Path) -> bool:
 async def _git_files(base: Path) -> list[Path] | None:
     if which("git") is None:
         return None
-    result = await run_argv(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], base
-    )
+    result = await run_git(base, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
     if result.code != 0:
         return None  # not a git repository
     names = [n for n in result.stdout.split("\0") if n]

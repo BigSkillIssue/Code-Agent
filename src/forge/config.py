@@ -94,6 +94,7 @@ class SandboxConfig(_Strict):
     mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
     network: bool = False
     writable_roots: list[str] = []
+    env_passthrough: list[str] = []
 
 
 class ApprovalConfig(_Strict):

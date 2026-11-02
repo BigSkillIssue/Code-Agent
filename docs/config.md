@@ -61,6 +61,7 @@ Where commands may write and whether they may use the network.
 | `mode` | `read-only` \| `workspace-write` \| `full-access` | `"workspace-write"` | `read-only`, `workspace-write` (project + temp folders) or `full-access` (no sandbox). |
 | `network` | bool | `false` | Allow outgoing network from shell commands. |
 | `writable_roots` | list of str | `[]` | Extra folders commands and file tools may write to. |
+| `env_passthrough` | list of str | `[]` | Variables holding Forge's own model keys that commands may still see (by default they are left out). |
 
 ## [approval]
 

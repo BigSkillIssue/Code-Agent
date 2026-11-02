@@ -12,7 +12,7 @@ import re
 import secrets
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -86,9 +86,13 @@ def one_shot_argv(kind: ShellKind, exe: str, script: str) -> list[str]:
     return [*session_argv(kind, exe)[:-1], f"{POWERSHELL_INIT}; {script}"]
 
 
-def shell_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Environment for every command: no colours, no pagers, CI mode."""
-    return {**os.environ, **QUIET_ENV, **(extra or {})}
+def shell_env(
+    extra: Mapping[str, str] | None = None, hidden: Collection[str] = ()
+) -> dict[str, str]:
+    """Environment for every command: no colours, no pagers, CI mode; without the `hidden`
+    variables (Forge's own model keys)."""
+    base = {name: value for name, value in os.environ.items() if name not in hidden}
+    return {**base, **QUIET_ENV, **(extra or {})}
 
 
 def new_process_group() -> dict[str, int | bool]:
@@ -110,8 +114,11 @@ def wrap_bash(command: str, cwd: Path, nonce: str, err: Path) -> str:
     """The text sent to bash for one command: read literally from stdin up to a NUL byte.
 
     No here-document, because bash 3.2 (macOS) writes those to /tmp, which a read-only
-    sandbox forbids; a command can never contain a NUL byte itself.
+    sandbox forbids. The tools refuse a command with a NUL byte: bash would run what follows it
+    as a command of its own.
     """
+    if "\0" in command:
+        raise ValueError("a command must not contain a NUL byte")
     return (
         "IFS= read -r -d '' __FORGE_CMD\n"
         f"{command}\n\0"
@@ -181,10 +188,11 @@ class ShellSession:
         exe: str,
         env: Mapping[str, str] | None = None,
         launch: Launch | None = None,
+        hidden: Collection[str] = (),
     ) -> None:
         self.kind = kind
         self.exe = exe
-        self.env = shell_env(env)
+        self.env = shell_env(env, hidden)
         self.launch = launch or Launch("none")
         self.proc: asyncio.subprocess.Process | None = None
         self.busy = False
@@ -204,7 +212,6 @@ class ShellSession:
             stderr=asyncio.subprocess.STDOUT,
             env=self.env,
             **new_process_group(),  # type: ignore[arg-type]
-            preexec_fn=self.launch.preexec,
         )
         if self.kind == "powershell":
             await self._send(POWERSHELL_INIT + "\n")

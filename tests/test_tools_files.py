@@ -321,7 +321,7 @@ async def test_edit_journal_allows_undo(ctx: Ctx) -> None:
 
     path = await read_then(ctx, "f.txt", "before\n")
     await run(ctx, "edit_file", path="f.txt", old="before", new="after")
-    assert undo_last_change(journal_dir(ctx)) == [path]
+    assert undo_last_change(journal_dir(ctx), ctx.root, [ctx.root]) == [path]
     assert path.read_text() == "before\n"
 
 

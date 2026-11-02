@@ -5,12 +5,15 @@ it is needed; a language that cannot be loaded counts as unsupported. Parsed fil
 in `.forge/cache/repomap.json`, keyed by path and mtime.
 """
 
+import contextlib
 import json
 import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from forge.runtime.nofollow import read_below, write_below
 
 DEFINITION_KINDS = ("class", "function", "method", "interface", "module", "type", "constant")
 SIGNATURE_CHARS = 120
@@ -191,7 +194,7 @@ def render_map(repo: RepoMap, max_tokens: int, include_private: bool) -> str:
 def load_cache(root: Path) -> dict[str, Any]:
     """The cache file's content, or an empty cache."""
     try:
-        data = json.loads((root / CACHE_FILE).read_text(encoding="utf-8"))
+        data = json.loads(read_below(root, root / CACHE_FILE).decode("utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -199,9 +202,5 @@ def load_cache(root: Path) -> dict[str, Any]:
 
 def save_cache(root: Path, cache: dict[str, Any]) -> None:
     """Write the cache; failures only cost speed next time."""
-    path = root / CACHE_FILE
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cache), encoding="utf-8")
-    except OSError:
-        pass
+    with contextlib.suppress(OSError):
+        write_below(root, root / CACHE_FILE, json.dumps(cache).encode("utf-8"))

@@ -20,6 +20,7 @@ from forge.app_manifest import AppManifest, Client, ResourceClass, load_manifest
 from forge.ctx import Ctx
 from forge.plan import TaskSpec
 from forge.runtime.ledger import ReadLedger
+from forge.runtime.nofollow import write_below
 from forge.structured import StructuredError, parse_as
 
 ROLE = "architect"
@@ -139,12 +140,9 @@ def manifest_problems(blueprint: Blueprint, manifest: AppManifest) -> list[str]:
 
 def save_blueprint(root: Path, blueprint: Blueprint) -> None:
     """Write blueprint.json for Forge and docs/architecture.md for people."""
-    path = root / BLUEPRINT
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(blueprint.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    doc = root / ARCHITECTURE
-    doc.parent.mkdir(parents=True, exist_ok=True)
-    doc.write_text(architecture_markdown(blueprint), encoding="utf-8")
+    data = (blueprint.model_dump_json(indent=2) + "\n").encode("utf-8")
+    write_below(root, root / BLUEPRINT, data)
+    write_below(root, root / ARCHITECTURE, architecture_markdown(blueprint).encode("utf-8"))
 
 
 def architecture_markdown(blueprint: Blueprint) -> str:

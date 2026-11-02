@@ -29,6 +29,7 @@ from forge.ports import BrowserError
 from forge.questions import ask
 from forge.release_flow import CheckpointStopped, Outcome, Replan
 from forge.release_review import Screen, review_plan, review_product, review_prompt
+from forge.runtime.nofollow import write_below
 
 GO_LIVE = "Ready to go live"
 SEND_BACK = "Send it back to the agent"
@@ -156,11 +157,7 @@ async def save_screen(root: Path, name: str, data_b64: str) -> None:
     path = root / OUT / f"{name}.png"
     data = base64.b64decode(data_b64)
 
-    def write() -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-
-    await asyncio.to_thread(write)
+    await asyncio.to_thread(write_below, root, path, data)
 
 
 def save_approval(root: Path, checks: AppCheckReport, review: ReleaseReview) -> None:
@@ -173,9 +170,7 @@ def save_approval(root: Path, checks: AppCheckReport, review: ReleaseReview) -> 
         "review_verdict": review.verdict,
         "review_summary": review.summary,
     }
-    path = root / OUT / "approval.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    write_below(root, root / OUT / "approval.json", (json.dumps(body, indent=2) + "\n").encode())
 
 
 def blocking(review: ReleaseReview) -> bool:

@@ -19,6 +19,7 @@ from forge.apple_review import review
 from forge.ctx import Ctx
 from forge.events import GuidelineReview
 from forge.runtime.ledger import ReadLedger
+from forge.runtime.nofollow import write_below
 from forge.structured import StructuredError, parse_as
 
 ROLE = "apple_writer"
@@ -166,10 +167,5 @@ def violations(verdict: GuidelineReview) -> list[str]:
 
 async def save_listing(root: Path, listing: StoreListing) -> None:
     """Write the listing where the user and a server find it."""
-    path = root / LISTING
-
-    def write() -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(listing.model_dump_json(indent=2), encoding="utf-8")
-
-    await asyncio.to_thread(write)
+    data = listing.model_dump_json(indent=2).encode("utf-8")
+    await asyncio.to_thread(write_below, root, root / LISTING, data)
