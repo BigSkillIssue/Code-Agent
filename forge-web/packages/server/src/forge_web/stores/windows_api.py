@@ -160,7 +160,9 @@ def project_routes(router: APIRouter) -> None:
         return FileResponse(path, media_type="application/octet-stream", filename=row.file_name)
 
 
-async def new_build(services: Services, user: User, project_id: str) -> WindowsBuild:
+async def new_build(
+    services: Services, user: User, project_id: str, commit: str = ""
+) -> WindowsBuild:
     """A build of the newest approved commit, once everything it needs is there (else 403/409)."""
     if not services.settings.stores.windows_enabled:
         raise HTTPException(403, "Windows builds are turned off on this server")
@@ -168,7 +170,7 @@ async def new_build(services: Services, user: User, project_id: str) -> WindowsB
         project = await session.get(Project, project_id)
         if project is None or project.kind != "app":
             raise HTTPException(409, "only app projects have a Windows app")
-        commit = await approved_commit(session, project_id, "")
+        commit = commit or await approved_commit(session, project_id, "")
         busy = await session.scalar(select(WindowsBuild.id).where(
             WindowsBuild.project_id == project_id, WindowsBuild.status.in_(ACTIVE)))  # fmt: skip
         if busy is not None:

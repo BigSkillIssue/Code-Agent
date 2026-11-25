@@ -52,12 +52,27 @@ POLICY = {"ask": "always", "edits": "on-request", "auto": "never"}
 MAX_LINE = 4 * 1024 * 1024
 
 
-def config_overrides(options: ChatOptions) -> dict[str, Any]:
+PRODUCT_TOOLS = ("product_create", "product_add", "product_look", "deploy", "deploy_status",
+                 "app_logs", "app_fetch", "app_sql", "android_build", "windows_build")  # fmt: skip
+
+
+def product_server(root: Path, options: ChatOptions) -> dict[str, Any]:
+    """Forge's MCP config for the product tools (W54), run with this Python in the sandbox."""
+    command = [sys.executable, "-m", "forge_sandbox.product_mcp", "--root", str(root)]
+    command += ["--token-env", options.apple_token_env, "--apps-domain", options.apps_domain]
+    if options.product_url:
+        command += ["--gateway", options.product_url]
+    return {"command": command, "env_keys": [options.apple_token_env]}
+
+
+def config_overrides(options: ChatOptions, root: Path | None = None) -> dict[str, Any]:
     """Forge config overrides for a chat. They win over the project's own config file, so a
     repository cannot loosen approvals or the sandbox for itself."""
     allow = list(AUTO_ALLOW) if options.mode == "auto" else []
     if options.apple_url and options.mode != "ask":
         allow += APPLE_ALLOW  # they run on a Mac of the server, away from the project's files
+    if root is not None and options.mode != "ask":  # Forge Web's own tools; "ask" asks anyway
+        allow += [f"mcp__forge_web__{name}" for name in PRODUCT_TOOLS]
     overrides: dict[str, Any] = {
         "approval.policy": POLICY[options.mode],
         "permissions.allow": allow,
@@ -77,12 +92,14 @@ def config_overrides(options: ChatOptions) -> dict[str, Any]:
         overrides["apple.review"] = True
     if options.app_review:
         overrides["app.review"] = True
+    if root is not None:
+        overrides["mcp_servers.forge_web"] = product_server(root, options)
     return overrides
 
 
 def build_config(root: Path, options: ChatOptions) -> ForgeConfig:
     """The effective Forge config of a chat."""
-    cfg = load_config(root, overrides=config_overrides(options))
+    cfg = load_config(root, overrides=config_overrides(options, root))
     if options.fake_script is not None:
         install_fake(cfg, FakeProvider.from_data(options.fake_script))
     return cfg

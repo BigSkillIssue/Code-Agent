@@ -155,6 +155,20 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   link-local or metadata addresses. Behind an `HTTPS_PROXY` of its own, the server hands that proxy only
   names it cannot resolve itself, never one that resolves to a private address.
 
+### The agent on Forge's servers (W54)
+
+- Forge's agent reaches its product's hosting only through the gateway's `/product/*` routes with its
+  chat's run token (valid only while that chat works). Every route acts on the project of the token's
+  chat; none takes an app, project or host from the sandbox, so an agent cannot address another
+  product. Each call is in the audit log (`agent.deploy`, `agent.logs`, `agent.sql`, `agent.fetch`, …).
+- Staging is always open to the agent; production (deploys, logs, pages, the database) only with the
+  admin's `hosting.agent_production`, and production deploys keep every other gate (the same commit
+  live in staging, the operator's Impressum, a paid plan, the admin's approval where it applies).
+- SQL runs on the app's own database as the app's own role, read-only unless the agent asks to write,
+  with a statement timeout and a capped answer. Pages are fetched server-side from the app's own
+  host name only (the path cannot change the host). Production data reaches the model provider when
+  the agent reads it: that is the reason for the admin's switch.
+
 ### Browser
 
 - Sessions are random tokens stored hashed in the database, in an `HttpOnly`, `Secure`, `SameSite=Lax`

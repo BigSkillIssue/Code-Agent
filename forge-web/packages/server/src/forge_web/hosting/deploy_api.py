@@ -230,15 +230,31 @@ def secret_routes(router: APIRouter) -> None:
         return {"ok": True}
 
 
-async def new_deploy(services: Services, user: User, project_id: str, body: DeployIn) -> Deploy:
-    """A deploy of an approved commit, once everything it needs is there (else 403/409)."""
+async def new_deploy(
+    services: Services, user: User, project_id: str, body: DeployIn, *, agent: bool = False
+) -> Deploy:
+    """A deploy of an approved commit, once everything it needs is there (else 403/409).
+
+    With `agent`, Forge's agent deploys its own product (W54): the commit it names needs no
+    go-live approval, a project becomes an app project by it, and production needs the admin's
+    `hosting.agent_production`; every other condition is the same."""
     if not services.settings.hosting.enabled:
         raise HTTPException(403, "hosting is turned off on this server")
-    async with services.db.session() as session:
+    if (
+        agent
+        and body.environment == "production"
+        and not services.settings.hosting.agent_production
+    ):
+        raise HTTPException(403, "on this server only people put an app into production")
+    if agent and not body.commit:
+        raise HTTPException(422, "name the commit to deploy")
+    async with services.db.session() as session, session.begin():
         project = await session.get(Project, project_id)
+        if project is not None and agent and project.kind == "code":
+            project.kind = "app"  # the agent made a product of it
         if project is None or project.kind != "app":
             raise HTTPException(409, "only app projects can be hosted")
-        commit = await approved_commit(session, project_id, body.commit)
+        commit = body.commit if agent else await approved_commit(session, project_id, body.commit)
         if body.environment == "production":
             if not await live_in_staging(session, project_id, commit):
                 raise HTTPException(409, "deploy this commit to staging first and check it there")

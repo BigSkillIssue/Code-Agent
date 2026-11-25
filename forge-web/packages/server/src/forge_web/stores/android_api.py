@@ -80,7 +80,9 @@ def android_router() -> APIRouter:
     return router
 
 
-async def new_build(services: Services, user: User, project_id: str) -> AndroidBuild:
+async def new_build(
+    services: Services, user: User, project_id: str, commit: str = ""
+) -> AndroidBuild:
     """A build of the newest approved commit, once everything it needs is there (else 403/409)."""
     hosting = services.settings.hosting
     if not hosting.enabled:
@@ -92,7 +94,7 @@ async def new_build(services: Services, user: User, project_id: str) -> AndroidB
         project = await session.get(Project, project_id)
         if project is None or project.kind != "app":
             raise HTTPException(409, "only app projects have an Android app")
-        commit = await approved_commit(session, project_id, "")
+        commit = commit or await approved_commit(session, project_id, "")
         hosted = await session.get(HostedApp, project_id)
         if hosted is None:
             raise HTTPException(409, "deploy the app to staging first: its host builds it")

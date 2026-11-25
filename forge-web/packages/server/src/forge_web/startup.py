@@ -33,6 +33,7 @@ from forge_web.fake import fake_script
 from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.gateway.tokens import TOKEN_ENV
 from forge_web.gateway.upstreams import worker_providers
+from forge_web.hosting.agent_api import agent_routes
 from forge_web.hosting.alerts import Alerts
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
@@ -79,6 +80,9 @@ def chat_options(settings: WebSettings, entitlements: EntitlementEngine | None =
         if link.get("gateway_port"):
             base = f"http://127.0.0.1:{link['gateway_port']}"
             options["providers"] = worker_providers(base, TOKEN_ENV)
+            options["product_url"] = base  # the agent's own product on Forge's servers (W54)
+            if settings.hosting.enabled:
+                options["apps_domain"] = settings.hosting.apps_domain
             if link.get("apple") and settings.apple.enabled:
                 # Builds go through the gateway to the Macs; the guidelines are checked.
                 options.update(apple_url=base, apple_token_env=TOKEN_ENV, apple_review=True,
@@ -134,6 +138,8 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     apple = AppleJobs(db, settings.apple, settings.data_dir)
     await apple.start()
     gateway.routers.append(apple_routes(gateway, apple, settings.apple, entitlements.of))
+    later: dict[str, Services] = {}  # the agent's product routes need every service (W54)
+    gateway.routers.append(agent_routes(gateway, lambda: later["services"]))
     gateway_server = PrivateServer(gateway.app(), settings.data_dir / "run")
     await gateway_server.start()
     policy = EgressPolicy(settings.egress.allow, settings.egress.allow_private)
@@ -176,6 +182,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
         android=android, play=play, windows=windows,
     )  # fmt: skip
+    later["services"] = services
     await after_start(services, docker)
     await releases.start()  # releases, submissions and deploys a restart interrupted go on
     await submissions.start()

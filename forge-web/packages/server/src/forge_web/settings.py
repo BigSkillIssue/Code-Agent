@@ -268,6 +268,9 @@ class HostingSettings(_Strict):
     after the host's own checks and the creator's and an admin's approval."""
 
     enabled: bool = False
+    # Forge's agent may put its own product into production and read its production logs and
+    # database (W54); off, it works on staging only and people put apps live.
+    agent_production: bool = False
     # Apps answer at <app>.<apps_domain> and <app>.staging.<apps_domain> (the hosts' edge).
     apps_domain: str = Field(
         default="", pattern=r"^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$"

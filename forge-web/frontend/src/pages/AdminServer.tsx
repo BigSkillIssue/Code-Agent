@@ -146,6 +146,9 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
         <Check label={t("projectsFromZip")} checked={edited.projects_from_zip} onChange={(v) => set("projects_from_zip", v)} />
         <Check label={t("projectsFromFolder")} checked={edited.projects_from_folder} onChange={(v) => set("projects_from_folder", v)} />
       </Section>
+      <Section title={t("agentServers")} hint={t("agentServersHint")}>
+        <Check label={t("agentProduction")} checked={edited.agent_production} onChange={(v) => set("agent_production", v)} />
+      </Section>
       <Section title={t("limits")} hint={t("limitsHint")}>
         <div className="grid gap-3 sm:grid-cols-2">
           {number("projects_per_user", t("projectsPerUser"))}

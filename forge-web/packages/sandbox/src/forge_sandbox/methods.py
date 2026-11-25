@@ -259,6 +259,10 @@ class ChatOptions(Params):
     apple_review: bool = False
     # App projects: the release review, the blueprint and the go-live question (Forge S66-S68).
     app_review: bool = False
+    # The agent's product tools (W54): the gateway for its own product on Forge's servers, and
+    # the apps domain its hosted addresses are under ("" when the server hosts no apps).
+    product_url: str | None = Field(default=None, pattern=r"^http://127\.0\.0\.1:\d+$")
+    apps_domain: str = Field(default="", max_length=200, pattern=r"^$|^[a-z0-9.-]+$")
 
 
 class ChatParams(Params):

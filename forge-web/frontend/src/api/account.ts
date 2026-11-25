@@ -147,6 +147,7 @@ export interface ServerSettings {
   sandbox_idle_minutes: number;
   server_keys_for: "admins" | "granted" | "everyone";
   monthly_limit_usd: number;
+  agent_production: boolean;
   apple_enabled: boolean;
   apple_allowed: "admins" | "granted" | "everyone";
   apple_minutes_per_month: number;

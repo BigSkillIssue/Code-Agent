@@ -28,7 +28,7 @@ from forge_hostworker.firewall import BUILD_NETWORK, BUILD_SUBNET
 from forge_hostworker.lifecycle import delete_app, live_logs, set_domains, start_live
 from forge_hostworker.metrics import usage
 from forge_hostworker.migrate import migrate_release
-from forge_hostworker.postgres import dump_database, ensure_database
+from forge_hostworker.postgres import dump_database, ensure_database, run_sql
 from forge_hostworker.storage import ensure_files, files_mount
 from forge_hostworker.wire import (
     PLANNED,
@@ -171,6 +171,12 @@ class HostRunner:
             return await start_live(self, job.app, job.environment)
         if job.kind == "logs":
             return await live_logs(self, job.app, job.environment)
+        if job.kind == "sql" and job.sql is not None:
+            sql = job.sql
+            ok, text = await run_sql(
+                self.docker, job.app, job.environment, sql.query, sql.write, sql.timeout_s
+            )
+            return JobResult(ok=ok, log_tail=text, error="" if ok else "the query failed")
         if job.kind == "delete":
             return await delete_app(self, job.app, job.environment)
         if job.kind == "domains":

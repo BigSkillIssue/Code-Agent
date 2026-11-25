@@ -37,6 +37,7 @@ FIELDS: dict[str, tuple[str, str]] = {
     "sandbox_pids": ("sandbox", "pids"), "sandbox_idle_minutes": ("sandbox", "idle_minutes"),
     "server_keys_for": ("gateway", "server_keys_for"),
     "monthly_limit_usd": ("gateway", "monthly_limit_usd"),
+    "agent_production": ("hosting", "agent_production"),
     "apple_enabled": ("apple", "enabled"), "apple_allowed": ("apple", "allowed"),
     "apple_minutes_per_month": ("apple", "minutes_per_month"),
     "apple_reviewer_model": ("apple", "reviewer_model"),
@@ -63,6 +64,7 @@ class AdminSettings(BaseModel):
     sandbox_idle_minutes: float | None = Field(default=None, gt=0, le=525_600)
     server_keys_for: Literal["admins", "granted", "everyone"] | None = None
     monthly_limit_usd: float | None = Field(default=None, ge=0, le=1_000_000)
+    agent_production: bool | None = None
     apple_enabled: bool | None = None
     apple_allowed: Literal["admins", "granted", "everyone"] | None = None
     apple_minutes_per_month: float | None = Field(default=None, ge=0, le=1_000_000)

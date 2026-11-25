@@ -54,7 +54,7 @@ DOMAIN = re.compile(
 )  # a customer's own domain, in its plain form
 JobKind = Literal[
     "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
-    "restore_drill", "delete", "domains", "android",
+    "restore_drill", "delete", "domains", "android", "sql",
 ]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
 WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill", "android")
@@ -169,6 +169,15 @@ class AndroidBuild(BaseModel):
     version_name: str = Field(pattern=r"^[0-9A-Za-z][0-9A-Za-z.-]{0,39}$")
 
 
+class SqlQuery(BaseModel):
+    """What a `sql` job runs on the app's own database (W54: Forge's agent working on its
+    product): one statement or a few, with a time limit; read-only unless `write`."""
+
+    query: str = Field(min_length=1, max_length=20_000)
+    write: bool = False
+    timeout_s: int = Field(default=15, ge=1, le=120)
+
+
 class HostJob(BaseModel):
     """One job for the worker (see the module's notes for the kinds)."""
 
@@ -179,6 +188,7 @@ class HostJob(BaseModel):
     plan: DeployPlan | None = None  # check, migrate and release jobs
     domains: list[str] = Field(default_factory=list, max_length=20)  # a domains job: all of them
     android: AndroidBuild | None = None  # an android job
+    sql: SqlQuery | None = None  # a sql job
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
 
     _app = field_validator("app")(app_name)
