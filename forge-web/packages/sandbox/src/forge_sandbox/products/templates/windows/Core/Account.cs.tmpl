@@ -1,0 +1,22 @@
+using @@namespace@@.Core.Api;
+using @@namespace@@.Core.Api.Models;
+
+namespace @@namespace@@.Core;
+
+/// <summary>Signing in and out, and deleting the account, which the app offers as the stores
+/// require.</summary>
+public static class Account
+{
+    /// <summary>Sign in; the user, or null when the server says nothing about them.</summary>
+    public static async Task<UserOut?> SignInAsync(ApiClient client, string email, string password)
+    {
+        return await client.Api.Auth.Login.PostAsync(new SignIn { Email = email, Password = password });
+    }
+
+    /// <summary>Delete the account and everything of it on the server; the password again, so a
+    /// forgotten open window cannot do it.</summary>
+    public static async Task DeleteAsync(ApiClient client, string password)
+    {
+        await client.Api.Account.DeleteAsync(new DeleteAccount { Password = password });
+    }
+}

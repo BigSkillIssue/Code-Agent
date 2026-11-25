@@ -1,0 +1,24 @@
+import { Link } from "react-router-dom";
+import { APP_NAME } from "../app";
+import { useAuth } from "../auth";
+
+/** The start page. */
+export function Home() {
+  const { user, loading } = useAuth();
+  if (loading) return <p>Loading…</p>;
+  if (!user) {
+    return (
+      <section>
+        <h1>Welcome to {APP_NAME}</h1>
+        <p>
+          <Link to="/signin">Sign in</Link> or <Link to="/signup">create an account</Link>.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <h1>Hello, {user.display_name || user.email}</h1>
+    </section>
+  );
+}

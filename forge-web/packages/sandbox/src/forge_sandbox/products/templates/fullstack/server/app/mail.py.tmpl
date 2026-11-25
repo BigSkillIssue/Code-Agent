@@ -1,0 +1,60 @@
+"""Sending mail. Hosted apps send only through Forge Web's mail relay (MAIL_RELAY_URL and
+MAIL_RELAY_TOKEN); without them mail is written to the log, which is what local runs want."""
+
+import logging
+from dataclasses import dataclass, field
+from typing import Protocol
+
+import httpx
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Mail:
+    """One mail."""
+
+    to: str
+    subject: str
+    text: str
+
+
+class Mailer(Protocol):
+    """Something that sends mail."""
+
+    def send(self, mail: Mail) -> None:
+        """Send one mail."""
+
+
+@dataclass
+class LogMailer:
+    """Keeps mail and writes it to the log instead of sending it (local runs and tests)."""
+
+    sent: list[Mail] = field(default_factory=list)
+
+    def send(self, mail: Mail) -> None:
+        """Keep the mail and log it."""
+        self.sent.append(mail)
+        log.info("mail to %s: %s\n%s", mail.to, mail.subject, mail.text)
+
+
+@dataclass
+class RelayMailer:
+    """Sends mail through the hosting's mail relay."""
+
+    url: str
+    token: str
+
+    def send(self, mail: Mail) -> None:
+        """Post the mail to the relay; a failure is logged, not raised to the user."""
+        body = {"to": mail.to, "subject": mail.subject, "text": mail.text}
+        headers = {"Authorization": f"Bearer {self.token}"}
+        try:
+            httpx.post(self.url, json=body, headers=headers, timeout=10).raise_for_status()
+        except httpx.HTTPError as error:
+            log.error("mail to %s was not sent: %s", mail.to, error)
+
+
+def make_mailer(url: str, token: str) -> Mailer:
+    """The relay when hosting configured one, else the log."""
+    return RelayMailer(url, token) if url and token else LogMailer()

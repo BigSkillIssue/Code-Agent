@@ -1,0 +1,22 @@
+# @@title@@
+
+A website made with Forge Web: React, Vite and TypeScript, built to static files and hosted by
+Forge Web from `forge.app.toml`. It has no server of its own; when it needs accounts, data or
+payments, Forge turns it into a full product.
+
+| Path | What it is |
+| --- | --- |
+| `web/src/App.tsx` | the pages |
+| `web/src/styles.css` | the design tokens and the layout (see `docs/DESIGN.md`) |
+| `docs/DESIGN.md` | the site's look: palette, type, layout and tone |
+| `forge.app.toml` | what hosting needs |
+
+## Run it
+
+```bash
+cd web
+npm ci
+npm run dev      # http://localhost:5173
+npm test
+npm run build    # into web/dist
+```

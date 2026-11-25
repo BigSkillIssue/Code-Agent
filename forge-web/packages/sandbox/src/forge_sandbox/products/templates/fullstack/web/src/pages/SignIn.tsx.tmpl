@@ -1,0 +1,79 @@
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { api, problem } from "../api/client";
+import { useAuth } from "../auth";
+
+/** Sign in with email and password. */
+export function SignIn() {
+  const { setUser } = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = { email: String(form.get("email")), password: String(form.get("password")) };
+    const { data, error } = await api.POST("/api/auth/login", { body });
+    if (!data) return setError(problem(error));
+    setUser(data);
+    navigate("/");
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <h1>Sign in</h1>
+      <label>
+        Email <input name="email" type="email" autoComplete="email" required />
+      </label>
+      <label>
+        Password <input name="password" type="password" autoComplete="current-password" required />
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <button type="submit">Sign in</button>
+      <p>
+        <Link to="/forgot-password">Forgot your password?</Link> ·{" "}
+        <Link to="/signup">Create an account</Link>
+      </p>
+    </form>
+  );
+}
+
+/** Make an account. */
+export function SignUp() {
+  const { setUser } = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = {
+      email: String(form.get("email")),
+      password: String(form.get("password")),
+      display_name: String(form.get("display_name")),
+    };
+    const { data, error } = await api.POST("/api/auth/signup", { body });
+    if (!data) return setError(problem(error));
+    setUser(data);
+    navigate("/");
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <h1>Create an account</h1>
+      <label>
+        Name <input name="display_name" autoComplete="nickname" maxLength={80} />
+      </label>
+      <label>
+        Email <input name="email" type="email" autoComplete="email" required />
+      </label>
+      <label>
+        Password (at least 10 characters){" "}
+        <input name="password" type="password" autoComplete="new-password" minLength={10} required />
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <button type="submit">Create account</button>
+    </form>
+  );
+}

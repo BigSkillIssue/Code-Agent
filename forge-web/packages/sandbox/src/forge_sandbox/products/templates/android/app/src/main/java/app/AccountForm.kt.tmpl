@@ -1,0 +1,10 @@
+package @@package@@
+
+/** What the sign-in and the account deletion ask for, checked before anything is sent. */
+object AccountForm {
+    fun canSignIn(email: String, password: String): Boolean =
+        email.contains('@') && email.trim().length >= 3 && password.isNotEmpty()
+
+    /** Deleting the account (Google Play requires it inside the app) needs the password. */
+    fun canDelete(password: String): Boolean = password.isNotEmpty()
+}

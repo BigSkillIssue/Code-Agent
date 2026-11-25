@@ -1,0 +1,49 @@
+"""Files the app keeps for its users (uploads, exports). Locally and on hosting they live in
+STORAGE_DIR; another backend (S3, …) implements the same three methods."""
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(/[A-Za-z0-9][A-Za-z0-9._-]{0,99}){0,9}$")
+
+
+class Storage(Protocol):
+    """Somewhere to keep files by key ("avatars/42.png")."""
+
+    def save(self, key: str, data: bytes) -> None:
+        """Keep the data under the key, replacing what was there."""
+
+    def load(self, key: str) -> bytes:
+        """The data under the key; FileNotFoundError when there is none."""
+
+    def delete(self, key: str) -> None:
+        """Remove the key; nothing happens when it is missing."""
+
+
+@dataclass
+class LocalStorage:
+    """Files in a folder."""
+
+    root: Path
+
+    def save(self, key: str, data: bytes) -> None:
+        """Keep the data under the key."""
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def load(self, key: str) -> bytes:
+        """The data under the key."""
+        return self._path(key).read_bytes()
+
+    def delete(self, key: str) -> None:
+        """Remove the key."""
+        self._path(key).unlink(missing_ok=True)
+
+    def _path(self, key: str) -> Path:
+        """The file of a key; keys cannot leave the folder."""
+        if not KEY.match(key) or ".." in key:
+            raise ValueError(f"not a storage key: {key!r}")
+        return self.root / key

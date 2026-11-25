@@ -1,0 +1,92 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it } from "vitest";
+import { App } from "./App";
+import { ADA, mockApi } from "./test/api";
+
+function open(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <App />
+    </MemoryRouter>,
+  );
+}
+
+describe("the client", () => {
+  it("links the legal pages on every page", async () => {
+    mockApi(() => [401, { detail: "Please sign in." }]);
+    for (const path of ["/", "/signin", "/account"]) {
+      const { unmount } = open(path);
+      expect(screen.getByRole("link", { name: "Impressum" }).getAttribute("href")).toBe(
+        "/impressum",
+      );
+      expect(screen.getByRole("link", { name: "Datenschutz" }).getAttribute("href")).toBe(
+        "/datenschutz",
+      );
+      unmount();
+    }
+  });
+
+  it("signs up and greets the new user", async () => {
+    const calls = mockApi(({ path }) =>
+      path === "/api/auth/signup" ? [201, ADA] : [401, { detail: "Please sign in." }],
+    );
+    open("/signup");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Name"), "Ada");
+    await user.type(screen.getByLabelText("Email"), "ada@example.com");
+    await user.type(screen.getByLabelText(/Password/), "correct horse battery");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByText("Hello, Ada")).toBeTruthy();
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/auth/signup",
+      body: { email: "ada@example.com", password: "correct horse battery", display_name: "Ada" },
+    });
+  });
+
+  it("shows why a sign-in failed", async () => {
+    mockApi(({ path }) =>
+      path === "/api/auth/login"
+        ? [401, { detail: "Email or password is wrong." }]
+        : [401, { detail: "Please sign in." }],
+    );
+    open("/signin");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Email"), "ada@example.com");
+    await user.type(screen.getByLabelText("Password"), "nope");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Email or password is wrong.");
+  });
+
+  it("deletes the account only with the password", async () => {
+    const calls = mockApi(({ method, path }) => {
+      if (path === "/api/auth/me") return [200, ADA];
+      if (method === "DELETE" && path === "/api/account") return [204];
+      return [404, { detail: "Not Found" }];
+    });
+    open("/account");
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Password"), "correct horse battery");
+    await user.click(screen.getByRole("button", { name: "Delete my account" }));
+    expect(await screen.findByText(/Welcome to/)).toBeTruthy();
+    expect(calls.at(-1)).toEqual({
+      method: "DELETE",
+      path: "/api/account",
+      body: { password: "correct horse battery" },
+    });
+  });
+
+  it("sets a new password with the token from the link", async () => {
+    const calls = mockApi(({ path }) =>
+      path === "/api/auth/password-reset/confirm" ? [204] : [401, { detail: "Please sign in." }],
+    );
+    open("/reset-password?token=abc123");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/New password/), "a brand new password");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByText(/Your password is changed/)).toBeTruthy();
+    expect(calls.at(-1)?.body).toEqual({ token: "abc123", password: "a brand new password" });
+  });
+});

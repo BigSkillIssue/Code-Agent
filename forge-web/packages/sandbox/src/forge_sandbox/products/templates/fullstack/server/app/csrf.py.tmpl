@@ -1,0 +1,39 @@
+"""Requests that change something must come from the app's own pages (no cross-site request
+forgery). The session cookie is SameSite=Lax, but every product shares its site with the other
+products on the apps domain, so a page on a sibling subdomain would send the cookie along.
+Browsers say where a request comes from: `Sec-Fetch-Site`, or in older ones `Origin`. The native
+apps send neither and are let through; they cannot be made to send a request by another site."""
+
+from collections.abc import Awaitable, Callable
+from urllib.parse import urlsplit
+
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+OWN_PAGES = ("same-origin", "none")  # none: the user typed or bookmarked the address
+
+
+def origin_of(url: str) -> str:
+    """`scheme://host[:port]` of a URL, the form browsers send in `Origin`."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def from_another_site(request: Request) -> bool:
+    """True if a browser sent the request from a page that is not the app's own."""
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site is not None:
+        return fetch_site.lower() not in OWN_PAGES
+    origin = request.headers.get("origin")
+    return origin is not None and origin.lower() != origin_of(request.app.state.settings.app_url)
+
+
+async def same_origin_only(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Refuse a request that changes something with 403 when another site sent it."""
+    if request.method not in SAFE_METHODS and from_another_site(request):
+        body = {"detail": "This request must come from the app's own pages."}
+        return JSONResponse(body, status_code=403)
+    return await call_next(request)

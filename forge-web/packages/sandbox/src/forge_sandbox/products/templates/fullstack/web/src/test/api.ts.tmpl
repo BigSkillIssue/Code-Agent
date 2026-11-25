@@ -1,0 +1,31 @@
+import { vi } from "vitest";
+
+/** One request the client made. */
+export type Call = { method: string; path: string; body: unknown };
+
+/**
+ * Answer the client's requests without a server: `answer` gets each call and returns
+ * [status, JSON body]. Returns the calls, in order, for the test to check.
+ */
+export function mockApi(answer: (call: Call) => [number, unknown?]): Call[] {
+  const calls: Call[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (request: Request) => {
+      const text = await request.text();
+      const url = new URL(request.url);
+      const call = {
+        method: request.method,
+        path: url.pathname + url.search,
+        body: text ? JSON.parse(text) : undefined,
+      };
+      calls.push(call);
+      const [status, body] = answer(call);
+      const json = body === undefined ? null : JSON.stringify(body);
+      return new Response(json, { status, headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  return calls;
+}
+
+export const ADA = { id: 1, email: "ada@example.com", display_name: "Ada", is_moderator: false };

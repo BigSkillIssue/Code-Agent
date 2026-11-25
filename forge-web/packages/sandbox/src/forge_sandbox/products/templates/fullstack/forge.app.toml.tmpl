@@ -1,0 +1,49 @@
+# How Forge Web hosts @@title@@. Hosting reads only this file: it never runs the Dockerfile or a
+# compose file. Secrets are listed by name; their values are set in Forge Web, never here.
+version = 1
+name = "@@name@@"
+resource_class = "small"
+clients = [@@clients@@]
+
+[[services]]
+name = "api"
+runtime = "python3.12"
+root = "server"
+build = ["uv", "sync", "--locked", "--no-dev"]
+# Every request reaches the server through hosting's proxy, which sets X-Forwarded-For: the rate
+# limits count the visitor's address, not the proxy's.
+command = [
+    "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000",
+    "--proxy-headers", "--forwarded-allow-ips", "*",
+]
+port = 8000
+health = "/healthz"
+route = "/api"
+
+[[services]]
+name = "web"
+runtime = "static"
+root = "web"
+build = ["sh", "-c", "npm ci && npm run build"]
+output = "dist"
+port = 8080
+health = "/"
+route = "/"
+
+[database]
+engine = "postgres16"
+
+[storage]
+max_gb = 1
+
+[mail]
+daily_limit = 200
+@@if payments@@
+
+# Customers pay through Forge Web's payments relay (server/app/payments.py).
+[payments]
+kind = "relay"
+@@end@@
+@@if digital_goods@@
+digital_goods = true  # sold in the app stores: Apple guideline 3.1.1, Google Play payments policy
+@@end@@

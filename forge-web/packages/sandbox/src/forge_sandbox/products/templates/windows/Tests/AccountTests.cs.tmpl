@@ -1,0 +1,62 @@
+using System.Net;
+using System.Text;
+using @@namespace@@.Core;
+
+namespace @@namespace@@.Tests;
+
+/// <summary>The server, as far as these tests need it: it answers every request and keeps what
+/// it was sent.</summary>
+public sealed class Recorder : HttpMessageHandler
+{
+    public List<(HttpMethod Method, string Path, string Body)> Seen { get; } = [];
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+        Seen.Add((request.Method, request.RequestUri!.AbsolutePath, body));
+        if (request.Method == HttpMethod.Delete)
+        {
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+        const string user = """{"id": 7, "email": "ada@example.com", "display_name": "Ada", "is_moderator": false}""";
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(user, Encoding.UTF8, "application/json"),
+        };
+    }
+}
+
+public class AccountTests
+{
+    [Fact]
+    public async Task SigningInPostsTheCredentialsAndReadsTheUser()
+    {
+        var server = new Recorder();
+        var user = await Account.SignInAsync(Server.Client(Server.Staging, server), "ada@example.com", "secret");
+        Assert.Equal("Ada", user?.DisplayName);
+        var (method, path, body) = Assert.Single(server.Seen);
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/api/auth/login", path);
+        Assert.Contains("\"email\":\"ada@example.com\"", body.Replace(" ", ""));
+    }
+
+    [Fact]
+    public async Task DeletingTheAccountSendsThePassword()
+    {
+        var server = new Recorder();
+        await Account.DeleteAsync(Server.Client(Server.Staging, server), "secret");
+        var (method, path, body) = Assert.Single(server.Seen);
+        Assert.Equal(HttpMethod.Delete, method);
+        Assert.Equal("/api/account", path);
+        Assert.Contains("\"password\":\"secret\"", body.Replace(" ", ""));
+    }
+
+    [Fact]
+    public void EveryReleaseIsTestedOnStagingFirst()
+    {
+        Assert.Equal("https", Server.Staging.Scheme);
+        Assert.Contains(".staging.", Server.Staging.Host);
+        Assert.DoesNotContain(".staging.", Server.Production.Host);
+    }
+}

@@ -1,0 +1,100 @@
+using Microsoft.Kiota.Abstractions;
+using Microsoft.UI.Xaml;
+using @@namespace@@.Core;
+using @@namespace@@.Core.Api;
+
+namespace @@namespace@@;
+
+/// <summary>Sign-in, deleting the account (an app that makes accounts lets people delete them in
+/// the app), and the update the product's website offers.</summary>
+public sealed partial class MainWindow : Window
+{
+#if DEBUG
+    private readonly ApiClient client = Server.Client(Server.Staging);
+#else
+    private readonly ApiClient client = Server.Client(Server.Production);
+#endif
+    private readonly Updates updates = new();
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        _ = LookForUpdateAsync();
+    }
+
+    private async Task LookForUpdateAsync()
+    {
+        try
+        {
+            var version = await updates.CheckAsync();
+            if (version is not null)
+            {
+                UpdateButton.Content = $"Update to version {version} and restart";
+                UpdateButton.Visibility = Visibility.Visible;
+            }
+        }
+        catch (Exception)
+        {
+            // No update today (offline, or the website is away); the app works on as it is.
+        }
+    }
+
+    private async void OnUpdate(object sender, RoutedEventArgs e)
+    {
+        UpdateButton.IsEnabled = false;
+        try
+        {
+            await updates.ApplyAsync();
+        }
+        catch (Exception)
+        {
+            Status.Text = "The update could not be downloaded; try again later.";
+            UpdateButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnSignIn(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var user = await Account.SignInAsync(client, Email.Text, Password.Password);
+            Status.Text = $"Signed in as {user?.DisplayName}.";
+            DeleteButton.IsEnabled = true;
+        }
+        catch (ApiException error)
+        {
+            Status.Text = $"Signing in did not work ({error.ResponseStatusCode}).";
+        }
+        catch (HttpRequestException)
+        {
+            Status.Text = "The server cannot be reached; try again in a moment.";
+        }
+    }
+
+    private async void OnDelete(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Account.DeleteAsync(client, Password.Password);
+            Status.Text = "Your account and everything in it are deleted.";
+            DeleteButton.IsEnabled = false;
+        }
+        catch (ApiException error)
+        {
+            Status.Text = $"The account was not deleted ({error.ResponseStatusCode}).";
+        }
+        catch (HttpRequestException)
+        {
+            Status.Text = "The server cannot be reached; nothing was deleted.";
+        }
+    }
+@@if payments@@
+
+    private async void OnPricing(object sender, RoutedEventArgs e)
+    {
+        // Buying happens on the product's website, with its order button and the right to
+        // withdraw; the app then sees the purchases on the account.
+        await Windows.System.Launcher.LaunchUriAsync(Server.Pricing);
+    }
+@@end@@
+}

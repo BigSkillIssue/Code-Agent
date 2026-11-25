@@ -1,0 +1,70 @@
+import { useEffect, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { api, problem } from "../api/client";
+import type { components } from "../api/schema";
+import { useAuth } from "../auth";
+import { price } from "./Pricing";
+
+type Purchase = components["schemas"]["PurchaseOut"];
+
+/**
+ * The signed-in user's purchases. A subscription is cancelled here in two steps ("Cancel
+ * contracts here", then "Cancel now"), at the end of the period that is paid for.
+ */
+export function Purchases() {
+  const { user, loading } = useAuth();
+  const [query] = useSearchParams();
+  const [purchases, setPurchases] = useState<Purchase[] | null>(null);
+  const [asked, setAsked] = useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    api.GET("/api/payments/purchases").then(({ data }) => setPurchases(data ?? []));
+  }, [user]);
+
+  if (loading) return <p>Loading…</p>;
+  if (!user) return <Navigate to="/signin" replace />;
+
+  async function cancel(id: number) {
+    const { data, error } = await api.POST("/api/payments/purchases/{purchase_id}/cancel", {
+      params: { path: { purchase_id: id } },
+    });
+    if (error || !data) return setError(problem(error));
+    setPurchases((rows) => (rows ?? []).map((row) => (row.id === id ? data : row)));
+    setAsked(null);
+  }
+
+  return (
+    <section>
+      <h1>Your purchases</h1>
+      {query.get("paid") && <p>Thank you! Your payment is being confirmed.</p>}
+      {purchases?.length === 0 && <p>Nothing bought yet.</p>}
+      <ul className="purchases">
+        {purchases?.map((p) => (
+          <li key={p.id}>
+            <strong>{p.name}</strong> {price(p)}: {p.status}
+            {p.cancel_at_period_end && p.current_period_end && (
+              <> (ends {new Date(p.current_period_end).toLocaleDateString()})</>
+            )}
+            {p.interval && p.status === "paid" && !p.cancel_at_period_end && (
+              <>
+                {" "}
+                {asked === p.id ? (
+                  <button type="button" className="danger" onClick={() => cancel(p.id)}>
+                    Cancel now
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setAsked(p.id)}>
+                    Cancel contracts here
+                  </button>
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}

@@ -1,0 +1,15 @@
+# How Forge Web hosts @@title@@: a website without a server. Hosting reads only this file.
+version = 1
+name = "@@name@@"
+resource_class = "small"
+clients = [@@clients@@]
+
+[[services]]
+name = "web"
+runtime = "static"
+root = "web"
+build = ["sh", "-c", "npm ci && npm run build"]
+output = "dist"
+port = 8080
+health = "/"
+route = "/"

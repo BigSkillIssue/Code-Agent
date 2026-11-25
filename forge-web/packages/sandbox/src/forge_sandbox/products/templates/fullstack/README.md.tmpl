@@ -1,0 +1,112 @@
+# @@title@@
+
+Made with `forge app new`. A product people can keep working on: a Python server (FastAPI,
+SQLAlchemy 2, Alembic, PostgreSQL 16) with accounts, moderation and migrations, a web client
+(React, Vite, TypeScript) with an API client typed from the server's OpenAPI description, their
+tests, docs and CI, and `forge.app.toml`, which tells Forge Web how to host it.
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `server/app/` | the API: `main.py` builds the app; `auth.py`, `account.py`, `moderation.py` are its routes |
+| `server/app/models.py` | the tables; change them together with a migration in `server/migrations/versions/` |
+| `server/openapi.json` | the API description; the clients' types are generated from it |
+| `server/tests/` | the server's tests (they need PostgreSQL, see below) |
+| `web/src/` | the web client: `App.tsx` lists the pages, `pages/` holds them |
+| `web/src/api/` | the typed API client; `schema.d.ts` is generated from `server/openapi.json` |
+| `docker-compose.yml` | everything locally with one command (hosting does not use it) |
+| `docs/runbook.md` | running it: health, logs, backups, incidents |
+| `docs/migrations.md` | changing the database without breaking a running release |
+| `forge.app.toml` | what hosting needs: services, database, storage, mail, secret names |
+
+@@if apple@@
+`apple/` holds the Apple app (iPhone, iPad, Mac, Watch): a SwiftUI project from `project.yml`
+with a client of the server's API, generated from `server/openapi.json` (see apple/README.md).
+
+@@end@@
+## Run it locally
+
+With Docker: `docker compose up`, then open http://localhost:5173.
+
+Without Docker you need [uv](https://docs.astral.sh/uv/) and a PostgreSQL 16 database (for example
+`docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=dev postgres:16`).
+
+```bash
+cd server
+uv sync
+export DATABASE_URL=postgresql://postgres:dev@localhost:5432/postgres
+uv run alembic upgrade head
+uv run uvicorn app.main:create_app --factory --reload --port 8000
+```
+
+The API is at http://localhost:8000/api and its interactive description at
+http://localhost:8000/api/docs. Mail is written to the log until a mail relay is configured.
+
+In a second terminal, the web client (Node 22):
+
+```bash
+cd web
+npm ci
+npm run dev        # http://localhost:5173; /api goes to the server on port 8000
+```
+
+## Tests
+
+The tests use a real PostgreSQL database and **empty it** first, so give them a database of their
+own:
+
+```bash
+cd server
+createdb app_test   # or: psql -c 'create database app_test'
+TEST_DATABASE_URL=postgresql://postgres:dev@localhost:5432/app_test uv run pytest
+```
+
+They check the API against `openapi.json` and the migrations against the models. After changing
+the API, run `uv run python -m app.openapi_snapshot`, then `npm run api:types` in `web/`, and
+commit both files; TypeScript then shows every place in the client the change touches. After
+changing a model, add a migration: `uv run alembic revision --autogenerate -m "what changed"`,
+read it, and follow `docs/migrations.md`.
+
+The web client's tests need no server: `cd web && npm test` (and `npm run build` checks the
+types).
+
+## Hosting
+
+Forge Web hosts the product from `forge.app.toml`, not from the Dockerfile (that one is for
+people who want to run the server elsewhere). Hosting
+
+- builds each service with its `build` command in a throwaway container and starts it with its
+  `command`, with the service's `.venv/bin` first on `PATH`; a `static` service's `output`
+  folder (the web client's `dist`) is served as a single-page app;
+- sends `/api` to the server and everything else to the web client (the `route`s);
+- sets `DATABASE_URL`, `PORT`, `APP_URL`, `STORAGE_DIR`, `MAIL_RELAY_URL` and `MAIL_RELAY_TOKEN`,
+  and each secret listed under `secrets` (values are entered in Forge Web, never in this repo);
+- checks `/healthz` before and after every release and rolls back when it fails;
+- serves `/impressum`, `/datenschutz` and the "report content" link itself, with the operator's
+  details entered in Forge Web.
+@@if payments@@
+- sets `PAYMENTS_RELAY_URL` and `PAYMENTS_RELAY_TOKEN` (see Payments below).
+@@end@@
+
+Every release is reviewed and approved by you before it goes live.
+
+The server takes the visitor's address from the `X-Forwarded-For` header (`--proxy-headers
+--forwarded-allow-ips "*"` in its `command`), so the rate limits count each visitor, not the
+proxy. Under Forge Web only its proxy can reach the server, and it replaces that header. Run the
+server elsewhere (the Dockerfile) only behind a proxy that does the same; reachable directly,
+anyone could claim any address and get round the rate limits.
+@@if payments@@
+
+## Payments
+
+Customers pay through Forge Web's payments relay (`server/app/payments.py`): the product never
+holds a Stripe key. The relay opens Stripe Checkout as your own Stripe account (connect it in
+Forge Web under billing), and the server's operator keeps a share of every payment. Edit `OFFERS`
+in `server/app/payments.py` for what is sold, and use `has_paid(db, relay_of(request), user,
+offer)` to unlock it (a subscription counts while it runs: renewed, not cancelled or unpaid).
+The order button says that it costs money and the buyer agrees that the service begins at once;
+subscriptions are cancelled on the purchases page, in two steps, at the end of the paid period.
+Without `PAYMENTS_RELAY_URL` (a local run) nothing can be bought; the tests use
+`server/tests/fake_relay.py`. Have the texts and the prices checked before you sell anything.
+@@end@@

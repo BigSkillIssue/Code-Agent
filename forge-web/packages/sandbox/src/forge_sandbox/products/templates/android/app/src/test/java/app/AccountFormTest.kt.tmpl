@@ -1,0 +1,20 @@
+package @@package@@
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AccountFormTest {
+    @Test
+    fun signingInNeedsAnEmailAndAPassword() {
+        assertTrue(AccountForm.canSignIn("ada@example.com", "correct horse"))
+        assertFalse(AccountForm.canSignIn("ada", "correct horse"))
+        assertFalse(AccountForm.canSignIn("ada@example.com", ""))
+    }
+
+    @Test
+    fun deletingTheAccountNeedsThePassword() {
+        assertTrue(AccountForm.canDelete("correct horse"))
+        assertFalse(AccountForm.canDelete(""))
+    }
+}

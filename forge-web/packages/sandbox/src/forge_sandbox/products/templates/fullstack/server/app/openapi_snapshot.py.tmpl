@@ -1,0 +1,29 @@
+"""Write the API description to openapi.json: `uv run python -m app.openapi_snapshot`.
+
+The web client's typed API is generated from this file, and a test fails when the server's API
+and the file differ, so every API change is a reviewed change of openapi.json."""
+
+import json
+from pathlib import Path
+from typing import Any
+
+from app.main import create_app
+from app.settings import Settings
+
+SNAPSHOT = Path(__file__).resolve().parent.parent / "openapi.json"
+
+
+def current() -> dict[str, Any]:
+    """The API description of the code as it is (no database needed)."""
+    settings = Settings(database_url="postgresql+psycopg://snapshot@localhost/snapshot")
+    return create_app(settings).openapi()
+
+
+def render(schema: dict[str, Any]) -> str:
+    """The file's text: stable order, one trailing newline."""
+    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
+
+
+if __name__ == "__main__":
+    SNAPSHOT.write_text(render(current()), encoding="utf-8")
+    print(f"wrote {SNAPSHOT}")
