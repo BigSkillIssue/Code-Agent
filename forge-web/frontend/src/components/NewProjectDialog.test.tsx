@@ -53,6 +53,15 @@ describe("NewProjectDialog", () => {
     expect(onCreated).not.toHaveBeenCalled();
   });
 
+  it("offers only the sources the server allows", () => {
+    const create = vi.fn().mockResolvedValue(project);
+    render(<NewProjectDialog isAdmin={true} sources={["empty", "app"]} create={create} forget={vi.fn()} onCreated={vi.fn()} onClose={vi.fn()} />);
+    for (const gone of [/^(Git repository|Git-Repository)$/, /^(ZIP file|ZIP-Datei)$/, /^(Server folder|Ordner auf dem Server)$/]) {
+      expect(screen.queryByLabelText(gone)).toBeNull();
+    }
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+  });
+
   it("offers server folders to admins only", () => {
     setup(false);
     expect(screen.queryByLabelText(/^(Server folder|Ordner auf dem Server)$/)).toBeNull();

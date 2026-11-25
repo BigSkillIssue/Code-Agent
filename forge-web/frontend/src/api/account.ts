@@ -12,6 +12,7 @@ export interface Me {
   totp_enabled: boolean;
   two_factor_required: boolean;
   apple_apps?: boolean; // may build Apple apps on this server
+  project_sources?: string[]; // where new projects may come from (empty, app, git, zip, folder)
 }
 
 export interface Identity {
@@ -115,6 +116,9 @@ export interface ServerSettings {
   admin_two_factor: boolean;
   projects_per_user: number;
   project_disk_mb: number;
+  projects_from_git: boolean;
+  projects_from_zip: boolean;
+  projects_from_folder: boolean;
   sandbox_cpus: number;
   sandbox_memory: string;
   sandbox_pids: number;

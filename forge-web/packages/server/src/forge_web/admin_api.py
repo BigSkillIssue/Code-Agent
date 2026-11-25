@@ -31,6 +31,8 @@ FIELDS: dict[str, tuple[str, str]] = {
     "passwords": ("auth", "passwords"), "admin_two_factor": ("auth", "admin_two_factor"),
     "projects_per_user": ("quotas", "projects_per_user"),
     "project_disk_mb": ("quotas", "project_disk_mb"),
+    "projects_from_git": ("projects", "git"), "projects_from_zip": ("projects", "zip"),
+    "projects_from_folder": ("projects", "folder"),
     "sandbox_cpus": ("sandbox", "cpus"), "sandbox_memory": ("sandbox", "memory"),
     "sandbox_pids": ("sandbox", "pids"), "sandbox_idle_minutes": ("sandbox", "idle_minutes"),
     "server_keys_for": ("gateway", "server_keys_for"),
@@ -52,6 +54,9 @@ class AdminSettings(BaseModel):
     admin_two_factor: bool | None = None
     projects_per_user: int | None = Field(default=None, ge=0, le=100_000)
     project_disk_mb: int | None = Field(default=None, ge=0, le=10_000_000)
+    projects_from_git: bool | None = None
+    projects_from_zip: bool | None = None
+    projects_from_folder: bool | None = None
     sandbox_cpus: float | None = Field(default=None, gt=0, le=256)
     sandbox_memory: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,6}[kmg]$")
     sandbox_pids: int | None = Field(default=None, ge=64, le=1_000_000)

@@ -144,3 +144,56 @@ async def test_quotas(server: LiveServer, client: httpx.AsyncClient) -> None:
     assert sent.status_code == 409 and "MB" in sent.json()["detail"]
     usage = (await client.get(f"/api/projects/{pid}/usage")).json()
     assert usage["bytes"] >= 1_500_000 and usage["limit"] == 1024 * 1024
+
+
+async def test_an_admin_turns_sources_off(
+    server: LiveServer, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    git(upstream, "init", "-q", "-b", "trunk")
+    (upstream / "README.md").write_text("# hello\n")
+    git(upstream, "add", ".")
+    git(upstream, "-c", "user.name=U", "-c", "user.email=u@x.y", "commit", "-q", "-m", "init")
+    url = f"file://{upstream}"
+    cloned = await client.post("/api/projects", json={"name": "Old", "source": "git", "url": url})
+    zipped = await client.post("/api/projects", json={"name": "Zip", "source": "zip"})
+    old, zip_id = cloned.json()["id"], zipped.json()["id"]
+    roots = tmp_path / "shared"
+    (roots / "app").mkdir(parents=True)
+    server.services.settings.sandbox.folder_roots = [str(roots)]
+    member = await person(server, "member")
+    assert (await member.web.get("/api/me")).json()["project_sources"] == [
+        "empty", "app", "git", "zip"
+    ]  # fmt: skip
+    assert (await client.get("/api/me")).json()["project_sources"][-1] == "folder"
+
+    off = {"projects_from_git": False, "projects_from_zip": False, "projects_from_folder": False}
+    changed = await client.request("PATCH", "/api/admin/settings", json=off)
+    assert changed.status_code == 200, changed.text
+    assert {k: changed.json()[k] for k in off} == off
+    assert (await client.get("/api/me")).json()["project_sources"] == ["empty", "app"]
+    refused = [
+        await client.post("/api/projects", json={"name": "G", "source": "git", "url": url}),
+        await client.post("/api/projects", json={"name": "Z", "source": "zip"}),
+        await client.post(
+            "/api/projects", json={"name": "F", "source": "folder", "folder": str(roots / "app")}
+        ),
+        await client.put(f"/api/projects/{zip_id}/import/zip", content=zip_bytes({"a": b"a"})),
+        await client.put(f"/api/projects/{old}/git/remote", json={"url": url}),
+        await client.post(f"/api/projects/{old}/git/push", json={}),
+        await client.post(f"/api/projects/{old}/git/pull", json={}),
+    ]
+    assert [r.status_code for r in refused] == [403] * 7, [r.text for r in refused]
+    assert "turned off" in refused[0].json()["detail"]
+    assert sorted(await project_names(client)) == ["Old", "Zip"]
+    assert not (server.services.driver.workspace(zip_id) / "a").exists()
+    empty = await member.web.post("/api/projects", {"name": "Fresh"})
+    assert empty.status_code == 201  # an empty start always works
+
+    on = await client.request("PATCH", "/api/admin/settings", json={"projects_from_zip": True})
+    assert on.status_code == 200
+    imported = await client.put(
+        f"/api/projects/{zip_id}/import/zip", content=zip_bytes({"a.txt": b"a"})
+    )
+    assert imported.status_code == 200, imported.text

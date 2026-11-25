@@ -17,6 +17,26 @@ from forge_web.settings import WebSettings
 
 IMPORT_ARCHIVE = ".forge-web-import.zip"
 
+TURNED_OFF = {
+    "git": "git repositories (cloning, pushing and pulling) are turned off on this server",
+    "zip": "ZIP uploads are turned off on this server",
+    "folder": "this server does not open server folders as projects",
+}
+
+
+def require_source(settings: WebSettings, source: str) -> None:
+    """403 when an admin turned this source of a project's files off."""
+    if not settings.projects.allows(source):
+        raise HTTPException(403, TURNED_OFF[source])
+
+
+def allowed_sources(settings: WebSettings, is_admin: bool) -> list[str]:
+    """The sources the new-project dialog offers to this user."""
+    sources = ["empty", "app"] + [s for s in ("git", "zip") if settings.projects.allows(s)]
+    if is_admin and settings.projects.folder and settings.sandbox.folder_roots:
+        sources.append("folder")
+    return sources
+
 
 def server_folder(settings: WebSettings, raw: str) -> Path:
     """A folder admins may open as a project: absolute, existing, under an allowed root, and
@@ -52,6 +72,7 @@ def sources_router() -> APIRouter:
         project_id: str, request: Request, user: CurrentUser, strip_root: bool = Query(True)
     ) -> dict[str, Any]:
         services = await allowed(request, user, project_id, "editor")
+        require_source(services.settings, "zip")
         room = await disk_room(services, project_id)
         upload_limit = services.settings.server.max_upload_mb * MB
         limit = upload_limit if room is None else min(upload_limit, room)

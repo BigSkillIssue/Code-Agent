@@ -22,6 +22,7 @@ export interface User {
   name: string;
   role: "admin" | "member";
   apple_apps?: boolean; // may build Apple apps on this server
+  project_sources?: string[]; // where new projects may come from (empty, app, git, zip, folder)
 }
 
 export interface Project {

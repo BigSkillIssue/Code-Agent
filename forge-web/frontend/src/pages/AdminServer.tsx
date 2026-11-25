@@ -141,6 +141,11 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
         <Check label={t("passwordAccounts")} checked={edited.passwords} onChange={(v) => set("passwords", v)} />
         <Check label={t("adminTwoFactor")} checked={edited.admin_two_factor} onChange={(v) => set("admin_two_factor", v)} />
       </Section>
+      <Section title={t("projectSources")} hint={t("projectSourcesHint")}>
+        <Check label={t("projectsFromGit")} checked={edited.projects_from_git} onChange={(v) => set("projects_from_git", v)} />
+        <Check label={t("projectsFromZip")} checked={edited.projects_from_zip} onChange={(v) => set("projects_from_zip", v)} />
+        <Check label={t("projectsFromFolder")} checked={edited.projects_from_folder} onChange={(v) => set("projects_from_folder", v)} />
+      </Section>
       <Section title={t("limits")} hint={t("limitsHint")}>
         <div className="grid gap-3 sm:grid-cols-2">
           {number("projects_per_user", t("projectsPerUser"))}

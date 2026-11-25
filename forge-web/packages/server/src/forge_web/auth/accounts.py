@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from forge_web.db.models import User
 from forge_web.services import Services
+from forge_web.sources import allowed_sources
 
 
 def user_view(user: User, services: Services | None = None) -> dict[str, Any]:
@@ -18,6 +19,8 @@ def user_view(user: User, services: Services | None = None) -> dict[str, Any]:
         "two_factor_required": required and user.role == "admin" and not user.totp_enabled,
         "apple_apps": services is not None and services.settings.apple.allows(user.role,
                                                                               user.apple_allowed),
+        "project_sources": [] if services is None
+                           else allowed_sources(services.settings, user.role == "admin"),
     }  # fmt: skip
 
 

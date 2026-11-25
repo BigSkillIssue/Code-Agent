@@ -24,7 +24,7 @@ from forge_web.db.models import Project, ProjectMember, User
 from forge_web.gitsync import check_remote, clone
 from forge_web.quotas import MB, check_project_count, disk_limit, disk_use
 from forge_web.services import Services, services_of
-from forge_web.sources import server_folder
+from forge_web.sources import require_source, server_folder
 
 log = logging.getLogger(__name__)
 
@@ -164,6 +164,7 @@ async def delete_project(request: Request, project: Project) -> None:
 
 async def chosen_source(services: Services, user: User, body: ProjectIn) -> Path | None:
     """Check the source before anything is created; the server folder, if that is the source."""
+    require_source(services.settings, body.source)
     if body.source == "folder":
         if not acts_as_admin(user, services.settings.auth.admin_two_factor):
             raise HTTPException(403, "only admins (with two-factor sign-in where the server asks "

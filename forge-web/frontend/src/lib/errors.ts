@@ -72,6 +72,9 @@ const exact: Record<string, string> = {
   "the folder is not under one of the allowed folders": "Der Ordner liegt nicht unter einem freigegebenen Ordner.",
   "only admins can open server folders as projects": "Nur Admins können Server-Ordner als Projekt öffnen.",
   "this server does not open server folders as projects": "Dieser Server öffnet keine Server-Ordner als Projekt.",
+  "git repositories (cloning, pushing and pulling) are turned off on this server":
+    "Git-Repositories (Klonen, Push und Pull) sind auf diesem Server ausgeschaltet.",
+  "ZIP uploads are turned off on this server": "ZIP-Uploads sind auf diesem Server ausgeschaltet.",
 };
 
 const ROLES: Record<string, string> = { owner: "Besitzer", editor: "Bearbeiter", viewer: "Betrachter" };

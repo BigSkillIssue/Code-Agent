@@ -20,6 +20,7 @@ from forge_web.gitsync import (
     remote_problem,
 )
 from forge_web.sandbox_calls import result_dict, sandbox_call
+from forge_web.sources import require_source
 
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -140,6 +141,7 @@ def changing_routes(router: APIRouter) -> None:
         project_id: str, body: RemoteIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
         services = await allowed(request, user, project_id, "editor")
+        require_source(services.settings, "git")
         local = local_remotes(services) and body.url.startswith("file://")
         problem = None if local else remote_problem(body.url)
         if problem:
@@ -156,6 +158,7 @@ def sync_routes(router: APIRouter) -> None:
         project_id: str, body: SyncIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
         services = await allowed(request, user, project_id, "editor")
+        require_source(services.settings, "git")
         branch = check_branch(body.branch or await current_branch(services, project_id))
         remote_branch = check_branch(body.remote_branch or branch)
         return await push(services, project_id, user, branch, remote_branch, client_ip(request))
@@ -165,6 +168,7 @@ def sync_routes(router: APIRouter) -> None:
         project_id: str, body: SyncIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
         services = await allowed(request, user, project_id, "editor")
+        require_source(services.settings, "git")
         branch = check_branch(body.branch or await current_branch(services, project_id))
         remote_branch = check_branch(body.remote_branch or branch)
         return await pull(services, project_id, user, branch, remote_branch, client_ip(request))

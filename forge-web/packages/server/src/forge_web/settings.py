@@ -95,6 +95,19 @@ class QuotaSettings(_Strict):
     disk_check_minutes: float = Field(default=5, gt=0)  # how often disk use is measured outside
 
 
+class ProjectSourceSettings(_Strict):
+    """Where people may bring a project's files from besides an empty start and Forge's
+    templates; an admin turns each off at run time."""
+
+    git: bool = True  # clone a git URL (GitHub and others), and push and pull later
+    zip: bool = True  # upload a ZIP file into a project
+    folder: bool = True  # (admins) open a folder on the server, under `sandbox.folder_roots`
+
+    def allows(self, source: str) -> bool:
+        """Whether `source` may be used now; the empty start and the templates always may."""
+        return bool(getattr(self, source, True))
+
+
 class GitSettings(_Strict):
     """Pushing and pulling: which hosts git jobs may reach."""
 
@@ -297,6 +310,7 @@ class WebSettings(_Strict):
     egress: EgressSettings = EgressSettings()
     git: GitSettings = GitSettings()
     quotas: QuotaSettings = QuotaSettings()
+    projects: ProjectSourceSettings = ProjectSourceSettings()
     preview: PreviewSettings = PreviewSettings()
     apple: AppleSettings = AppleSettings()
     hosting: HostingSettings = HostingSettings()

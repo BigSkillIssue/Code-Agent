@@ -16,6 +16,7 @@ type Source = NonNullable<NewProject["source"]>;
 interface Props {
   isAdmin: boolean;
   appleApps?: boolean; // this user may build Apple apps here
+  sources?: string[]; // the sources this server allows this user (Apple apps are asked separately)
   create: (body: NewProject) => Promise<Project>;
   forget: (projectId: string) => void;
   onCreated: (project: Project) => void;
@@ -31,7 +32,14 @@ const SOURCES: [Source, TextKey][] = [
   ["apple", "sourceApple"],
 ];
 
-export function NewProjectDialog({ isAdmin, appleApps = false, create, forget, onCreated, onClose }: Props) {
+/** Whether the dialog offers a source: what the server allows this user, if it said so. */
+function offered(id: Source, isAdmin: boolean, appleApps: boolean, sources?: string[]): boolean {
+  if (id === "apple") return appleApps;
+  if (id === "folder" && !isAdmin) return false;
+  return sources === undefined || sources.includes(id);
+}
+
+export function NewProjectDialog({ isAdmin, appleApps = false, sources, create, forget, onCreated, onClose }: Props) {
   const [name, setName] = useState("");
   const [source, setSource] = useState<Source>("empty");
   const [url, setUrl] = useState("");
@@ -82,7 +90,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, create, forget, o
         <fieldset className="space-y-1 text-sm">
           <legend className="text-muted">{t("source")}</legend>
           <div className="flex flex-wrap gap-2">
-            {SOURCES.filter(([id]) => (id !== "folder" || isAdmin) && (id !== "apple" || appleApps)).map(([id, label]) => (
+            {SOURCES.filter(([id]) => offered(id, isAdmin, appleApps, sources)).map(([id, label]) => (
               <label key={id} className={`cursor-pointer rounded-full border px-3 py-1 ${source === id ? "border-accent bg-accent text-on-accent" : "border-line"}`}>
                 <input type="radio" name="source" value={id} className="sr-only" checked={source === id} onChange={() => setSource(id)} />
                 {t(label)}
