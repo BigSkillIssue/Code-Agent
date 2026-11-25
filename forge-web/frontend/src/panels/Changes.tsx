@@ -1,5 +1,6 @@
 // The project's changes: what is staged and what is not, diffs, commit, branches, remote, push
-// and pull. Viewers see everything but cannot change anything.
+// and pull. Viewers see everything but cannot change anything. When the server turned git
+// repositories off, the remote, push and pull are not shown at all.
 
 import { GitBranch, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import { Select } from "../components/Select";
 interface Props {
   api: ProjectApi;
   canEdit: boolean;
+  remotes?: boolean; // the server allows remotes, push and pull
   refreshKey: number;
   onError: (message: string) => void;
 }
@@ -30,7 +32,7 @@ function FileRow(props: { file: GitFile; code: string; selected: boolean; onSele
   );
 }
 
-export function Changes({ api, canEdit, refreshKey, onError }: Props) {
+export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: Props) {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -113,54 +115,56 @@ export function Changes({ api, canEdit, refreshKey, onError }: Props) {
         </button>
       </div>
 
-      <div className="space-y-2 border-b border-line px-2 py-2">
-        <form
-          className="flex gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(() => api.setRemote(remote.trim()));
-          }}
-        >
-          <input
-            aria-label={t("remoteUrl")}
-            placeholder={t("remoteUrl")}
-            className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-0.5 font-mono text-xs"
-            value={remote}
-            readOnly={!canEdit}
-            onChange={(e) => setRemote(e.target.value)}
-          />
+      {remotes && (
+        <div className="space-y-2 border-b border-line px-2 py-2">
+          <form
+            className="flex gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void act(() => api.setRemote(remote.trim()));
+            }}
+          >
+            <input
+              aria-label={t("remoteUrl")}
+              placeholder={t("remoteUrl")}
+              className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-0.5 font-mono text-xs"
+              value={remote}
+              readOnly={!canEdit}
+              onChange={(e) => setRemote(e.target.value)}
+            />
+            {canEdit && (
+              <button type="submit" disabled={busy} className="rounded border border-line px-2 text-xs">
+                {t("setRemote")}
+              </button>
+            )}
+          </form>
           {canEdit && (
-            <button type="submit" disabled={busy} className="rounded border border-line px-2 text-xs">
-              {t("setRemote")}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy || !remote}
+                className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
+                onClick={() => void act(async () => setNote((await api.pull()).reason ?? t("pulled")))}
+              >
+                {t("pull")}
+              </button>
+              <button
+                type="button"
+                disabled={busy || !remote}
+                className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
+                onClick={() => void act(() => api.push(), t("pushed"))}
+              >
+                {t("push")}
+              </button>
+            </div>
           )}
-        </form>
-        {canEdit && (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy || !remote}
-              className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
-              onClick={() => void act(async () => setNote((await api.pull()).reason ?? t("pulled")))}
-            >
-              {t("pull")}
-            </button>
-            <button
-              type="button"
-              disabled={busy || !remote}
-              className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
-              onClick={() => void act(() => api.push(), t("pushed"))}
-            >
-              {t("push")}
-            </button>
-          </div>
-        )}
-        {note && (
-          <p className="text-xs text-muted" role="status">
-            {note}
-          </p>
-        )}
-      </div>
+          {note && (
+            <p className="text-xs text-muted" role="status">
+              {note}
+            </p>
+          )}
+        </div>
+      )}
 
       <section className="px-2 py-2">
         <h3 className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{t("staged")}</h3>

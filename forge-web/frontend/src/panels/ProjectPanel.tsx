@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { projectApi, type ProjectApi } from "../api/project";
 import { t } from "../lib/i18n";
+import { useStore } from "../state/store";
 import { AppleScreens } from "./AppleScreens";
 import { Changes } from "./Changes";
 import { FileEditor } from "./FileEditor";
@@ -25,6 +26,8 @@ interface Props {
 }
 
 export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, onClose, onError, api }: Props) {
+  const sources = useStore((state) => state.user?.project_sources);
+  const remotes = sources === undefined || sources.includes("git"); // W48: git turned off
   const client = useMemo(() => api ?? projectApi(projectId), [api, projectId]);
   const [tab, setTab] = useState<Tab>("files");
   const [file, setFile] = useState<string | null>(null);
@@ -67,7 +70,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
           ) : (
             <FileTree api={client} canEdit={canEdit} refreshKey={refreshKey} onOpen={setFile} onError={onError} />
           ))}
-        {tab === "changes" && <Changes api={client} canEdit={canEdit} refreshKey={refreshKey} onError={onError} />}
+        {tab === "changes" && <Changes api={client} canEdit={canEdit} remotes={remotes} refreshKey={refreshKey} onError={onError} />}
         {canEdit && opened.has("terminal") && (
           <div className={tab === "terminal" ? "h-full" : "hidden"}>
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />

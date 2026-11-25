@@ -91,6 +91,14 @@ describe("Changes", () => {
     expect(screen.queryByRole("button", { name: "Push" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: /commit/i })).toBeNull();
   });
+
+  it("hides the remote, push and pull when the server turned git off", async () => {
+    render(<Changes api={fakeApi()} canEdit remotes={false} refreshKey={0} onError={vi.fn()} />);
+    await screen.findByText("notes.md");
+    for (const name of ["Push", "Pull"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /^Remote/ })).toBeNull();
+    expect(screen.getByRole("textbox", { name: /commit/i })).toBeTruthy(); // committing still works
+  });
 });
 
 describe("Files", () => {
