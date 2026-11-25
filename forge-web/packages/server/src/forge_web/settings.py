@@ -9,7 +9,7 @@ import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -93,6 +93,40 @@ class QuotaSettings(_Strict):
     project_disk_mb: int = Field(default=10_000, ge=0)
     chat_log_mb: int = Field(default=1_000, ge=0)  # stored chat history per project
     disk_check_minutes: float = Field(default=5, gt=0)  # how often disk use is measured outside
+
+
+AGENT_NAME = r"^[a-z0-9-]{1,32}$"
+MODEL_ID = r"^[\w.-]+/[\w.:@/-]+$"
+
+
+class AgentEntry(_Strict):
+    """An agent Forge's lead may use: one of Forge Web's built-ins (same name: the admin's
+    changes win) or the admin's own. An empty prompt keeps the built-in text."""
+
+    name: str = Field(pattern=AGENT_NAME)
+    description: str = Field(default="", max_length=300)
+    prompt: str = Field(default="", max_length=20_000)
+    tools: list[Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_]{0,63}$")]] = Field(
+        default_factory=list, max_length=60
+    )
+    policy: Literal["required", "recommended", "off"] = "recommended"
+    applies_to: Literal["always", "product", "ui"] = "always"
+
+
+class AgentsSettings(_Strict):
+    """Which models Forge's agents use and which agents it has (W53): per role and per plan
+    (`default` for everyone without one), and whether people pick a chat's model themselves."""
+
+    user_model_choice: bool = True
+    # tier ("default" or a catalog plan's id) -> role or agent name -> model fallback chain
+    roles: dict[
+        Annotated[str, Field(pattern=r"^[a-z0-9_-]{1,40}$")],
+        dict[
+            Annotated[str, Field(pattern=r"^[a-z0-9_-]{1,32}$")],
+            list[Annotated[str, Field(pattern=MODEL_ID)]],
+        ],
+    ] = Field(default_factory=dict, max_length=50)
+    agents: list[AgentEntry] = Field(default_factory=list, max_length=40)
 
 
 class ProjectSourceSettings(_Strict):
@@ -319,6 +353,7 @@ class WebSettings(_Strict):
     git: GitSettings = GitSettings()
     quotas: QuotaSettings = QuotaSettings()
     projects: ProjectSourceSettings = ProjectSourceSettings()
+    agents: AgentsSettings = AgentsSettings()
     preview: PreviewSettings = PreviewSettings()
     apple: AppleSettings = AppleSettings()
     hosting: HostingSettings = HostingSettings()

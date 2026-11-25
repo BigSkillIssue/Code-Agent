@@ -13,6 +13,7 @@ export interface Me {
   two_factor_required: boolean;
   apple_apps?: boolean; // may build Apple apps on this server
   project_sources?: string[]; // where new projects may come from (empty, app, git, zip, folder)
+  model_choice?: boolean; // the admin lets people pick a chat's model
 }
 
 export interface Identity {
@@ -109,6 +110,27 @@ export interface AuditRow {
   ip: string;
 }
 
+export interface AgentEntry {
+  name: string;
+  description: string;
+  prompt: string;
+  tools: string[];
+  policy: "required" | "recommended" | "off";
+  applies_to: "always" | "product" | "ui";
+}
+
+export interface AgentsSettings {
+  user_model_choice: boolean;
+  roles: Record<string, Record<string, string[]>>; // plan ("default" or a plan's id) -> role -> chain
+  agents: AgentEntry[];
+}
+
+export interface AgentsView extends AgentsSettings {
+  tiers: string[];
+  role_groups: string[];
+  builtin: Omit<AgentEntry, "tools">[];
+}
+
 export interface ServerSettings {
   signup: "invite" | "approval" | "open";
   allowed_domains: string[];
@@ -175,4 +197,6 @@ export const admin = {
   audit: () => api.get<AuditRow[]>("/api/admin/audit?limit=200"),
   settings: () => api.get<ServerSettings>("/api/admin/settings"),
   saveSettings: (changes: Partial<ServerSettings>) => api.patch<ServerSettings>("/api/admin/settings", changes),
+  agents: () => api.get<AgentsView>("/api/admin/agents"),
+  saveAgents: (agents: AgentsSettings) => api.put<AgentsView>("/api/admin/agents", agents),
 };

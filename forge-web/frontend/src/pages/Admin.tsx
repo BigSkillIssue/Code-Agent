@@ -6,6 +6,7 @@ import { type FormEvent, useCallback, useState } from "react";
 import { type Account, admin, type Grant } from "../api/account";
 import { t, type TextKey } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { AgentsTab } from "./AdminAgents";
 import { AppleTab } from "./AdminApple";
 import { BillingTab } from "./AdminBilling";
 import { CustomersTab } from "./AdminCustomers";
@@ -14,7 +15,7 @@ import { AuditTab, ServerKeysTab, ServerSettingsTab, UsageTab } from "./AdminSer
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 import { Select } from "../components/Select";
 
-const TABS = ["users", "invites", "serverKeys", "usage", "serverSettings", "appleBuilds", "hostingTab", "billingTab", "customersTab", "auditLog"] as const;
+const TABS = ["users", "invites", "serverKeys", "usage", "serverSettings", "agentsTab", "appleBuilds", "hostingTab", "billingTab", "customersTab", "auditLog"] as const;
 type Tab = (typeof TABS)[number];
 const STATUS: Record<Account["status"], TextKey> = {
   active: "statusActive",
@@ -50,6 +51,7 @@ export function AdminPage() {
         {tab === "serverKeys" && <ServerKeysTab />}
         {tab === "usage" && <UsageTab />}
         {tab === "serverSettings" && <ServerSettingsTab />}
+        {tab === "agentsTab" && <AgentsTab />}
         {tab === "appleBuilds" && <AppleTab />}
         {tab === "hostingTab" && <HostingTab />}
         {tab === "billingTab" && <BillingTab />}

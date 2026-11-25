@@ -24,7 +24,8 @@ Work through `docs/STEPS.md` in order, record each step in `PROGRESS.md`, one co
    from `main` through `forge-web-sync` (`scripts/sync-core.sh`); when one breaks Forge Web, fix Forge Web.
 2. **Five packages, one direction.** `forge_sandbox` (runs inside a project's container) never imports
    `forge_web`. `forge_web` (the server) imports only the shared wire modules of the sandbox package —
-   `frames`, `protocol`, `methods`, `mux`, `rpc`, `streams`, `fingerprint` — never the daemon, its services or
+   `frames`, `protocol`, `methods`, `mux`, `rpc`, `streams`, `fingerprint`, and `prompts` (data only: the
+   built-in agents, W53) — never the daemon, its services or
    the worker. `forge_macworker` (runs on a Mac that builds Apple apps) imports neither of them; the server
    imports only its `wire` module. `forge_hostworker` (runs on a Linux host and runs the hosted apps, W25)
    imports none of them and not even Forge (the host stays small); the server imports only its `wire`

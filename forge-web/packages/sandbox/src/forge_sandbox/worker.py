@@ -35,6 +35,7 @@ from forge.runtime.attachments import Attachment
 from forge.wiring import close_session, install_fake, open_session
 from pydantic import ValidationError
 
+from forge_sandbox.agents import write_agent_files
 from forge_sandbox.apple_remote import RemoteAppleBuilder
 from forge_sandbox.history import ChatState, Turn
 from forge_sandbox.methods import ChatOptions
@@ -119,6 +120,7 @@ class ChatWorker:
     async def start(self) -> None:
         """Open (or reopen) the chat's Forge session; its events go to the daemon as they happen."""
         cfg = build_config(self.root, self.options)
+        write_agent_files(self.home, self.options.agents)
         store = SqliteStore(self.home / "forge.db")
         session = None
         if self.state.session_id:

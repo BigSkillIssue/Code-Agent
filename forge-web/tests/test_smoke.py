@@ -49,8 +49,9 @@ async def test_health(settings: WebSettings) -> None:
 
 
 def test_the_server_imports_only_the_sandboxs_shared_modules() -> None:
-    # AGENTS.md rule 2: never the daemon, its services or the worker.
-    shared = {"frames", "protocol", "methods", "mux", "rpc", "streams", "fingerprint"}
+    # AGENTS.md rule 2: never the daemon, its services or the worker (prompts is data: the
+    # built-in agents the admin page shows and edits, W53).
+    shared = {"frames", "protocol", "methods", "mux", "rpc", "streams", "fingerprint", "prompts"}
     server = Path(__file__).parents[1] / "packages" / "server" / "src"
     pattern = re.compile(r"^(?:from|import) forge_sandbox\.(\w+)", re.MULTILINE)
     used = {name for f in server.rglob("*.py") for name in pattern.findall(text(f))}

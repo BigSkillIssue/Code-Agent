@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from forge_web.admin_api import load_saved_settings
+from forge_web.agents_setup import chat_agents, load_saved_agents
 from forge_web.apple.jobs import AppleJobs
 from forge_web.apple.release import Releases
 from forge_web.apple.sandbox_api import apple_routes
@@ -61,14 +62,17 @@ def make_driver(settings: WebSettings) -> ContainerDriver:
     return DockerDriver(settings.sandbox, egress_port=egress)
 
 
-def chat_options(settings: WebSettings) -> Any:
-    """A function giving the worker options of a chat (with its project's gateway port)."""
+def chat_options(settings: WebSettings, entitlements: EntitlementEngine | None = None) -> Any:
+    """A function giving the worker options of a chat (with its project's gateway port and the
+    agents and models the admin set for its owner's plan, W53)."""
     script = fake_script(settings.dev.fake_script) if settings.dev.fake else None
     sandbox_mode = "workspace-write" if settings.sandbox.isolation == "local" else "full-access"
 
-    def options_for(chat: Chat, link: dict[str, Any]) -> dict[str, Any]:
+    async def options_for(chat: Chat, link: dict[str, Any]) -> dict[str, Any]:
         options: dict[str, Any] = {"mode": chat.mode, "sandbox_mode": sandbox_mode}
-        if chat.model:
+        if entitlements is not None:
+            options.update(await chat_agents(settings, entitlements, chat.project_id))
+        if chat.model and settings.agents.user_model_choice:
             options["model"] = chat.model
         if chat.effort != "auto":
             options["effort"] = chat.effort
@@ -80,7 +84,9 @@ def chat_options(settings: WebSettings) -> Any:
                 options.update(apple_url=base, apple_token_env=TOKEN_ENV, apple_review=True,
                                apple_max_mb=settings.apple.max_source_mb)  # fmt: skip
                 if settings.apple.reviewer_model:  # its own model: it should not share blind spots
-                    options["roles"] = {"apple_reviewer": [settings.apple.reviewer_model]}
+                    options.setdefault("roles", {})["apple_reviewer"] = [
+                        settings.apple.reviewer_model
+                    ]
         if link.get("app"):  # a full-stack product: reviewed before it may go live (S67b)
             options["app_review"] = True
         if script is not None:
@@ -115,6 +121,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     db = Database(settings.database_url())
     await db.migrate()
     await load_saved_settings(db, settings)  # what admins changed in the web UI
+    await load_saved_agents(db, settings)
     writer = EventWriter(db)
     writer.start()
     vault = Vault(load_master_key(settings.data_dir))
@@ -140,7 +147,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
 
     hub = Hub()
     runs = RunManager(
-        db, writer, chosen, hub, chat_options(settings), targets_for,
+        db, writer, chosen, hub, chat_options(settings, entitlements), targets_for,
         env_for=lambda chat: {TOKEN_ENV: gateway.token_for(chat)},
         on_link=link_setup(settings, docker, db), run_seconds=settings.gateway.run_minutes * 60,
         max_log_bytes=settings.quotas.chat_log_mb * 1024 * 1024,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, FastAPI
 
 from forge_web import __version__
 from forge_web.admin_api import admin_api_router
+from forge_web.agents_setup import agents_router
 from forge_web.apple.admin import apple_admin_router
 from forge_web.apple.approvals import approvals_router
 from forge_web.apple.asc_keys import asc_key_routes
@@ -81,7 +82,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     )  # fmt: skip
     routers = (
         health_router(), auth_router(), second_factor_router(), oauth_router(), admin_router(),
-        admin_api_router(), settings_router(), dev_router(),
+        admin_api_router(), agents_router(), settings_router(), dev_router(),
         projects_router(), members_router(), chats_router(), attachments_router(),
         files_router(), git_router(),
         sources_router(), terminals_router(), preview_router(), preview_hosts_router(),

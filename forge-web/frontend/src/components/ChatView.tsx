@@ -98,6 +98,7 @@ export function ChatView({ chat }: { chat: Chat }) {
   const findFiles = useCallback((query: string) => searchFiles(chat.project_id, query), [searchFiles, chat.project_id]);
   const running = chat.state === "running" || chat.state === "waiting";
   const project = useStore((s) => s.projects.find((p) => p.id === chat.project_id));
+  const modelChoice = useStore((s) => s.user?.model_choice !== false);
   const [panel, setPanel] = useState(storedPanel);
   const turns = useTurnCounter(chat.state);
   const preview = usePreviewPane(chat.project_id, running, turns);
@@ -141,7 +142,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             onChange={(mode) => void guard(() => updateChat(chat, { mode }))}
             options={MODES}
           />
-          <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />
+          {modelChoice && <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />}
           <Select
             compact
             ariaLabel={t("effort")}

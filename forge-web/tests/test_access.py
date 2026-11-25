@@ -88,6 +88,7 @@ OWNER_READS = {
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
+    "AgentsSettings": {"user_model_choice": False},
     "InviteIn": {"email": "new@example.com"},
     "ProjectIn": {"name": "Mine"},
     "ProjectPatch": {"name": "Taken over"},

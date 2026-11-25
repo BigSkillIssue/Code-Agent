@@ -80,11 +80,11 @@ def test_product_names_and_titles_come_from_project_names() -> None:
     assert len(product_title("y" * 90)) == 60
 
 
-def test_app_chats_are_reviewed_before_they_may_go_live(tmp_path: Path) -> None:
+async def test_app_chats_are_reviewed_before_they_may_go_live(tmp_path: Path) -> None:
     options_for = chat_options(dev_settings(tmp_path))
     chat = SimpleNamespace(mode="edits", model="", effort="auto")
-    assert options_for(chat, {"gateway_port": 47101, "app": True})["app_review"] is True
-    assert "app_review" not in options_for(chat, {"gateway_port": 47101, "app": False})
+    assert (await options_for(chat, {"gateway_port": 47101, "app": True}))["app_review"] is True
+    assert "app_review" not in await options_for(chat, {"gateway_port": 47101, "app": False})
     overrides = config_overrides(ChatOptions(app_review=True, model="openai/gpt-5"))
     assert overrides["app.review"] is True
     assert overrides["roles"]["release_reviewer"] == ["openai/gpt-5"]

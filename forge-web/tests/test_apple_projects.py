@@ -76,19 +76,19 @@ def test_app_names_come_from_project_names() -> None:
     assert len(app_name("x" * 80)) == 30
 
 
-def test_apple_chats_build_on_macs_with_the_guidelines_checked(tmp_path: Path) -> None:
+async def test_apple_chats_build_on_macs_with_the_guidelines_checked(tmp_path: Path) -> None:
     settings = dev_settings(tmp_path)
     chat = SimpleNamespace(mode="edits", model="", effort="auto")
     options_for = chat_options(settings)
     link = {"gateway_port": 47101, "apple": True}
-    assert "apple_url" not in options_for(chat, link)  # Apple builds are off on this server
+    assert "apple_url" not in await options_for(chat, link)  # Apple builds are off on this server
     settings.apple.enabled = True
-    options = options_for(chat, link)
+    options = await options_for(chat, link)
     assert options["apple_url"] == "http://127.0.0.1:47101" and options["apple_review"] is True
     assert "roles" not in options
     settings.apple.reviewer_model = "openai/gpt-5"
-    assert options_for(chat, link)["roles"] == {"apple_reviewer": ["openai/gpt-5"]}
-    assert "apple_url" not in options_for(chat, {"gateway_port": 47101, "apple": False})
+    assert (await options_for(chat, link))["roles"] == {"apple_reviewer": ["openai/gpt-5"]}
+    assert "apple_url" not in await options_for(chat, {"gateway_port": 47101, "apple": False})
     assert "developer.apple.com" in DEFAULT_EGRESS  # the reviewer reads Apple's guidelines
 
 

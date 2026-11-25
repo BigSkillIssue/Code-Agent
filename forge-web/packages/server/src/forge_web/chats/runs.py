@@ -7,6 +7,7 @@ browsers watching the chat. The chat's state (idle, running, waiting) follows fr
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import time
@@ -41,7 +42,8 @@ MAX_PENDING = 50  # open requests
 # Stored history: one item at most (Forge's own items are far smaller), and per project at most
 # what the quota allows, so a sandbox cannot fill the server's disk with made-up items.
 MAX_STORED_ITEM = 512 * 1024
-ChatOptionsFor = Callable[[Chat, dict[str, Any]], dict[str, Any]]  # chat, link info -> options
+# chat, link info -> options (or a coroutine giving them)
+ChatOptionsFor = Callable[[Chat, dict[str, Any]], dict[str, Any] | Awaitable[dict[str, Any]]]
 ChatEnvFor = Callable[[Chat], dict[str, str]]
 TargetsFor = Callable[[str], dict[str, ForwardTarget]]
 OnLink = Callable[[str, SandboxClient], Awaitable[dict[str, Any]]]
@@ -232,7 +234,8 @@ class RunManager:
             if live.boot != boot:  # the daemon restarted: its numbers start again at 1
                 live.boot, live.dseq = boot, 0
                 await self._save(live.chat_id, daemon_boot=boot)
-            options = self.options_for(chat, self.link_info.get(chat.project_id, {}))
+            found = self.options_for(chat, self.link_info.get(chat.project_id, {}))
+            options = await found if inspect.isawaitable(found) else found
             env = self.env_for(chat)
             wanted = json.dumps([options, env], sort_keys=True)
             following = live.relay is not None and not live.relay.done()

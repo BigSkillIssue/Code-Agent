@@ -19,6 +19,7 @@ def user_view(user: User, services: Services | None = None) -> dict[str, Any]:
         "two_factor_required": required and user.role == "admin" and not user.totp_enabled,
         "apple_apps": services is not None and services.settings.apple.allows(user.role,
                                                                               user.apple_allowed),
+        "model_choice": services is None or services.settings.agents.user_model_choice,
         "project_sources": [] if services is None
                            else allowed_sources(services.settings, user.role == "admin"),
     }  # fmt: skip

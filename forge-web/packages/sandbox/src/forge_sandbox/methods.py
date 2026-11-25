@@ -227,6 +227,18 @@ MAX_ATTACHMENTS = 10  # files with one message, as Forge allows
 ChatMode = Literal["ask", "edits", "auto"]
 
 
+class AgentSpec(Params):
+    """An agent Forge's lead may use (W53): written as a Forge agent file into the sandbox."""
+
+    name: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    description: str = Field(default="", max_length=300)
+    prompt: str = Field(min_length=1, max_length=20_000)
+    tools: list[str] = Field(default_factory=list, max_length=60)
+    models: list[str] = Field(default_factory=list, max_length=8)
+    policy: Literal["required", "recommended"] = "recommended"
+    applies_to: Literal["always", "product", "ui"] = "always"
+
+
 class ChatOptions(Params):
     """How a chat's worker runs Forge: approvals, models, endpoints, limits."""
 
@@ -234,6 +246,7 @@ class ChatOptions(Params):
     model: str | None = None  # "provider/model" for every role
     effort: Effort = "auto"  # how hard reasoning models think (Forge S74); auto: their default
     roles: dict[str, list[str]] = Field(default_factory=dict)  # per-role fallback chains
+    agents: list[AgentSpec] = Field(default_factory=list, max_length=40)  # the admin's (W53)
     providers: dict[str, dict[str, Any]] = Field(default_factory=dict)  # name -> ProviderConfig
     sandbox_mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
     max_cost_usd: float | None = Field(default=None, ge=0)
