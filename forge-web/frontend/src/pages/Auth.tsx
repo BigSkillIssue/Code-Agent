@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import { ProviderButton } from "../components/ProviderButton";
 import { localError } from "../lib/errors";
 import { t } from "../lib/i18n";
 
@@ -10,7 +11,7 @@ export interface AuthConfig {
   setup_needed: boolean;
   passwords: boolean;
   signup: "invite" | "approval" | "open";
-  providers: { name: string; label: string }[];
+  providers: { name: string; label: string; kind?: string }[];
   mail: boolean;
   dev: boolean;
 }
@@ -19,23 +20,32 @@ function hashToken(): string {
   return new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
 }
 
+/** Every sign-in page: Forge's name set wide beside the temper band, the form on its own. */
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-4 rounded-xl border border-line bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {children}
-      </div>
+    <div className="flex min-h-full flex-col md:flex-row">
+      <aside className="relative flex shrink-0 flex-col justify-end gap-3 overflow-hidden bg-panel px-6 pt-8 pb-6 md:w-[44%] md:px-12 md:pb-14">
+        <div className="temper-band temper-reveal absolute inset-x-0 top-0 h-1.5 md:hidden" aria-hidden="true" />
+        <div className="temper-band-vertical absolute inset-y-0 left-0 hidden w-2 md:block" aria-hidden="true" />
+        <p className="text-[56px] leading-none font-extrabold tracking-[-0.03em] [font-stretch:125%] md:text-[112px]">Forge</p>
+        <p className="max-w-[34ch] text-base text-muted md:text-lg">{t("authTagline")}</p>
+      </aside>
+      <main className="flex flex-1 items-start justify-center px-6 py-8 md:items-center md:py-12">
+        <div className="w-full max-w-[380px] space-y-5">
+          <h1 className="text-2xl">{title}</h1>
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
 
 function Field(props: { label: string; type?: string; value: string; onChange: (v: string) => void; auto?: string }) {
   return (
-    <label className="block space-y-1 text-sm">
-      <span className="text-muted">{props.label}</span>
+    <label className="block space-y-1.5 text-sm">
+      <span className="font-medium">{props.label}</span>
       <input
-        className="w-full rounded-md border border-line bg-bg px-3 py-2"
+        className="h-11 w-full rounded-md border border-line bg-card px-3 text-[15px] focus:border-accent focus:outline-none"
         type={props.type ?? "text"}
         autoComplete={props.auto}
         value={props.value}
@@ -65,7 +75,7 @@ function useSubmit(work: () => Promise<void>) {
 
 function Submit({ busy, label }: { busy: boolean; label: string }) {
   return (
-    <button type="submit" disabled={busy} className="w-full rounded-md bg-accent py-2 font-medium text-on-accent disabled:opacity-50">
+    <button type="submit" disabled={busy} className="h-11 w-full rounded-md bg-accent font-medium text-on-accent hover:opacity-90 disabled:opacity-50">
       {label}
     </button>
   );
@@ -118,17 +128,19 @@ function providerUrl(name: string, invite: string): string {
 function ProviderButtons({ config, invite = "" }: { config: AuthConfig; invite?: string }) {
   if (config.providers.length === 0) return null;
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {config.providers.map((provider) => (
-        <a
-          key={provider.name}
-          href={providerUrl(provider.name, invite)}
-          className="block w-full rounded-md border border-line py-2 text-center font-medium hover:bg-panel"
-        >
+        <ProviderButton key={provider.name} kind={provider.kind} href={providerUrl(provider.name, invite)}>
           {t("continueWith")} {provider.label}
-        </a>
+        </ProviderButton>
       ))}
-      {config.passwords && <div className="text-center text-xs text-muted">{t("or")}</div>}
+      {config.passwords && (
+        <div className="flex items-center gap-3 pt-1 text-sm text-muted" role="separator">
+          <span className="h-px flex-1 bg-line" />
+          {t("or")}
+          <span className="h-px flex-1 bg-line" />
+        </div>
+      )}
     </div>
   );
 }

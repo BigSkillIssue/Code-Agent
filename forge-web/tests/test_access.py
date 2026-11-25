@@ -29,7 +29,8 @@ PUBLIC = {
     "GET /api/auth/invite/{token}", "POST /api/auth/setup", "POST /api/auth/login",
     "POST /api/auth/signup", "POST /api/auth/reset", "POST /api/auth/forgot",
     "POST /api/auth/verify", "GET /api/auth/oauth/{name}/start",
-    "GET /api/auth/oauth/{name}/callback", "POST /api/auth/totp/verify",
+    "GET /api/auth/oauth/{name}/callback", "POST /api/auth/oauth/{name}/callback",
+    "POST /api/auth/totp/verify",
     "GET /api/preview/allowed-host",
     # The legal pages of hosted apps, which every visitor of an app sees through its edge.
     "GET /legal/{app}/impressum", "GET /legal/{app}/datenschutz", "GET /legal/{app}/melden",

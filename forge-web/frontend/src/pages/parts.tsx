@@ -6,10 +6,10 @@ import { useStore } from "../state/store";
 
 export function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {
   return (
-    <section className="rounded-lg border border-line bg-card p-4">
-      <h2 className="font-semibold">{title}</h2>
-      {hint && <p className="mt-0.5 text-sm text-muted">{hint}</p>}
-      <div className="mt-3 space-y-3 text-sm">{children}</div>
+    <section className="border-t border-line py-6 first-of-type:border-t-0 first-of-type:pt-2">
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {hint && <p className="mt-1 max-w-[70ch] text-sm text-muted">{hint}</p>}
+      <div className="mt-4 space-y-3 text-sm">{children}</div>
     </section>
   );
 }
@@ -24,9 +24,9 @@ export function TextInput(props: {
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-muted">{props.label}</span>
+      <span className="mb-1.5 block text-sm font-medium">{props.label}</span>
       <input
-        className="w-full rounded-md border border-line bg-bg px-2 py-1.5"
+        className="h-9 w-full rounded-md border border-line bg-card px-2.5 focus:border-accent focus:outline-none"
         type={props.type ?? "text"}
         value={props.value}
         placeholder={props.placeholder}
@@ -46,9 +46,9 @@ export function Button(props: {
   title?: string;
 }) {
   const look = {
-    primary: "bg-accent text-on-accent",
-    plain: "border border-line",
-    danger: "border border-bad text-bad",
+    primary: "bg-accent font-medium text-on-accent hover:opacity-90",
+    plain: "border border-line bg-card hover:bg-panel",
+    danger: "border border-bad text-bad hover:bg-bad hover:text-white",
   }[props.kind ?? "plain"];
   return (
     <button
@@ -56,7 +56,7 @@ export function Button(props: {
       title={props.title}
       disabled={props.disabled}
       onClick={props.onClick}
-      className={`rounded-md px-3 py-1.5 text-sm disabled:opacity-50 ${look}`}
+      className={`h-9 rounded-md px-3.5 text-sm transition-colors disabled:opacity-50 ${look}`}
     >
       {props.children}
     </button>

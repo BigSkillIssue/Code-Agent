@@ -1,9 +1,12 @@
-"""Signing in with Google, GitHub or another OpenID Connect provider: the browser's side.
+"""Signing in with Google, GitHub, Apple, Facebook or another OpenID Connect provider: the
+browser's side.
 
 `/start` remembers the attempt in a signed, HttpOnly cookie (state, PKCE verifier, nonce, where
 to go afterwards) and sends the browser to the provider; `/callback` accepts only the answer to
-that same attempt in that same browser. A provider account is linked to an existing Forge
-account only through an email the provider has verified, or by a signed-in user on purpose.
+that same attempt in that same browser. Apple posts its answer from its own site, which carries
+no SameSite=Lax cookie, so that POST only turns into the same GET (see `apple_post`). A provider
+account is linked to an existing Forge account only through an email the provider has verified, or
+by a signed-in user on purpose.
 """
 
 import base64
@@ -12,9 +15,9 @@ import secrets
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, select
 
@@ -23,6 +26,7 @@ from forge_web.auth.accounts import refuse_inactive
 from forge_web.auth.git_credentials import save_credential
 from forge_web.auth.oauth_providers import Identity as ProviderIdentity
 from forge_web.auth.oauth_providers import Provider, ProviderError, pkce_pair
+from forge_web.auth.oauth_social import apple_name
 from forge_web.auth.routes import find_user, new_account
 from forge_web.auth.second_factor import finish_sign_in
 from forge_web.auth.sessions import (
@@ -147,10 +151,25 @@ def flow_routes(router: APIRouter) -> None:
         )  # fmt: skip
         return response
 
+    @router.post("/oauth/{name}/callback")
+    async def apple_post(
+        name: str,
+        code: str = Form("", max_length=2000),
+        state: str = Form("", max_length=200),
+        error: str = Form("", max_length=200),
+        user: str = Form("", max_length=2000),
+    ) -> Response:
+        # Changes nothing: the GET checks the answer against the flow cookie, which the browser
+        # sends again because this redirect is a top-level navigation on our own site.
+        query = {"code": code, "state": state, "error": error, "name": apple_name(user)}
+        target = f"{FLOW_PATH}/{quote(name, safe='')}/callback?{urlencode(query)}"
+        return RedirectResponse(target, status_code=303)
+
     @router.get("/oauth/{name}/callback")
     async def callback(
-        name: str, request: Request, code: str = "", state: str = "", error: str = ""
-    ) -> Response:
+        name: str, request: Request, code: str = "", state: str = "", error: str = "",
+        name_hint: str = Query("", alias="name", max_length=200),
+    ) -> Response:  # fmt: skip
         services = services_of(request)
         flow = unseal(flow_key(services), request.cookies.get(FLOW_COOKIE))
         provider = services.sign_in.providers.get(name)
@@ -166,7 +185,7 @@ def flow_routes(router: APIRouter) -> None:
         if not services.limits.oauth_by_ip.allow(client_ip(request)):
             return failed("too many attempts; try again later", flow)
         try:
-            return await finish(request, services, provider, flow, code)
+            return await finish(request, services, provider, flow, code, name_hint)
         except ProviderError as err:
             return failed(str(err), flow)
         except HTTPException as err:
@@ -174,8 +193,9 @@ def flow_routes(router: APIRouter) -> None:
 
 
 async def finish(
-    request: Request, services: Services, provider: Provider, flow: Flow, code: str
-) -> Response:
+    request: Request, services: Services, provider: Provider, flow: Flow, code: str,
+    name_hint: str = "",
+) -> Response:  # fmt: skip
     """Trade the code, find out who it is, and sign in, link or store the repository grant."""
     http = services.sign_in.http
     endpoints = await provider.endpoints(http)
@@ -183,6 +203,8 @@ async def finish(
         http, endpoints, code, redirect_uri(services, provider.name), flow.verifier
     )
     identity = await provider.identity(http, endpoints, tokens, flow.nonce)
+    if not identity.name and provider.kind == "apple":
+        identity.name = name_hint  # Apple names the user only in its first answer
     response = RedirectResponse(flow.next, status_code=302)
     response.delete_cookie(FLOW_COOKIE, path=FLOW_PATH)
     ip = client_ip(request)

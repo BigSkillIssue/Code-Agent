@@ -49,7 +49,7 @@ export function BillingPage() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-8" data-testid="billing">
-        <h1 className="text-xl font-semibold">{t("billingTitle")}</h1>
+        <h1 className="text-2xl md:text-3xl">{t("billingTitle")}</h1>
         {query.get("paid") && <p className="rounded-md border border-ok p-3 text-sm">{t("orderPaid")}</p>}
         {query.get("cancelled") && <p className="rounded-md border border-line p-3 text-sm">{t("orderCancelled")}</p>}
         {mine && !mine.enabled && <p className="text-muted">{t("billingOff")}</p>}

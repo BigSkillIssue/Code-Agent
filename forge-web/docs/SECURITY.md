@@ -160,6 +160,11 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 - Sessions are random tokens stored hashed in the database, in an `HttpOnly`, `Secure`, `SameSite=Lax`
   `__Host-` cookie on HTTPS. Every changing request needs the CSRF header that matches the session;
   WebSockets check the `Origin` header.
+- Changing `/api` requests from other sites are refused, with one exception: Sign in with Apple posts
+  its answer from `https://appleid.apple.com` to `/api/auth/oauth/<name>/callback`. That handler
+  changes nothing; it redirects to the same callback as a GET, which accepts only the attempt named
+  in this browser's signed flow cookie (state and nonce), as for every other provider. Apple and
+  Facebook take no PKCE; their code is bound by the client secret (Apple's a fresh ES256 JWT).
 - Open sockets are checked again every 30 seconds (`live_access.py`): a terminal closes when its user
   loses the editor role, and `/api/ws` closes when the session ends or stops delivering chats the user
   may no longer read.

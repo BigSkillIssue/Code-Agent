@@ -167,7 +167,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
       )}
 
       <section className="px-2 py-2">
-        <h3 className="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{t("staged")}</h3>
+        <h3 className="mb-1 text-sm font-medium text-muted">{t("staged")}</h3>
         <ul>
           {staged.map((file) => (
             <FileRow key={`s-${file.path}`} file={file} code={file.index} selected={selected(file, true)} onSelect={() => void show(file, true)}>
@@ -180,7 +180,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
           ))}
         </ul>
         <div className="mt-3 mb-1 flex items-center">
-          <h3 className="flex-1 text-xs font-medium tracking-wide text-muted uppercase">{t("unstagedChanges")}</h3>
+          <h3 className="flex-1 text-sm font-medium text-muted">{t("unstagedChanges")}</h3>
           {canEdit && unstaged.length > 0 && (
             <button type="button" className="text-xs text-accent" disabled={busy} onClick={() => void act(() => api.stage(["."]))}>
               {t("stageAll")}
@@ -250,7 +250,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
       )}
 
       <details className="border-t border-line px-2 py-2">
-        <summary className="cursor-pointer text-xs font-medium tracking-wide text-muted uppercase">{t("history")}</summary>
+        <summary className="cursor-pointer text-sm font-medium text-muted">{t("history")}</summary>
         <ul className="mt-1 space-y-1">
           {commits.map((c) => (
             <li key={c.commit} className="text-xs">

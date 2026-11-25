@@ -11,6 +11,7 @@ import { BillingLink } from "./Billing";
 import { Button, Section, TextInput, useAction, useLoaded } from "./parts";
 import { GitSection, KeysSection, SessionsSection, UsageSection } from "./SettingsAccess";
 import { AppStoreSection } from "./SettingsAppStore";
+import { ProviderMark } from "../components/ProviderButton";
 import { Select } from "../components/Select";
 
 export function SettingsPage() {
@@ -19,8 +20,8 @@ export function SettingsPage() {
   if (!me) return null;
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-8" data-testid="settings">
-        <h1 className="text-xl font-semibold">{t("settings")}</h1>
+      <div className="mx-auto max-w-3xl p-4 md:p-10" data-testid="settings">
+        <h1 className="mb-6 text-2xl md:text-3xl">{t("settings")}</h1>
         {me.two_factor_required && (
           <p className="rounded-md border border-warn p-3 text-sm" role="alert">
             {t("twoFactorRequired")}
@@ -180,7 +181,7 @@ function TwoFactorSection({ me, onChanged }: { me: Me; onChanged: () => Promise<
   );
 }
 
-function IdentitiesSection({ providers }: { providers: { name: string; label: string }[] }) {
+function IdentitiesSection({ providers }: { providers: AuthConfig["providers"] }) {
   const [linked, reload] = useLoaded(useCallback(() => account.identities(), []));
   const act = useAction();
   if (providers.length === 0 && !linked?.length) return null;
@@ -189,7 +190,8 @@ function IdentitiesSection({ providers }: { providers: { name: string; label: st
     <Section title={t("linkedSignIns")}>
       <ul className="space-y-2">
         {(linked ?? []).map((identity) => (
-          <li key={identity.provider} className="flex items-center gap-2">
+          <li key={identity.provider} className="flex items-center gap-2.5">
+            <ProviderMark kind={providers.find((p) => p.name === identity.provider)?.kind} />
             <span className="flex-1">
               {identity.label} <span className="text-muted">{identity.email || identity.username}</span>
             </span>
@@ -201,9 +203,10 @@ function IdentitiesSection({ providers }: { providers: { name: string; label: st
         {unlinked.map((p) => (
           <a
             key={p.name}
-            className="rounded-md border border-line px-3 py-1.5"
+            className="flex h-9 items-center gap-2 rounded-md border border-line bg-card px-3.5 hover:bg-panel"
             href={`/api/auth/oauth/${encodeURIComponent(p.name)}/start?intent=link&next=/settings`}
           >
+            <ProviderMark kind={p.kind} />
             {t("linkProvider", { name: p.label })}
           </a>
         ))}

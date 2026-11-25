@@ -2,8 +2,9 @@
 
 Google and other OpenID Connect issuers send an ID token; it comes straight from the issuer's
 token endpoint over TLS, so its claims are checked (issuer, audience, expiry, nonce) without
-checking its signature, as OpenID Connect Core 3.1.3.7 allows. GitHub has no ID token: the
-user and their verified primary email come from its API.
+checking its signature, as OpenID Connect Core 3.1.3.7 allows; Sign in with Apple works the same
+way, with a signed JWT as its client secret (`oauth_social`). GitHub and Facebook have no ID
+token: who signed in comes from their APIs.
 """
 
 import base64
@@ -19,11 +20,15 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 
+from forge_web.auth import oauth_social as social
 from forge_web.settings import ProviderSettings
 
 log = logging.getLogger(__name__)
 GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 CLOCK_SKEW = 120  # seconds an ID token's times may be off
+LABELS = {"google": "Google", "github": "GitHub", "apple": "Apple", "facebook": "Facebook"}
+SCOPES = {"github": ["read:user", "user:email"], "apple": ["name", "email"],
+          "facebook": ["email", "public_profile"]}  # fmt: skip
 
 
 class ProviderError(Exception):
@@ -111,12 +116,25 @@ class Provider:
         self.name = name
         self.settings = settings
         self.kind = settings.provider_kind(name)
-        self.label = settings.label or {"google": "Google", "github": "GitHub"}.get(
-            name, name.replace("-", " ").title()
-        )
+        self.label = settings.label or LABELS.get(name, name.replace("-", " ").title())
         self.client_id = settings.client_id
         self.secret = secret
         self._endpoints: Endpoints | None = None
+        # Apple's secret is its signing key; the client secret is made from it for each sign-in.
+        self.apple_key = social.load_apple_key(secret) if self.kind == "apple" else None
+
+    @property
+    def uses_pkce(self) -> bool:
+        """Whether the provider takes PKCE (Apple and Facebook rely on the client secret)."""
+        return self.kind not in ("apple", "facebook")
+
+    def client_secret(self) -> str:
+        """The client secret to send to the token endpoint now."""
+        if self.apple_key is None:
+            return self.secret
+        return social.apple_client_secret(
+            self.apple_key, self.settings.team_id, self.settings.key_id, self.client_id
+        )
 
     @property
     def github_api(self) -> str:
@@ -132,9 +150,7 @@ class Provider:
 
     def scopes(self, repos: bool = False) -> list[str]:
         """The scopes to ask for."""
-        base = {"github": ["read:user", "user:email"]}.get(
-            self.kind, ["openid", "email", "profile"]
-        )
+        base = SCOPES.get(self.kind, ["openid", "email", "profile"])
         if repos:
             base = [*base, "repo"]
         return [*base, *(s for s in self.settings.scopes if s not in base)]
@@ -149,6 +165,12 @@ class Provider:
                 "https://oauth2.googleapis.com/token",
                 GOOGLE_ISSUERS,
             )
+        elif self.kind == "apple":
+            self._endpoints = Endpoints(
+                social.APPLE_AUTHORIZE, social.APPLE_TOKEN, (social.APPLE_ISSUER,)
+            )
+        elif self.kind == "facebook":
+            self._endpoints = Endpoints(social.FACEBOOK_AUTHORIZE, social.FACEBOOK_TOKEN)
         elif self.kind == "github":
             web = self.settings.url.rstrip("/") or "https://github.com"
             self._endpoints = Endpoints(
@@ -180,15 +202,17 @@ class Provider:
             "response_type": "code",
             "client_id": self.client_id,
             "redirect_uri": redirect_uri,
-            "scope": " ".join(self.scopes(repos)),
+            "scope": ("," if self.kind == "facebook" else " ").join(self.scopes(repos)),
             "state": state,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
         }
-        if self.kind != "github":
+        if self.uses_pkce:
+            params |= {"code_challenge": challenge, "code_challenge_method": "S256"}
+        if self.kind not in ("github", "facebook"):
             params["nonce"] = nonce
         if self.kind == "google":
             params["prompt"] = "select_account"
+        if self.kind == "apple":  # asking for name and email makes Apple post its answer
+            params["response_mode"] = "form_post"
         return f"{endpoints.authorize}?{urlencode(params)}"
 
     async def exchange(self, http: httpx.AsyncClient, endpoints: Endpoints, code: str,
@@ -199,9 +223,10 @@ class Provider:
             "code": code,
             "redirect_uri": redirect_uri,
             "client_id": self.client_id,
-            "client_secret": self.secret,
-            "code_verifier": verifier,
+            "client_secret": self.client_secret(),
         }
+        if self.uses_pkce:
+            form["code_verifier"] = verifier
         data = await fetch_json(http, "POST", endpoints.token, data=form)
         if "error" in data or not data.get("access_token"):
             log.info("%s token exchange failed: %s", self.name, data.get("error"))
@@ -214,6 +239,8 @@ class Provider:
         """Who signed in."""
         if self.kind == "github":
             return await self._github_identity(http, tokens.access_token)
+        if self.kind == "facebook":
+            return await self._facebook_identity(http, tokens.access_token)
         if not tokens.id_token:
             raise ProviderError(f"{self.label} sent no ID token")
         claims = jwt_claims(tokens.id_token)
@@ -225,7 +252,7 @@ class Provider:
             if info.get("sub") == claims["sub"]:
                 claims = {**info, **claims, "email": info.get("email"),
                           "email_verified": info.get("email_verified")}  # fmt: skip
-        verified = truthy(claims.get("email_verified")) or (
+        verified = truthy(claims.get("email_verified")) or (  # Apple sends "true" as text
             self.kind == "oidc" and self.settings.trust_email and bool(claims.get("email"))
         )
         return Identity(
@@ -250,6 +277,20 @@ class Provider:
             username=str(user.get("login") or ""), avatar_url=str(user.get("avatar_url") or ""),
         )  # fmt: skip
 
+    async def _facebook_identity(self, http: httpx.AsyncClient, token: str) -> Identity:
+        url = f"{social.FACEBOOK_GRAPH}/me?{urlencode({'fields': social.FACEBOOK_FIELDS})}"
+        user = await fetch_json(http, "GET", url, token=token)
+        if not user.get("id") or "error" in user:
+            raise ProviderError("Facebook did not say who you are")
+        picture = user.get("picture", {})
+        avatar = picture.get("data", {}).get("url", "") if isinstance(picture, dict) else ""
+        email = str(user.get("email") or "").strip().lower()
+        return Identity(
+            provider=self.name, subject=str(user["id"]), email=email,
+            email_verified=bool(email) and self.settings.trust_email,
+            name=str(user.get("name") or ""), avatar_url=str(avatar or ""),
+        )  # fmt: skip
+
 
 async def fetch_json(http: httpx.AsyncClient, method: str, url: str, *, token: str = "",
                      data: dict[str, str] | None = None) -> dict[str, Any]:  # fmt: skip
@@ -272,6 +313,18 @@ async def fetch_json(http: httpx.AsyncClient, method: str, url: str, *, token: s
     return value
 
 
+def read_key_file(path: str) -> str:
+    """The text of a key file named in the settings ("" when none is named or it is missing)."""
+    if not path:
+        return ""
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as file:
+            return file.read()
+    except OSError as err:
+        log.warning("cannot read the key file %s: %s", path, err)
+        return ""
+
+
 def load_providers(configured: dict[str, ProviderSettings],
                    environ: dict[str, str] | None = None) -> dict[str, Provider]:  # fmt: skip
     """The providers whose client secret is set (the others are skipped with a warning)."""
@@ -281,14 +334,21 @@ def load_providers(configured: dict[str, ProviderSettings],
         variable = (
             settings.client_secret_env or f"FORGE_WEB_{name.upper().replace('-', '_')}_SECRET"
         )
-        secret = env.get(variable) or settings.client_secret
+        secret = env.get(variable) or settings.client_secret or read_key_file(settings.key_file)
         if not secret or not settings.client_id:
             log.warning("sign-in with %s is off: set its client secret in %s", name, variable)
             continue
-        if settings.provider_kind(name) == "oidc" and not settings.issuer:
+        kind = settings.provider_kind(name)
+        if kind == "oidc" and not settings.issuer:
             log.warning("sign-in with %s is off: it needs an issuer URL", name)
             continue
-        found[name] = Provider(name, settings, secret)
+        if kind == "apple" and not (settings.team_id and settings.key_id):
+            log.warning("sign-in with %s is off: it needs team_id and key_id", name)
+            continue
+        try:
+            found[name] = Provider(name, settings, secret)
+        except ValueError:
+            log.warning("sign-in with %s is off: its key is not a Sign in with Apple key", name)
     return found
 
 
@@ -301,7 +361,7 @@ class SignIn:
 
     def buttons(self) -> list[dict[str, str]]:
         """What the sign-in page shows."""
-        return [{"name": p.name, "label": p.label} for p in self.providers.values()]
+        return [{"name": p.name, "label": p.label, "kind": p.kind} for p in self.providers.values()]
 
     async def close(self) -> None:
         """Close the HTTP client."""

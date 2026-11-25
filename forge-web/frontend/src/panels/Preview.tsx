@@ -103,7 +103,7 @@ export function PreviewPanel({ api, canEdit, active, onError }: Props) {
     <div className="h-full overflow-y-auto p-3 text-sm" data-testid="preview">
       {!overview.enabled && <p className="mb-3 rounded border border-warn p-2 text-xs">{t("previewOff")}</p>}
       <Programs api={api} canEdit={canEdit} overview={overview} onChange={refresh} onError={onError} />
-      <h3 className="mt-4 mb-1 text-xs font-medium uppercase text-muted">{t("ports")}</h3>
+      <h3 className="mt-4 mb-1 text-sm font-medium text-muted">{t("ports")}</h3>
       {overview.app_port && <p className="mb-1 text-xs text-muted">{t("appPort", { port: String(overview.app_port) })}</p>}
       {overview.ports.length === 0 && <p className="text-xs text-muted">{t("noPorts")}</p>}
       <div className="flex flex-wrap gap-2">
@@ -158,7 +158,7 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
   const running = overview.programs.filter((p) => p.running);
   return (
     <section>
-      <h3 className="mb-1 text-xs font-medium uppercase text-muted">{t("devServer")}</h3>
+      <h3 className="mb-1 text-sm font-medium text-muted">{t("devServer")}</h3>
       {canEdit && (
         <>
           <div className="mb-2 flex flex-wrap gap-2">

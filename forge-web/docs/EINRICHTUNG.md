@@ -1,7 +1,7 @@
 # Forge Web einrichten – Schritt für Schritt
 
 Diese Anleitung bringt Forge Web auf einen eigenen Server, sodass du und andere sich im Browser
-anmelden (mit Google, GitHub oder E-Mail und Passwort) und mit Forge an Projekten arbeiten können.
+anmelden (mit Google, Apple, Facebook, GitHub oder E-Mail und Passwort) und mit Forge an Projekten arbeiten können.
 Jedes Projekt läuft in einem eigenen, abgeschotteten Docker-Container.
 
 Es gibt zwei Wege:
@@ -193,6 +193,56 @@ unter „Git-Zugang“ auf „GitHub für Repositories verbinden“ klicken. Git
 Berechtigung `repo` an. Der Schlüssel dafür bleibt verschlüsselt auf dem Server und gelangt nie in
 die Container der Projekte. Statt GitHub-Anmeldung geht auch ein persönliches Zugangs-Token
 („Fine-grained token“) im selben Abschnitt.
+
+### Mit Apple anmelden (optional)
+
+Dafür brauchst du ein Apple-Entwicklerkonto.
+
+1. Auf developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers**: eine
+   **App ID** mit der Fähigkeit „Sign in with Apple“ anlegen, dann eine **Services ID** (z. B.
+   `com.example.forge.signin`). Bei der Services ID „Sign in with Apple“ einschalten, die Domain
+   `forge.example.com` und die Return-URL
+   `https://forge.example.com/api/auth/oauth/apple/callback` eintragen.
+2. Unter **Keys** einen Schlüssel mit „Sign in with Apple“ anlegen und die Datei
+   `AuthKey_<KEY-ID>.p8` herunterladen (das geht nur einmal). Die **Team-ID** steht oben rechts.
+3. Die `.p8`-Datei neben `forge-web.toml` legen und in `forge-web.toml` eintragen:
+
+   ```toml
+   [auth.providers.apple]
+   client_id = "com.example.forge.signin"   # die Services ID
+   team_id = "ABCDE12345"
+   key_id = "XYZ987WVU6"
+   key_file = "/config/AuthKey_XYZ987WVU6.p8"
+   ```
+
+   Danach `docker compose up -d`. Forge Web bildet aus dem Schlüssel bei jeder Anmeldung ein
+   kurzlebiges Client-Geheimnis; der Schlüssel selbst verlässt den Server nie.
+
+Apple nennt den Namen nur bei der allerersten Anmeldung und erlaubt, die E-Mail-Adresse zu
+verbergen („E-Mail verbergen“); dann bekommt das Konto eine Weiterleitungsadresse von Apple.
+
+### Mit Facebook anmelden (optional)
+
+1. Auf developers.facebook.com → **Meine Apps** → **App erstellen** → Anwendungsfall „Personen
+   mit ihrem Facebook-Konto authentifizieren“. Unter **Facebook Login** → **Einstellungen** die
+   gültige OAuth-Weiterleitungs-URI `https://forge.example.com/api/auth/oauth/facebook/callback`
+   eintragen und die Berechtigung `email` hinzufügen.
+2. Unter **App-Einstellungen** → **Allgemeines** stehen **App-ID** und **App-Geheimcode**; dort
+   auch die Datenschutz-URL eintragen und die App auf **Live** stellen.
+3. In `forge-web.toml`:
+
+   ```toml
+   [auth.providers.facebook]
+   client_id = "1234567890"   # die App-ID
+   trust_email = true
+   ```
+
+   und in `.env`: `FACEBOOK_SECRET=...`. Danach `docker compose up -d`.
+
+Meta sagt nicht ausdrücklich, ob eine E-Mail-Adresse bestätigt ist. Mit `trust_email = true` zählt
+sie als bestätigt: Neue Konten entstehen dann auch über Facebook, und ein Konto, das bisher nur
+per Google oder Apple angemeldet war, wird über dieselbe Adresse verbunden. Ohne diese Zeile gehen
+nur Facebook-Konten, die jemand angemeldet in den Einstellungen verknüpft hat.
 
 Andere Anbieter (Microsoft Entra, GitLab, Keycloak …) gehen über OpenID Connect, siehe `README.md`.
 

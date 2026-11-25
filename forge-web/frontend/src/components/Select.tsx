@@ -102,7 +102,7 @@ export function Select<T extends string>(props: SelectProps<T>) {
   return (
     <div ref={box} className={`relative ${props.label ? "block" : "inline-block"} ${props.className ?? ""}`}>
       {props.label && (
-        <span id={`${id}-label`} className="mb-1 block text-xs text-muted">
+        <span id={`${id}-label`} className="mb-1.5 block text-sm font-medium">
           {props.label}
         </span>
       )}
@@ -119,7 +119,7 @@ export function Select<T extends string>(props: SelectProps<T>) {
         disabled={props.disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={keys}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-lg border border-line bg-card text-left shadow-sm transition-colors hover:border-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60 ${size}`}
+        className={`flex w-full min-w-0 items-center gap-2 rounded-md border border-line bg-card text-left transition-colors hover:border-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60 ${size}`}
       >
         {chosen?.icon && <span className="shrink-0 text-muted">{chosen.icon}</span>}
         <span className="min-w-0 flex-1 truncate">{chosen?.label ?? value}</span>

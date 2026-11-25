@@ -30,7 +30,11 @@ function ErrorBar() {
 }
 
 function Empty() {
-  return <div className="flex flex-1 items-center justify-center p-8 text-muted">{t("pickProject")}</div>;
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <p className="max-w-[28ch] text-2xl leading-snug font-semibold text-muted [font-stretch:112%]">{t("pickProject")}</p>
+    </div>
+  );
 }
 
 /** A project is its one chat (W44). */
@@ -78,7 +82,7 @@ function Shell() {
           <button type="button" aria-label={t("menu")} onClick={() => setMenu(true)}>
             <Menu className="size-5" />
           </button>
-          <span className="font-semibold">{t("appName")}</span>
+          <span className="text-lg font-extrabold tracking-[-0.02em] [font-stretch:125%]">{t("appName")}</span>
         </div>
         <div className="flex min-h-0 flex-1">
           <Outlet />

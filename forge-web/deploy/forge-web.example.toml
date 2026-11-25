@@ -17,6 +17,20 @@ admin_two_factor = true      # admins must use two-factor sign-in
 # [auth.providers.github]
 # client_id = "Ov23li..."                             # secret: GITHUB_SECRET in .env
 
+# Sign in with Apple: developer.apple.com -> Identifiers -> Services IDs, and a key with
+# "Sign in with Apple". Return URL: https://FORGE_DOMAIN/api/auth/oauth/apple/callback
+# [auth.providers.apple]
+# client_id = "com.example.forge.signin"   # the Services ID
+# team_id = "ABCDE12345"
+# key_id = "XYZ987WVU6"
+# key_file = "/config/AuthKey_XYZ987WVU6.p8"          # or APPLE_SECRET in .env
+
+# Facebook Login: developers.facebook.com -> My Apps -> Create App -> Facebook Login.
+# Valid OAuth redirect URI: https://FORGE_DOMAIN/api/auth/oauth/facebook/callback
+# [auth.providers.facebook]
+# client_id = "1234567890"                            # the App ID; secret: FACEBOOK_SECRET
+# trust_email = true    # Meta sends no "email verified" flag; without this, no new accounts
+
 [sandbox]
 cpus = 2.0
 memory = "4g"

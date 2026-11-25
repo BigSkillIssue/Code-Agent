@@ -177,9 +177,9 @@ def test_providers_without_a_secret_are_off() -> None:
 async def test_the_sign_in_page_lists_the_providers(server: LiveServer) -> None:
     async with WebClient(server) as web:
         providers = (await web.get("/api/auth/config")).json()["providers"]
-    assert providers == [{"name": "google", "label": "Google"},
-                         {"name": "github", "label": "GitHub"},
-                         {"name": "firma", "label": "Firmen-Login"}]  # fmt: skip
+    assert providers == [{"name": "google", "label": "Google", "kind": "google"},
+                         {"name": "github", "label": "GitHub", "kind": "github"},
+                         {"name": "firma", "label": "Firmen-Login", "kind": "oidc"}]  # fmt: skip
 
 
 async def test_google_creates_an_account_and_finds_it_again(

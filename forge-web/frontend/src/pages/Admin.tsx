@@ -29,8 +29,8 @@ export function AdminPage() {
   if (user?.role !== "admin") return <p className="p-8 text-muted">{t("adminsOnly")}</p>;
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-8" data-testid="admin">
-        <h1 className="text-xl font-semibold">{t("administration")}</h1>
+      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-10" data-testid="admin">
+        <h1 className="text-2xl md:text-3xl">{t("administration")}</h1>
         <div className="flex flex-wrap gap-1 border-b border-line" role="tablist">
           {TABS.map((id) => (
             <button
@@ -38,7 +38,7 @@ export function AdminPage() {
               type="button"
               role="tab"
               aria-selected={tab === id}
-              className={`px-3 py-2 text-sm ${tab === id ? "border-b-2 border-accent font-medium" : "text-muted"}`}
+              className={`-mb-px px-3 py-2 text-sm ${tab === id ? "border-b-2 border-accent font-medium" : "text-muted hover:text-fg"}`}
               onClick={() => setTab(id)}
             >
               {t(id)}

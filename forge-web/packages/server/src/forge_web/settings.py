@@ -142,22 +142,30 @@ class SmtpSettings(_Strict):
 
 
 class ProviderSettings(_Strict):
-    """A sign-in provider: Google, GitHub, or any OpenID Connect issuer (Microsoft, GitLab,
-    Keycloak, …). The client secret is read from `client_secret_env`, else `client_secret`."""
+    """A sign-in provider: Google, GitHub, Apple, Facebook, or any OpenID Connect issuer
+    (Microsoft, GitLab, Keycloak, …). The client secret is read from `client_secret_env`, else
+    `client_secret`; for Apple it is the Sign in with Apple key (.p8, PEM), which may also be read
+    from `key_file`."""
 
-    kind: Literal["google", "github", "oidc"] | None = None  # None: from the name, else oidc
+    kind: Literal["google", "github", "apple", "facebook", "oidc"] | None = None  # None: by name
     label: str = ""  # the button text; empty = from the name
-    client_id: str
+    client_id: str  # Apple: the Services ID; Facebook: the App ID
     client_secret_env: str = ""  # empty = FORGE_WEB_<NAME>_SECRET
     client_secret: str = ""
     issuer: str = ""  # oidc: the issuer URL (its /.well-known/openid-configuration is read)
     url: str = ""  # github: GitHub Enterprise's address; empty = github.com
     scopes: list[str] = []  # extra scopes
-    trust_email: bool = False  # oidc: the issuer checks emails but sends no email_verified
+    # oidc: the issuer checks emails but sends no email_verified; facebook: Meta's email counts
+    # as checked (Meta sends no such flag), so accounts may be joined and made by it.
+    trust_email: bool = False
+    team_id: str = ""  # apple: the developer team that owns the key
+    key_id: str = ""  # apple: the Sign in with Apple key's id
+    key_file: str = ""  # apple: the .p8 key file, when the secret is not in a variable
 
     def provider_kind(self, name: str) -> str:
-        """google, github or oidc."""
-        return self.kind or (name if name in ("google", "github") else "oidc")
+        """google, github, apple, facebook or oidc."""
+        known = ("google", "github", "apple", "facebook")
+        return self.kind or (name if name in known else "oidc")
 
 
 class AuthSettings(_Strict):

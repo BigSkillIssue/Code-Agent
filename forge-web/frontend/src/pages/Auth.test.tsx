@@ -37,6 +37,30 @@ describe("sign-in page", () => {
     expect(screen.getByText(/Firmen-Login$/)).toBeTruthy();
   });
 
+  it("shows Apple, Facebook and the others in their own style, with their mark", () => {
+    render(
+      <MemoryRouter>
+        <AuthPages
+          config={{
+            ...config,
+            providers: [
+              { name: "apple", label: "Apple", kind: "apple" },
+              { name: "facebook", label: "Facebook", kind: "facebook" },
+              { name: "firma", label: "Firmen-Login", kind: "oidc" },
+            ],
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const apple = screen.getByText(/Apple$/).closest("a")!;
+    const facebook = screen.getByText(/Facebook$/).closest("a")!;
+    expect(apple.getAttribute("href")).toBe("/api/auth/oauth/apple/start");
+    expect(apple.className).toContain("bg-black");
+    expect(facebook.className).toContain("bg-[#1877f2]");
+    expect(apple.querySelector("svg") && facebook.querySelector("svg")).toBeTruthy();
+    expect(screen.getByText(/Firmen-Login$/).closest("a")!.querySelector("svg")).toBeNull();
+  });
+
   it("shows why a provider sign-in failed, as text", () => {
     window.history.replaceState(null, "", "/?auth_error=%3Cb%3Eno%3C%2Fb%3E%20verified%20email");
     const { container } = show("/");
