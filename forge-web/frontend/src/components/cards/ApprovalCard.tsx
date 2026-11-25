@@ -55,7 +55,7 @@ export function ApprovalCard({ entry, onAnswer }: { entry: ApprovalEntry; onAnsw
   const resolution = entry.resolution;
   const isPlan = entry.call.name === "submit_plan";
   return (
-    <div className="rounded-lg border border-warn/60 bg-card p-3 text-sm" data-testid="approval">
+    <div className="rounded-lg border border-warn/70 bg-card p-4 text-sm shadow-[inset_3px_0_0_var(--warn)]" data-testid="approval">
       <div className="flex items-center gap-2 font-medium">
         <ShieldQuestion className="size-4 text-warn" />
         {isPlan ? t("planToApprove") : `${t("wantsTo")}: ${toolLabel(entry.call)}`}
@@ -83,7 +83,7 @@ export function ApprovalCard({ entry, onAnswer }: { entry: ApprovalEntry; onAnsw
       ) : (
         <div className="mt-3 space-y-2">
           <input
-            className="w-full rounded-md border border-line bg-bg px-2 py-1 text-sm"
+            className="h-9 w-full rounded-md border border-line bg-card px-2.5 text-sm focus:border-accent focus:outline-none"
             placeholder={t("feedback")}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -92,7 +92,7 @@ export function ApprovalCard({ entry, onAnswer }: { entry: ApprovalEntry; onAnsw
             <button
               type="button"
               disabled={busy}
-              className="rounded-md bg-accent px-3 py-1 font-medium text-on-accent disabled:opacity-50"
+              className="h-9 rounded-md bg-accent px-3.5 font-medium text-on-accent hover:opacity-90 disabled:opacity-50"
               onClick={() => answer(true)}
             >
               {isPlan ? t("approvePlan") : t("allow")}
@@ -101,7 +101,7 @@ export function ApprovalCard({ entry, onAnswer }: { entry: ApprovalEntry; onAnsw
               <button
                 type="button"
                 disabled={busy}
-                className="rounded-md border border-line px-3 py-1 disabled:opacity-50"
+                className="h-9 rounded-md border border-line bg-card px-3.5 hover:bg-panel disabled:opacity-50"
                 onClick={() => answer(true, true)}
               >
                 {t("allowAlways")}
@@ -110,7 +110,7 @@ export function ApprovalCard({ entry, onAnswer }: { entry: ApprovalEntry; onAnsw
             <button
               type="button"
               disabled={busy}
-              className="rounded-md border border-line px-3 py-1 text-bad disabled:opacity-50"
+              className="h-9 rounded-md border border-line bg-card px-3.5 text-bad hover:bg-panel disabled:opacity-50"
               onClick={() => answer(false)}
             >
               {isPlan ? t("rejectPlan") : t("deny")}

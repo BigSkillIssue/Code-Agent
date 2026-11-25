@@ -185,11 +185,11 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
             <input
               aria-label={t("ownCommand")}
               placeholder={t("ownCommand")}
-              className="min-w-0 flex-1 rounded border border-line bg-card px-2 py-1 font-mono text-xs"
+              className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
               value={command}
               onChange={(event) => setCommand(event.target.value)}
             />
-            <button type="submit" className="rounded border border-line px-2 py-1 text-xs">
+            <button type="submit" className="rounded-md border border-line bg-card px-2.5 py-1 text-xs hover:bg-panel">
               {t("startProgram")}
             </button>
           </form>
@@ -265,20 +265,20 @@ function PreviewFrame({ shown, onBack, onGo, onTab }: FrameProps) {
           onGo(path);
         }}
       >
-        <button type="button" title={t("back")} className="p-1 text-muted" onClick={onBack}>
+        <button type="button" title={t("back")} className="rounded-md p-1 text-muted hover:bg-panel hover:text-fg" onClick={onBack}>
           <ArrowLeft className="size-4" />
         </button>
         <span className="px-1 text-xs text-muted">:{shown.port}</span>
         <input
           aria-label={t("path")}
-          className="min-w-0 flex-1 rounded border border-line bg-card px-2 py-0.5 font-mono text-xs"
+          className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-0.5 font-mono text-xs focus:border-accent focus:outline-none"
           value={path}
           onChange={(event) => setPath(event.target.value)}
         />
-        <button type="submit" title={t("reloadPreview")} className="p-1 text-muted">
+        <button type="submit" title={t("reloadPreview")} className="rounded-md p-1 text-muted hover:bg-panel hover:text-fg">
           <RotateCw className="size-4" />
         </button>
-        <button type="button" title={t("openInTab")} className="p-1 text-muted" onClick={() => onTab(path)}>
+        <button type="button" title={t("openInTab")} className="rounded-md p-1 text-muted hover:bg-panel hover:text-fg" onClick={() => onTab(path)}>
           <ExternalLink className="size-4" />
         </button>
       </form>

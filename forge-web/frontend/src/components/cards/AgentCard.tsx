@@ -18,8 +18,8 @@ export function AgentCard({ entry, render }: { entry: AgentEntry; render: (entry
       <XCircle className="size-4 text-bad" />
     );
   return (
-    <div className="rounded-lg border border-line bg-card text-sm" data-testid="agent">
-      <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => setOpen(!open)}>
+    <div className="text-sm" data-testid="agent">
+      <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel" onClick={() => setOpen(!open)}>
         {icon}
         <Bot className="size-4 shrink-0 text-muted" />
         <span className="font-medium">
@@ -30,9 +30,9 @@ export function AgentCard({ entry, render }: { entry: AgentEntry; render: (entry
         {open ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
       </button>
       {open && (
-        <div className="space-y-3 border-t border-line px-3 py-3">
+        <div className="mt-1 ml-[15px] space-y-3 border-l-2 border-line py-1 pl-4">
           {entry.task && <p className="text-xs whitespace-pre-wrap text-muted">{entry.task}</p>}
-          <div className="space-y-3 border-l-2 border-line pl-3">{entry.entries.map((e) => <div key={e.key}>{render(e)}</div>)}</div>
+          <div className="space-y-3">{entry.entries.map((e) => <div key={e.key}>{render(e)}</div>)}</div>
           {entry.summary && (
             <pre className="max-h-48 overflow-auto rounded bg-code p-2 text-xs whitespace-pre-wrap">{entry.summary}</pre>
           )}

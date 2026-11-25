@@ -20,10 +20,10 @@ export function ToolCard({ entry }: { entry: ToolEntry }) {
     );
   const args = call.arguments as Record<string, string>;
   return (
-    <div className="rounded-lg border border-line bg-card text-sm">
+    <div className="text-sm">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-panel"
         onClick={() => setOpen(!open)}
       >
         {icon}
@@ -35,7 +35,7 @@ export function ToolCard({ entry }: { entry: ToolEntry }) {
         </span>
       </button>
       {open && (
-        <div className="space-y-2 border-t border-line px-3 py-2">
+        <div className="mt-1 ml-[15px] space-y-2 border-l-2 border-line py-1 pl-4">
           {call.name === "edit_file" && <DiffView before={args.old ?? ""} after={args.new ?? ""} />}
           {call.name === "write_file" && <DiffView before="" after={args.content ?? ""} />}
           {call.name === "apply_patch" && <PatchView patch={args.patch ?? ""} />}

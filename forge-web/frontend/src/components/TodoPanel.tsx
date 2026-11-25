@@ -12,7 +12,7 @@ export function TodoPanel({ todos }: { todos: Todo[] }) {
   const current = todos.find((todo) => todo.status === "in_progress");
   return (
     <div className="mx-auto w-full max-w-3xl px-3 sm:px-4" data-testid="todos">
-      <div className="rounded-xl border border-line bg-panel px-3 py-2 text-sm">
+      <div className="rounded-lg border border-line bg-card px-3 py-2 text-sm">
         <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setOpen(!open)}>
           <span className="font-medium">{t("todos")}</span>
           <span className="text-xs text-muted">

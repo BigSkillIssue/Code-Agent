@@ -21,7 +21,7 @@ function EntryView({ entry, onAnswer, approvalPage, projectId }: ViewProps) {
     case "user":
       return (
         <div className="flex flex-col items-end">
-          <div className="max-w-[85%] rounded-2xl bg-panel px-4 py-2 whitespace-pre-wrap" data-testid="user-message">
+          <div className="max-w-[85%] rounded-lg bg-accent-soft px-4 py-2.5 whitespace-pre-wrap" data-testid="user-message">
             {entry.text}
           </div>
           <MessageFiles projectId={projectId} files={entry.files} />
@@ -64,7 +64,7 @@ export function Transcript({ entries, onAnswer, approvalPage, projectId }: { ent
     end.current?.scrollIntoView?.({ block: "end" });
   }, [entries.length, lastLength]);
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-3 py-5 sm:px-5 sm:py-8">
       {entries.map((entry) => (
         <EntryView key={entry.key} entry={entry} onAnswer={onAnswer} approvalPage={approvalPage} projectId={projectId} />
       ))}

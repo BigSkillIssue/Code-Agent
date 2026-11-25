@@ -44,7 +44,7 @@ export function AppleScreens({ api, refreshKey, onError, approvalPage }: Props) 
             {t("readyForApproval")}
           </Link>
         )}
-        <button type="button" title={t("reloadPreview")} className="p-1 text-muted" onClick={() => void load()}>
+        <button type="button" title={t("reloadPreview")} className="rounded-md p-1 text-muted hover:bg-panel hover:text-fg" onClick={() => void load()}>
           <RefreshCw className="size-4" />
         </button>
       </div>

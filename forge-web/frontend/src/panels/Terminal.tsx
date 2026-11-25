@@ -189,7 +189,7 @@ export function TerminalPanel({ api, active, onError }: Props) {
               <button
                 type="button"
                 title={t("closeTerminal")}
-                className="p-0.5 text-muted"
+                className="rounded-md p-0.5 text-muted hover:bg-panel hover:text-fg"
                 onClick={() => void close(term.id)}
               >
                 <X className="size-3" />
@@ -197,7 +197,7 @@ export function TerminalPanel({ api, active, onError }: Props) {
             </div>
           );
         })}
-        <button type="button" title={t("newTerminal")} className="p-1 text-muted" onClick={() => void open()}>
+        <button type="button" title={t("newTerminal")} className="rounded-md p-1 text-muted hover:bg-panel hover:text-fg" onClick={() => void open()}>
           <Plus className="size-4" />
         </button>
       </div>
@@ -215,13 +215,13 @@ export function TerminalPanel({ api, active, onError }: Props) {
                   {state === "lost" && (
                     <button
                       type="button"
-                      className="rounded border border-line px-2"
+                      className="rounded-md border border-line bg-card px-2.5 hover:bg-panel"
                       onClick={() => setAttempt((all) => ({ ...all, [term.id]: (all[term.id] ?? 0) + 1 }))}
                     >
                       {t("reconnect")}
                     </button>
                   )}
-                  <button type="button" className="rounded border border-line px-2" onClick={() => void close(term.id)}>
+                  <button type="button" className="rounded-md border border-line bg-card px-2.5 hover:bg-panel" onClick={() => void close(term.id)}>
                     {t("closeTerminal")}
                   </button>
                 </div>

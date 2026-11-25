@@ -35,7 +35,7 @@ export function GuidelineCard({ review }: { review: GuidelineReview }) {
   const problems = review.findings.filter((f) => f.status !== "ok");
   const fine = review.findings.filter((f) => f.status === "ok");
   return (
-    <div className="rounded-lg border border-line bg-card p-3 text-sm" data-testid="guideline-review">
+    <div className="rounded-lg border border-line bg-card p-4 text-sm" data-testid="guideline-review">
       <div className="flex flex-wrap items-center gap-2 font-medium">
         <ShieldCheck className="size-4" />
         {t(STAGE[review.stage] ?? "reviewOfProduct")}

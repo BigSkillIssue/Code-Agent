@@ -46,20 +46,20 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
   };
   return (
     <aside className="flex h-full min-w-0 flex-col bg-card" aria-label={t("showPanel")}>
-      <div className="flex items-center gap-1 border-b border-line px-2" role="tablist">
+      <div className="flex min-h-14 items-end gap-1 border-b border-line px-2" role="tablist">
         {tabs.map(([id, label]) => (
           <button
             key={id}
             type="button"
             role="tab"
             aria-selected={tab === id}
-            className={`px-2 py-2 text-sm ${tab === id ? "border-b-2 border-accent font-medium" : "text-muted"}`}
+            className={`-mb-px px-2.5 py-3 text-sm ${tab === id ? "border-b-2 border-accent font-medium" : "text-muted hover:text-fg"}`}
             onClick={() => choose(id)}
           >
             {label}
           </button>
         ))}
-        <button type="button" title={t("close")} className="ml-auto p-1 text-muted" onClick={onClose}>
+        <button type="button" title={t("close")} className="mb-2 ml-auto self-center rounded-md p-1.5 text-muted hover:bg-panel hover:text-fg" onClick={onClose}>
           <X className="size-4" />
         </button>
       </div>

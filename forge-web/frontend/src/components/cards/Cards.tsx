@@ -10,7 +10,7 @@ export function StructuredCard({ entry }: { entry: Extract<Entry, { kind: "struc
   const goal = typeof entry.data.goal === "string" ? entry.data.goal : null;
   const criteria = Array.isArray(entry.data.acceptance_criteria) ? (entry.data.acceptance_criteria as string[]) : [];
   return (
-    <details className="rounded-lg border border-line bg-card px-3 py-2 text-sm">
+    <details className="rounded-md px-2 py-1.5 text-sm">
       <summary className="cursor-pointer">
         <span className="font-medium">{goal ? t("taskUnderstood") : t("data")}</span>
         {goal && <span className="text-muted">: {goal}</span>}
@@ -36,15 +36,16 @@ const STEP_ICON: Record<string, ReactNode> = {
 
 export function PlanCard({ entry }: { entry: Extract<Entry, { kind: "plan" }> }) {
   return (
-    <div className="rounded-lg border border-line bg-card px-3 py-2 text-sm">
-      <div className="flex items-center gap-2 font-medium">
-        <ClipboardList className="size-4" />
+    <div className="border-l-2 border-accent py-1 pl-4 text-sm">
+      <div className="flex items-center gap-2 font-semibold">
+        <ClipboardList className="size-4 text-accent" />
         {t("plan")}
         {entry.goal && <span className="truncate font-normal text-muted">— {entry.goal}</span>}
       </div>
       <ol className="mt-2 space-y-1">
-        {entry.steps.map((step) => (
+        {entry.steps.map((step, index) => (
           <li key={step.id} className="flex items-start gap-2">
+            <span className="w-5 shrink-0 text-right text-muted tabular-nums">{index + 1}</span>
             <span className="mt-0.5">{STEP_ICON[step.status] ?? <Circle className="size-4 text-muted" />}</span>
             <span className={step.status === "done" ? "text-muted line-through" : ""}>{step.title}</span>
           </li>
@@ -58,8 +59,11 @@ export function TurnCard({ entry }: { entry: Extract<Entry, { kind: "turn" }> })
   const tone = entry.cancelled ? "text-warn" : entry.ok ? "text-ok" : "text-bad";
   const label = entry.cancelled ? t("stopped") : entry.ok ? t("done") : t("failed");
   return (
-    <div className="rounded-lg border border-line bg-panel px-3 py-2 text-sm" data-testid="turn">
-      <div className={`font-medium ${tone}`}>{label}</div>
+    <div className="border-t border-line pt-3 text-sm" data-testid="turn">
+      <div className={`flex items-center gap-2 font-semibold ${tone}`}>
+        <span className="size-2 rounded-full bg-current" aria-hidden="true" />
+        {label}
+      </div>
       {entry.summary && !entry.cancelled && <Markdown text={entry.summary} />}
       {entry.error && <div className="text-bad">{entry.error}</div>}
       {entry.filesChanged.length > 0 && (

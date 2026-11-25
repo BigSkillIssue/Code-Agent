@@ -78,7 +78,7 @@ export function FileEditor({ api, path, canEdit, onClose, onError }: Props) {
             type="button"
             title={t("save")}
             disabled={state === "clean" || state === "saving"}
-            className="rounded bg-accent px-2 py-0.5 text-xs text-on-accent disabled:opacity-40"
+            className="rounded-md bg-accent px-2.5 py-0.5 text-xs font-medium text-on-accent disabled:opacity-40"
             onClick={() => void save()}
           >
             <Save className="inline size-3.5" /> {t("save")}

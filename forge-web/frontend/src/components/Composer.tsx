@@ -152,7 +152,7 @@ export function Composer({ running, onSend, onStop, commands, searchFiles, uploa
     <div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-4 sm:pb-4">
       <div
         data-testid="composer"
-        className={`relative flex flex-wrap items-end gap-2 rounded-2xl border bg-card p-2 shadow-sm ${dragging ? "border-accent ring-2 ring-accent/30" : "border-line"}`}
+        className={`relative flex flex-wrap items-end gap-2 rounded-xl border bg-card p-2 ${dragging ? "border-accent ring-2 ring-accent/30" : "border-line focus-within:border-accent"}`}
         onDragOver={(e) => {
           if (!upload || !Array.from(e.dataTransfer.types).includes("Files")) return;
           e.preventDefault();
@@ -184,7 +184,7 @@ export function Composer({ running, onSend, onStop, commands, searchFiles, uploa
           <ul
             role="listbox"
             aria-label={completion?.kind === "command" ? t("commandsHint") : t("filesHint")}
-            className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-xl border border-line bg-card p-1 shadow-lg"
+            className="absolute right-0 bottom-full left-0 mb-2 max-h-64 overflow-y-auto rounded-lg border border-line bg-card p-1 shadow-lg"
           >
             {suggestions.map((s, index) => (
               <li
@@ -214,7 +214,7 @@ export function Composer({ running, onSend, onStop, commands, searchFiles, uploa
               type="button"
               title={t("attachFiles")}
               aria-label={t("attachFiles")}
-              className="rounded-full p-2 text-muted hover:text-fg"
+              className="rounded-full p-2 text-muted hover:bg-panel hover:text-fg"
               onClick={() => picker.current?.click()}
             >
               <Paperclip className="size-4" />

@@ -143,7 +143,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
               <button
                 type="button"
                 disabled={busy || !remote}
-                className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
+                className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
                 onClick={() => void act(async () => setNote((await api.pull()).reason ?? t("pulled")))}
               >
                 {t("pull")}
@@ -151,7 +151,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
               <button
                 type="button"
                 disabled={busy || !remote}
-                className="rounded border border-line px-3 py-0.5 disabled:opacity-40"
+                className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
                 onClick={() => void act(() => api.push(), t("pushed"))}
               >
                 {t("push")}
@@ -234,7 +234,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
           <textarea
             aria-label={t("commitMessage")}
             placeholder={t("commitMessage")}
-            className="w-full resize-y rounded border border-line bg-bg px-2 py-1 text-sm"
+            className="w-full resize-y rounded-md border border-line bg-card px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none"
             rows={2}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -242,7 +242,7 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
           <button
             type="submit"
             disabled={busy || !message.trim() || staged.length === 0}
-            className="rounded bg-accent px-3 py-1 text-sm font-medium text-on-accent disabled:opacity-40"
+            className="h-9 rounded-md bg-accent px-3.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-40"
           >
             {t("commit")}
           </button>
@@ -278,7 +278,7 @@ function NewBranch({ onCreate }: { onCreate: (name: string) => void }) {
       <input
         aria-label={t("newBranch")}
         placeholder={t("branchPrompt")}
-        className="w-full rounded-md border border-line bg-bg px-2 py-1 text-sm"
+        className="h-9 w-full rounded-md border border-line bg-card px-2.5 text-sm focus:border-accent focus:outline-none"
         value={name}
         onChange={(event) => setName(event.target.value)}
       />

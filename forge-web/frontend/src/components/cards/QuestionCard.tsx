@@ -35,7 +35,7 @@ export function QuestionCard({ entry, onAnswer, approvalPage }: Props) {
     }
   };
   return (
-    <div className="rounded-lg border border-accent/50 bg-card p-3 text-sm" data-testid="question">
+    <div className="rounded-lg border border-accent/60 bg-card p-4 text-sm shadow-[inset_3px_0_0_var(--accent)]" data-testid="question">
       <div className="flex items-center gap-2 font-medium">
         <MessageCircleQuestion className="size-4 text-accent" />
         {t("question")}
@@ -67,7 +67,7 @@ export function QuestionCard({ entry, onAnswer, approvalPage }: Props) {
             </div>
           ) : (
             <input
-              className="mt-2 w-full rounded-md border border-line bg-bg px-2 py-1"
+              className="mt-2 h-9 w-full rounded-md border border-line bg-card px-2.5 focus:border-accent focus:outline-none"
               value={values[index]?.[0] ?? ""}
               onChange={(e) => setValues((all) => all.map((v, i) => (i === index ? [e.target.value] : v)))}
             />
@@ -79,12 +79,12 @@ export function QuestionCard({ entry, onAnswer, approvalPage }: Props) {
           <button
             type="button"
             disabled={busy}
-            className="rounded-md bg-accent px-3 py-1 font-medium text-on-accent disabled:opacity-50"
+            className="h-9 rounded-md bg-accent px-3.5 font-medium text-on-accent hover:opacity-90 disabled:opacity-50"
             onClick={() => submit(false)}
           >
             {t("answer")}
           </button>
-          <button type="button" disabled={busy} className="rounded-md border border-line px-3 py-1" onClick={() => submit(true)}>
+          <button type="button" disabled={busy} className="h-9 rounded-md border border-line bg-card px-3.5 hover:bg-panel" onClick={() => submit(true)}>
             {t("dismiss")}
           </button>
         </div>

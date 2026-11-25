@@ -122,8 +122,8 @@ export function ChatView({ chat }: { chat: Chat }) {
   return (
     <div className="flex h-full min-w-0 flex-1">
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
-          <h1 className="min-w-[8rem] flex-1 truncate font-medium" data-testid="chat-title">
+        <header className="flex min-h-14 flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-5">
+          <h1 className="min-w-[8rem] flex-1 truncate text-[17px] font-bold" data-testid="chat-title">
             {chat.title === "New chat" ? (project?.name ?? chat.title) : chat.title}
           </h1>
           {running && (
@@ -152,7 +152,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             options={EFFORTS}
           />
           {project?.kind === "app" && (
-            <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded p-1 text-muted hover:text-accent">
+            <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-accent">
               <Globe className="size-4" />
             </Link>
           )}
@@ -161,7 +161,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             title={t("preview")}
             aria-label={t("preview")}
             aria-pressed={showPreview}
-            className={`rounded p-1 ${showPreview ? "text-accent" : "text-muted"}`}
+            className={`rounded-md p-1.5 ${showPreview ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel hover:text-fg"}`}
             onClick={() => {
               if (!showPreview) togglePanel(false);
               preview.setOpen(!showPreview);
@@ -173,7 +173,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             type="button"
             title={t("showPanel")}
             aria-pressed={panel}
-            className={`rounded p-1 ${panel ? "text-accent" : "text-muted"}`}
+            className={`rounded-md p-1.5 ${panel ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel hover:text-fg"}`}
             onClick={() => togglePanel(!panel)}
           >
             <PanelRight className="size-4" />
@@ -183,7 +183,7 @@ export function ChatView({ chat }: { chat: Chat }) {
               type="button"
               title={t("clearChat")}
               aria-label={t("clearChat")}
-              className="rounded p-1 text-muted hover:text-bad"
+              className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-bad"
               onClick={() => {
                 if (window.confirm(t("confirmClear"))) void guard(() => clearChat(chat));
               }}
