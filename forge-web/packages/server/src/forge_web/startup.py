@@ -70,12 +70,14 @@ def chat_options(settings: WebSettings, entitlements: EntitlementEngine | None =
     sandbox_mode = "workspace-write" if settings.sandbox.isolation == "local" else "full-access"
 
     async def options_for(chat: Chat, link: dict[str, Any]) -> dict[str, Any]:
-        options: dict[str, Any] = {"mode": chat.mode, "sandbox_mode": sandbox_mode}
+        flow = settings.agents.product_flow  # W55: the agent steers, the user answers
+        mode = "auto" if flow else chat.mode
+        options: dict[str, Any] = {"mode": mode, "sandbox_mode": sandbox_mode, "product_flow": flow}
         if entitlements is not None:
             options.update(await chat_agents(settings, entitlements, chat.project_id))
         if chat.model and settings.agents.user_model_choice:
             options["model"] = chat.model
-        if chat.effort != "auto":
+        if chat.effort != "auto" and not flow:
             options["effort"] = chat.effort
         if link.get("gateway_port"):
             base = f"http://127.0.0.1:{link['gateway_port']}"
@@ -83,7 +85,7 @@ def chat_options(settings: WebSettings, entitlements: EntitlementEngine | None =
             options["product_url"] = base  # the agent's own product on Forge's servers (W54)
             if settings.hosting.enabled:
                 options["apps_domain"] = settings.hosting.apps_domain
-            if link.get("apple") and settings.apple.enabled:
+            if (link.get("apple") or flow) and settings.apple.enabled:
                 # Builds go through the gateway to the Macs; the guidelines are checked.
                 options.update(apple_url=base, apple_token_env=TOKEN_ENV, apple_review=True,
                                apple_max_mb=settings.apple.max_source_mb)  # fmt: skip

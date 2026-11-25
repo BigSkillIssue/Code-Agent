@@ -8,12 +8,13 @@ import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
 import { AppleScreens } from "./AppleScreens";
 import { Changes } from "./Changes";
+import { ProductPanel } from "./Product";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { PreviewPanel } from "./Preview";
 import { TerminalPanel } from "./Terminal";
 
-type Tab = "files" | "changes" | "terminal" | "preview" | "devices";
+type Tab = "product" | "files" | "changes" | "terminal" | "preview" | "devices";
 
 interface Props {
   projectId: string;
@@ -34,6 +35,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
   // Terminals and the preview stay alive once opened, also while another tab shows.
   const [opened, setOpened] = useState<Set<Tab>>(() => new Set());
   const tabs: [Tab, string][] = [
+    ["product", t("productTab")],
     ["files", t("files")],
     ["changes", t("changes")],
     ...(canEdit ? [["terminal", t("terminal")] as [Tab, string]] : []),
@@ -70,6 +72,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
           ) : (
             <FileTree api={client} canEdit={canEdit} refreshKey={refreshKey} onOpen={setFile} onError={onError} />
           ))}
+        {tab === "product" && <ProductPanel api={client} refreshKey={refreshKey} onError={onError} />}
         {tab === "changes" && <Changes api={client} canEdit={canEdit} remotes={remotes} refreshKey={refreshKey} onError={onError} />}
         {canEdit && opened.has("terminal") && (
           <div className={tab === "terminal" ? "h-full" : "hidden"}>

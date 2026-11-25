@@ -30,7 +30,7 @@ SETTING = "agents"
 DEFAULT_TIER = "default"
 # The roles an admin sets, and Forge's roles each one stands for.
 ROLE_GROUPS: dict[str, tuple[str, ...]] = {
-    "planner": ("refiner", "planner", "architect"),
+    "planner": ("refiner", "planner", "architect", "product"),
     "coder": ("coder", "lead", "explore", "researcher", "browser"),
     "reviewer": ("reviewer", "release_reviewer", "apple_reviewer"),
     "compressor": ("compressor",),

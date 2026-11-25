@@ -99,6 +99,8 @@ export function ChatView({ chat }: { chat: Chat }) {
   const running = chat.state === "running" || chat.state === "waiting";
   const project = useStore((s) => s.projects.find((p) => p.id === chat.project_id));
   const modelChoice = useStore((s) => s.user?.model_choice !== false);
+  // Forge Web's product flow (W55): the agent plans and steers; people answer, stop and undo.
+  const agentSteers = useStore((s) => s.user?.product_flow === true);
   const [panel, setPanel] = useState(storedPanel);
   const turns = useTurnCounter(chat.state);
   const preview = usePreviewPane(chat.project_id, running, turns);
@@ -133,25 +135,29 @@ export function ChatView({ chat }: { chat: Chat }) {
               {chat.state === "waiting" ? t("waiting") : t("working")}
             </span>
           )}
-          <Select
-            compact
-            ariaLabel={t("mode")}
-            className="min-w-0"
-            value={chat.mode}
-            disabled={!chat.can_write}
-            onChange={(mode) => void guard(() => updateChat(chat, { mode }))}
-            options={MODES}
-          />
+          {!agentSteers && (
+            <Select
+              compact
+              ariaLabel={t("mode")}
+              className="min-w-0"
+              value={chat.mode}
+              disabled={!chat.can_write}
+              onChange={(mode) => void guard(() => updateChat(chat, { mode }))}
+              options={MODES}
+            />
+          )}
           {modelChoice && <ModelPicker chat={chat} onChange={(model) => void guard(() => updateChat(chat, { model }))} />}
-          <Select
-            compact
-            ariaLabel={t("effort")}
-            className="min-w-0"
-            value={chat.effort}
-            disabled={!chat.can_write}
-            onChange={(effort) => void guard(() => updateChat(chat, { effort }))}
-            options={EFFORTS}
-          />
+          {!agentSteers && (
+            <Select
+              compact
+              ariaLabel={t("effort")}
+              className="min-w-0"
+              value={chat.effort}
+              disabled={!chat.can_write}
+              onChange={(effort) => void guard(() => updateChat(chat, { effort }))}
+              options={EFFORTS}
+            />
+          )}
           {project?.kind === "app" && (
             <Link to={`/p/${chat.project_id}/live`} title={t("goLiveTitle")} className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-accent">
               <Globe className="size-4" />

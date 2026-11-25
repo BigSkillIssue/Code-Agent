@@ -179,6 +179,9 @@ def dev_settings(
         "dev.enabled": True,
         "sandbox.isolation": isolation,
         "dev.fake": True,
+        # The fake scripts are written for Forge's own pipeline; Forge Web's product flow (W55)
+        # has tests of its own that turn it on.
+        "agents.product_flow": False,
     }
     if image is not None:
         overrides["sandbox.image"] = image

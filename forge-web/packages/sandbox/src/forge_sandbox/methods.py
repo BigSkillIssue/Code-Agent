@@ -262,6 +262,9 @@ class ChatOptions(Params):
     # The agent's product tools (W54): the gateway for its own product on Forge's servers, and
     # the apps domain its hosted addresses are under ("" when the server hosts no apps).
     product_url: str | None = Field(default=None, pattern=r"^http://127\.0\.0\.1:\d+$")
+    # Forge Web's own flow (W55): always planned, the product decided by the agent, required
+    # agents after the coders, and only /undo for the user.
+    product_flow: bool = False
     apps_domain: str = Field(default="", max_length=200, pattern=r"^$|^[a-z0-9.-]+$")
 
 

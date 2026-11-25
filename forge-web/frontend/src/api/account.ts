@@ -14,6 +14,7 @@ export interface Me {
   apple_apps?: boolean; // may build Apple apps on this server
   project_sources?: string[]; // where new projects may come from (empty, app, git, zip, folder)
   model_choice?: boolean; // the admin lets people pick a chat's model
+  product_flow?: boolean; // the agent plans and steers every task (W55)
 }
 
 export interface Identity {

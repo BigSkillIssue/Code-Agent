@@ -1065,3 +1065,39 @@ Dateien selbst bei Forge Web ab, prüft ihre Prüfsummen und liefert sie aus
 (`/var/lib/caddy/forge-downloads`, anders mit `forge-host-worker run --downloads`); auf der Domain
 von Forge Web liegt nie ein Programm eines Kunden. Eine Seite dafür in der Weboberfläche gibt es
 noch nicht.
+
+---
+
+## 14. Agenten: wer plant, wer baut, wer prüft
+
+Forge Web lässt Nutzer nicht mehr steuern, *wie* gearbeitet wird; sie beschreiben, was entstehen soll,
+beantworten die Rückfragen und können anhalten oder rückgängig machen. Alles andere entscheiden die
+Agenten:
+
+1. Jede Aufgabe wird geplant, auch kleine; die Rückfragen des Plan-Agenten gehen an den Nutzer.
+2. Ein Agent entscheidet, was das Projekt wird: nichts Gehostetes, eine **Website** oder eine
+   **App mit Server und Datenbank**, dazu Apps für iPhone/iPad/Mac, Android oder Windows. Er legt die
+   Startdateien an oder ergänzt sie später.
+3. Ein Plan mit mehreren Bereichen (`server:`, `web:`, `android:` …) läuft als Team, ein Agent pro
+   Bereich.
+4. Nach den Programmierern laufen die **Pflicht-Agenten**: der UI-Agent (bei Produkten mit Oberfläche),
+   dann Test- und Sicherheits-Agent; was sie finden, geht an den Programmierer zurück.
+5. Der Agent deployt sein Produkt selbst auf **Staging**, liest dort Logs und Datenbank und baut die
+   Apps. **Produktion** nur, wenn du unter *Verwaltung → Einstellungen → Der Agent auf den Servern*
+   den Haken setzt; Impressum, Tarif und deine Freigabe bleiben Bedingung.
+
+Unter **Verwaltung → Agenten** legst du fest:
+
+- ob Nutzer das Modell ihres Chats wählen dürfen,
+- welches Modell (mit Ersatzkette, z. B. `anthropic/claude-sonnet, openai/gpt-5`) jede Rolle nutzt –
+  Planer, Programmierer, Prüfer, Zusammenfasser und jeder Agent – für alle oder pro Tarif,
+- welche Agenten es gibt: die eingebauten (UI, Test, Sicherheit, Datenbank, Netzwerk, Mathematik)
+  mit deinen Änderungen, ausgeschaltete, und eigene (z. B. „seo“) mit Anweisungen, jeweils als
+  **Pflicht** oder **Empfohlen** und für welche Aufgaben sie gelten.
+
+Wer lieber selbst steuert, schaltet den Ablauf in `forge-web.toml` ab:
+
+```toml
+[agents]
+product_flow = false   # dann gibt es wieder Modus, Aufwand und alle Slash-Befehle
+```

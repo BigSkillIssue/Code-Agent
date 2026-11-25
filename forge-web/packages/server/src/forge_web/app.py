@@ -49,6 +49,7 @@ from forge_web.members import members_router
 from forge_web.preview import preview_hosts_router, preview_router
 from forge_web.preview_auth import preview_base
 from forge_web.preview_proxy import PreviewRouter
+from forge_web.product_api import product_router
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
 from forge_web.settings_api import settings_router
@@ -82,7 +83,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
     )  # fmt: skip
     routers = (
         health_router(), auth_router(), second_factor_router(), oauth_router(), admin_router(),
-        admin_api_router(), agents_router(), settings_router(), dev_router(),
+        admin_api_router(), agents_router(), product_router(), settings_router(), dev_router(),
         projects_router(), members_router(), chats_router(), attachments_router(),
         files_router(), git_router(),
         sources_router(), terminals_router(), preview_router(), preview_hosts_router(),

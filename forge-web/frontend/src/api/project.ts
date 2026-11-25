@@ -93,11 +93,26 @@ function socketUrl(path: string): string {
   return `${scheme}://${window.location.host}${path}`;
 }
 
+/** What Forge's agent made of a project (W55). */
+export interface ProductInfo {
+  product: boolean;
+  name?: string;
+  kind?: "site" | "fullstack";
+  clients?: string[];
+  payments?: boolean;
+  database?: boolean;
+  hosted?: boolean;
+  staging_url?: string;
+  production_url?: string;
+  deploys?: { environment: string; status: string; step: string; commit: string; error: string; created_at: number }[];
+}
+
 export function projectApi(projectId: string) {
   const base = `/api/projects/${encodeURIComponent(projectId)}`;
   return {
     list: (path: string) => api.get<{ path: string; entries: FileEntry[] }>(`${base}/files/list?${q({ path })}`),
     read: (path: string) => api.get<FileContent>(`${base}/files/content?${q({ path })}`),
+    product: () => api.get<ProductInfo>(`${base}/product`),
     save: (path: string, text: string, expectedMtime?: number) =>
       api.put<{ path: string; mtime: number }>(`${base}/files/content`, { path, text, expected_mtime: expectedMtime ?? null }),
     mkdir: (path: string) => api.post(`${base}/files/mkdir`, { path }),

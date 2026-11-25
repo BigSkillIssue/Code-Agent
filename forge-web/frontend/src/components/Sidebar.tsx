@@ -37,7 +37,7 @@ export function Sidebar({ activeProject, onNavigate }: { activeProject?: string;
       {creating && (
         <NewProjectDialog
           isAdmin={user?.role === "admin"}
-          appleApps={user?.apple_apps === true}
+          appleApps={user?.apple_apps === true && user.product_flow !== true}
           sources={user?.project_sources}
           create={createProject}
           forget={forgetProject}

@@ -32,7 +32,9 @@ def require_source(settings: WebSettings, source: str) -> None:
 
 def allowed_sources(settings: WebSettings, is_admin: bool) -> list[str]:
     """The sources the new-project dialog offers to this user."""
-    sources = ["empty", "app"] + [s for s in ("git", "zip") if settings.projects.allows(s)]
+    # With Forge Web's product flow (W55) the agent decides whether a project becomes an app.
+    template = [] if settings.agents.product_flow else ["app"]
+    sources = ["empty", *template] + [s for s in ("git", "zip") if settings.projects.allows(s)]
     if is_admin and settings.projects.folder and settings.sandbox.folder_roots:
         sources.append("folder")
     return sources

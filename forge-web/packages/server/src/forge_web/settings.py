@@ -118,6 +118,9 @@ class AgentsSettings(_Strict):
     (`default` for everyone without one), and whether people pick a chat's model themselves."""
 
     user_model_choice: bool = True
+    # Forge Web's own flow (W55): every task planned with questions, the product decided by the
+    # agent, required agents after the coders; people keep stop, undo and their answers.
+    product_flow: bool = True
     # tier ("default" or a catalog plan's id) -> role or agent name -> model fallback chain
     roles: dict[
         Annotated[str, Field(pattern=r"^[a-z0-9_-]{1,40}$")],

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from forge.commands import HELP, custom_commands, handle_command
-from forge.config import ConfigError, ForgeConfig, forge_home, load_config
+from forge.config import DEFAULT_ROLES, ConfigError, ForgeConfig, forge_home, load_config
 from forge.ctx import Ctx
 from forge.events import Event
 from forge.local.memory_bus import MemoryBus
@@ -41,10 +41,11 @@ from forge_sandbox.history import ChatState, Turn
 from forge_sandbox.methods import ChatOptions
 from forge_sandbox.mux import Writer
 from forge_sandbox.pipe_renderer import PipeRenderer
+from forge_sandbox.product_flow import run_product_task
 
 ROLES = ("refiner", "planner", "coder", "reviewer", "compressor", "explore", "tester",
          "researcher", "browser", "lead", "apple_reviewer", "release_reviewer",
-         "architect")  # fmt: skip
+         "architect", "product")  # fmt: skip
 # Tools that ask for approval by default; "auto" mode allows them instead of denying them.
 AUTO_ALLOW = ["web_fetch", "web_search", "remember", "browser_open"]
 APPLE_ALLOW = ["apple_build", "apple_screenshot"]
@@ -52,6 +53,7 @@ POLICY = {"ask": "always", "edits": "on-request", "auto": "never"}
 MAX_LINE = 4 * 1024 * 1024
 
 
+USER_COMMANDS = ("/undo",)  # what the user may still type in Forge Web's product flow
 PRODUCT_TOOLS = ("product_create", "product_add", "product_look", "deploy", "deploy_status",
                  "app_logs", "app_fetch", "app_sql", "android_build", "windows_build")  # fmt: skip
 
@@ -80,6 +82,8 @@ def config_overrides(options: ChatOptions, root: Path | None = None) -> dict[str
     }
     roles = {role: [options.model] for role in ROLES} if options.model else {}
     roles.update(options.roles)
+    if options.product_flow and "product" not in roles:  # the product decision: the planner's
+        roles["product"] = roles.get("planner") or list(DEFAULT_ROLES["planner"])
     if roles:
         overrides["roles"] = roles
     if options.max_cost_usd is not None:
@@ -153,9 +157,12 @@ class ChatWorker:
             )  # fmt: skip
         self.state.session_id = self.ctx.session.id
         self.state.save(self.home)
+        commands = slash_commands(self.root)
+        if self.options.product_flow:  # the user keeps stop, undo and their answers (W55)
+            commands = [c for c in commands if c["name"] in USER_COMMANDS]
         await self.out.send({
             "type": "ready", "session_id": self.ctx.session.id, "turns": len(self.state.turns),
-            "commands": slash_commands(self.root),
+            "commands": commands,
         })  # fmt: skip
 
     def submit(self, text: str, files: list[Attachment] | None = None) -> bool:
@@ -195,10 +202,24 @@ class ChatWorker:
         await self.out.send(result)
         await self.out.send({"type": "status", "state": "idle"})
 
+    async def one_task(self, text: str, files: list[Attachment]) -> Report:
+        """One task: Forge Web's product flow (W55), or Forge's own pipeline."""
+        assert self.ctx is not None
+        if not self.options.product_flow:
+            return await run_task(text, self.ctx, attachments=files)
+        return await run_product_task(
+            text, self.ctx, files, agents=self.options.agents,
+            apps_domain=self.options.apps_domain, apple=self.options.apple_url is not None,
+        )  # fmt: skip
+
     async def _run(self, text: str, files: list[Attachment]) -> dict[str, Any]:
         assert self.ctx is not None
         if not text.startswith("/"):  # the session's own conversation carries the turns (S76)
-            return report_fields(await run_task(text, self.ctx, attachments=files))
+            return report_fields(await self.one_task(text, files))
+        if self.options.product_flow and text.split()[0] not in USER_COMMANDS:
+            note = "Forge Web plans and steers the work itself; only /undo is yours."
+            await self.out.send({"type": "command_result", "command": text, "text": note})
+            return {"ok": False, "summary": note}
         command = await handle_command(self.ctx, text)
         if command.text:
             await self.out.send({"type": "command_result", "command": text, "text": command.text})
