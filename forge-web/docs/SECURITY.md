@@ -147,6 +147,15 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   that breaks off before that report is charged the larger of what was reported so far and what the
   text that came through (tool-call arguments and thinking included) amounts to. Monthly limits apply
   per user and server-wide.
+- The reservation is a true upper bound (SEC-W2, `gateway/policy.py`): every call asks for one
+  completion (`n`, `best_of`, `candidateCount` other than 1 are refused), and every OpenAI-style body
+  carries the output cap under the name its API reads. On the server's keys a call may use only
+  function tools, Anthropic's client-side tools and its web search (`max_uses` at most 10, reserved
+  and charged at $10 per 1,000 from `usage.server_tool_use`); other server-side tools (code
+  execution, web fetch, OpenAI's built-in tools, Google Search grounding, MCP servers) are refused,
+  and so are fields that route to another model or host (`models`, `route`, `provider`, `plugins`,
+  ...) or bring in input stored at the provider (`previous_response_id`, `conversation`,
+  `cachedContent`). A person's own key may use all of them: they pay for it.
 - Local model servers (Ollama, LM Studio, vLLM) need no key and their presets point at `localhost`,
   which from the gateway is the server itself: they are offered only when an admin names their
   address in `gateway.upstreams`.

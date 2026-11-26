@@ -26,7 +26,15 @@ from forge_web.billing.entitlements import Entitlements
 from forge_web.db.engine import Database
 from forge_web.db.models import Chat, UsageRecord, User
 from forge_web.gateway.keys import ChosenKey, choose_key, server_key_limit
-from forge_web.gateway.meter import CHARS_PER_TOKEN, Ledger, UsageSniffer, cost, priced
+from forge_web.gateway.meter import (
+    CHARS_PER_TOKEN,
+    WEB_SEARCH_USD,
+    Ledger,
+    UsageSniffer,
+    cost,
+    priced,
+)
+from forge_web.gateway.policy import one_completion, server_key_refusal, tool_fees
 from forge_web.gateway.tokens import parse_token, run_token
 from forge_web.gateway.upstreams import (
     FORWARD_HEADERS,
@@ -59,12 +67,16 @@ class Refusal(Exception):
 
 def refuse_unmetered(up: Upstream, model: str, body: dict[str, Any]) -> None:
     """The server's keys pay only for calls the meter can price: a model with a known price,
-    answered at once (a background response would report its usage nowhere)."""
+    answered at once (a background response would report its usage nowhere), with no tools,
+    routing or stored input that would cost more than the reservation (SEC-W2)."""
     if not up.keyless and not priced(up.name, model):
         raise Refusal(403, f"Forge Web knows no price for {model or 'this model'}, so the "
                       "server's keys are not used for it; use a key of your own")  # fmt: skip
     if body.get("background"):
         raise Refusal(400, "background responses cannot be metered on the server's keys")
+    refused = server_key_refusal(up.kind, body)
+    if refused:
+        raise Refusal(403, refused)
 
 
 class Gateway:
@@ -150,14 +162,18 @@ class Gateway:
             raise Refusal(400, "the request body is not JSON") from None
         if not isinstance(body, dict):
             raise Refusal(400, "the request body must be a JSON object")
+        refused = one_completion(up.kind, body)
+        if refused:
+            raise Refusal(400, refused)
         limits = await self.limits_of(user)
         key = await self._key(user, up, limits.server_keys)
-        cap = prepare_body(up.kind, path, body, self.settings.max_output_tokens)
+        cap = prepare_body(up.kind, path, body, self.settings.max_output_tokens, up.base_url)
         model = model_of(up.kind, path, body)
-        reserved = 0.0
+        reserved = fees = 0.0
         if key.kind == "server":
             refuse_unmetered(up, model, body)
-            reserved = cost(up.name, model, len(raw) // CHARS_PER_TOKEN, cap)
+            fees = tool_fees(up.kind, body)
+            reserved = cost(up.name, model, len(raw) // CHARS_PER_TOKEN, cap) + fees
             refused = await self.ledger.reserve(user.id, reserved, limits.ai_month_usd,
                                                 chat.project_id, limits.ai_product_usd)  # fmt: skip
             if refused:
@@ -181,6 +197,7 @@ class Gateway:
             "key_kind": key.kind,
             "input_chars": len(raw),
             "reserved": reserved,
+            "fees": fees,
         }
         try:
             response = await self.client.send(upstream_request, stream=True)
@@ -226,6 +243,7 @@ class Gateway:
         counted = sniffer.finish() if sniffer is not None else None
         input_tokens = output_tokens = 0
         estimated = False
+        fees = 0.0
         if counted is not None and status is not None and status < 400:
             if counted.reported:
                 input_tokens, output_tokens = counted.input_tokens, counted.output_tokens
@@ -234,11 +252,14 @@ class Gateway:
                 guessed = (sniffer.output_chars if sniffer else 0) // CHARS_PER_TOKEN
                 output_tokens = max(1, counted.output_tokens, guessed)
                 estimated = True
+                # Its tools' final count never came: charge the most they could cost.
+                fees = max(meta["fees"] - counted.web_searches * WEB_SEARCH_USD, 0.0)
         record = UsageRecord(
             user_id=meta["user"], chat_id=meta["chat"], project_id=meta["project"],
             provider=meta["provider"], model=meta["model"], key_kind=meta["key_kind"],
             input_tokens=input_tokens, output_tokens=output_tokens, estimated=estimated,
-            cost_usd=cost(meta["provider"], meta["model"], input_tokens, output_tokens, counted),
+            cost_usd=cost(meta["provider"], meta["model"], input_tokens, output_tokens,
+                          counted) + fees,
             created_at=time.time(),
         )  # fmt: skip
         task = asyncio.create_task(self.ledger.settle(record, meta["reserved"]))

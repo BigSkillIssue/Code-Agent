@@ -5,7 +5,8 @@ Usage is only ever taken from the upstream response, never from the sandbox. Whe
 without its final usage report (aborted), the call is charged an estimate: the larger of what the
 upstream had reported so far and what the text that came through amounts to. Anthropic's prompt
 cache is priced as Anthropic prices it (W42): reads at a tenth of the input price, writes at 1.25
-times it (2 times for an hour's cache).
+times it (2 times for an hour's cache). Anthropic's server-side web searches are charged as it
+reports them (`usage.server_tool_use.web_search_requests`).
 """
 
 import asyncio
@@ -25,6 +26,7 @@ from forge_web.db.models import UsageRecord
 FALLBACK_IN, FALLBACK_OUT = 5.0, 25.0
 CACHE_READ, CACHE_WRITE, CACHE_WRITE_1H = 0.1, 1.25, 2.0  # times the input price (Anthropic)
 CHARS_PER_TOKEN = 3
+WEB_SEARCH_USD = 0.01  # one of Anthropic's server-side web searches ($10 per 1,000)
 PRODUCT = "product:"  # the ledger's holders are users and, with this prefix, products
 
 
@@ -38,6 +40,7 @@ class Counted:
     cache_read: int = 0  # of the input: read from Anthropic's prompt cache
     cache_write: int = 0  # written to it for 5 minutes
     cache_write_1h: int = 0  # written to it for an hour
+    web_searches: int = 0  # Anthropic's server-side web searches
 
 
 class UsageSniffer:
@@ -91,6 +94,9 @@ class UsageSniffer:
                 hour = min(int(hour or 0), written)
                 c.input_tokens = int(usage.get("input_tokens") or 0) + read + written
                 c.cache_read, c.cache_write, c.cache_write_1h = read, written - hour, hour
+            searches = _dict(usage.get("server_tool_use")).get("web_search_requests")
+            if isinstance(searches, int):
+                c.web_searches = max(c.web_searches, searches)
             if "output_tokens" in usage:
                 c.output_tokens = int(usage["output_tokens"] or 0)
                 c.reported = whole or data.get("type") == "message_delta"
@@ -156,13 +162,14 @@ def priced(provider: str, model: str) -> bool:
 
 def cost(provider: str, model: str, input_tokens: int, output_tokens: int,
          counted: Counted | None = None) -> float:  # fmt: skip
-    """What a call costs (its cached input at the prompt cache's prices)."""
+    """What a call costs (its cached input at the prompt cache's prices, its web searches)."""
     cost_in, cost_out = price(provider, model)
     read, write, hour = (counted.cache_read, counted.cache_write,
                          counted.cache_write_1h) if counted else (0, 0, 0)  # fmt: skip
     plain = max(input_tokens - read - write - hour, 0)
     weighted = plain + read * CACHE_READ + write * CACHE_WRITE + hour * CACHE_WRITE_1H
-    return (weighted * cost_in + output_tokens * cost_out) / 1_000_000
+    searches = counted.web_searches * WEB_SEARCH_USD if counted else 0.0
+    return (weighted * cost_in + output_tokens * cost_out) / 1_000_000 + searches
 
 
 def month_start(now: float | None = None) -> float:

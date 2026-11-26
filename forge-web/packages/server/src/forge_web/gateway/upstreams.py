@@ -26,6 +26,7 @@ MAX_TOKEN_FIELDS = {
     "anthropic": ("max_tokens",),
     "openai_compat": ("max_tokens", "max_completion_tokens", "max_output_tokens"),
 }
+GOOGLE_SNAKE_CASE = ("max_output_tokens", "candidate_count")  # Google reads both spellings
 
 
 @dataclass(frozen=True)
@@ -103,19 +104,34 @@ def capped(value: Any, cap: int) -> int:
     return max(1, min(value, cap))
 
 
-def prepare_body(kind: str, path: str, body: dict[str, Any], cap: int) -> int:
+def primary_limit_field(path: str, base_url: str) -> str:
+    """The output limit an OpenAI-style API surely reads (Forge's own choice of name)."""
+    if path == "responses":
+        return "max_output_tokens"
+    return "max_completion_tokens" if "api.openai.com" in base_url else "max_tokens"
+
+
+def prepare_body(kind: str, path: str, body: dict[str, Any], cap: int, base_url: str = "") -> int:
     """Cap the output tokens a request may produce (in place); returns the cap that applies.
-    OpenAI-style streams are asked to report their usage at the end."""
+    OpenAI-style requests always carry the limit their API reads, so a server that ignores
+    another name cannot answer at length; their streams are asked to report usage at the end."""
     if kind == "google":
         config = body.get("generationConfig")
         if not isinstance(config, dict):
             config = body["generationConfig"] = {}
+        for field in GOOGLE_SNAKE_CASE:
+            config.pop(field, None)
         config["maxOutputTokens"] = capped(config.get("maxOutputTokens"), cap)
         return int(config["maxOutputTokens"])
     present = [field for field in MAX_TOKEN_FIELDS[kind] if field in body]
     for field in present:
         body[field] = capped(body[field], cap)
     limit = max((int(body[field]) for field in present), default=cap)
+    primary = primary_limit_field(path, base_url)
+    if kind == "openai_compat" and primary == "max_completion_tokens" and "max_tokens" in body:
+        del body["max_tokens"]  # OpenAI refuses a body with both names; it reads this one
+    if kind == "openai_compat" and primary not in body:
+        body[primary] = limit
     if kind == "openai_compat" and path == "chat/completions" and body.get("stream"):
         body["stream_options"] = {"include_usage": True}
     return limit
