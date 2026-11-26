@@ -58,7 +58,7 @@ def effective_agents(agents: AgentsSettings) -> list[dict[str, Any]]:
             "name": name,
             "description": (entry and entry.description) or (base.description if base else ""),
             "prompt": (entry and entry.prompt) or (base.prompt if base else ""),
-            "tools": list(entry.tools) if entry else [],
+            "tools": list((entry and entry.tools) or (base.tools if base else ())),
             "policy": entry.policy if entry else (base.policy if base else "recommended"),
             "applies_to": entry.applies_to if entry else (base.applies_to if base else "always"),
             "builtin": base is not None,

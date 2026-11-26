@@ -136,3 +136,23 @@ async def test_agents_at_once_follow_the_plan(tmp_path: Path) -> None:
     assert (pro["max_parallel_agents"], free["max_parallel_agents"]) == (8, 3)
     options = ChatOptions.model_validate(pro)
     assert config_overrides(options)["limits.max_parallel_agents"] == 8
+
+
+def test_agents_that_look_at_the_product_get_the_browser(tmp_path: Path) -> None:
+    found = {item["name"]: item for item in effective_agents(AgentsSettings())}
+    for name in ("ui", "tester", "security", "store-review"):
+        assert "browser" in found[name]["tools"] and "files" in found[name]["tools"], name
+    assert found["math"]["tools"] == []  # Forge's role default; the lead may still give it more
+    mine = AgentsSettings(agents=[{"name": "ui", "tools": ["read_file", "browser"]}])
+    assert {i["name"]: i for i in effective_agents(mine)}["ui"]["tools"] == ["read_file", "browser"]
+    home, project = tmp_path / "home", tmp_path / "project"
+    project.mkdir()
+    write_agent_files(home, [AgentSpec(name="ui", prompt="UI.", tools=found["ui"]["tools"])])
+    import os
+
+    os.environ["FORGE_HOME"] = str(home)
+    try:
+        tools = load_agents(project)["ui"].tools
+    finally:
+        del os.environ["FORGE_HOME"]
+    assert tools is not None and "browser" in tools and "shell" in tools

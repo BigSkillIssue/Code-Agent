@@ -45,6 +45,7 @@ from forge.runtime.attachments import Attachment, AttachmentError, check_attachm
 from forge.runtime.errors import ToolError
 from forge.runtime.ledger import ReadLedger
 from forge.structured import StructuredError, parse_as
+from forge.tools import close_browser
 from pydantic import BaseModel, Field
 
 from forge_sandbox import prompts
@@ -147,7 +148,10 @@ async def run_as(ctx: Ctx, name: str, task: str) -> str:
     except ToolError as err:
         return f"{name} could not start: {err}"
     agent = replace(ctx, agent_id=name, role=name, ledger=ReadLedger())
-    result = await run_agent(agent, task, role=name, max_turns=REVIEW_TURNS)
+    try:
+        result = await run_agent(agent, task, role=name, max_turns=REVIEW_TURNS)
+    finally:
+        await close_browser(ctx, name)  # it may have tested the product in a browser (S78)
     return result.text
 
 

@@ -53,7 +53,8 @@ RUN --mount=type=secret,id=ca,required=false \
  && /opt/forge/bin/pip install --no-cache-dir --no-deps /src/forge-sandbox \
  && rm -rf /src
 
-# The Chromium that Forge photographs a running app with before its release review (S67b),
+# The Chromium that Forge photographs a running app with before its release review (S67b)
+# and that its agents test the product with while they build it (S78),
 # matching Forge's Playwright; readable by the `forge` user.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 RUN --mount=type=secret,id=ca,required=false \

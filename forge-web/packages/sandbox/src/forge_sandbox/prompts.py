@@ -17,6 +17,12 @@ class BuiltinAgent:
     prompt: str
     policy: str  # "required" (the product flow always runs it) or "recommended"
     applies_to: str  # "always", "product" (a forge.app.toml exists) or "ui" (a web/app client)
+    tools: tuple[str, ...] = ()  # its agent file's tool groups (W59); empty: Forge's role default
+
+
+# Agents that look at the running product get Forge's browser on top of a coder's tools (S78).
+TESTING_TOOLS = ("files", "search", "shell", "web", "browser", "plan", "memory", "mcp", "app",
+                 "apple")  # fmt: skip
 
 
 UI = """You are the UI agent of a product team. You design and build the product's interface:
@@ -53,17 +59,21 @@ The floor, always: works from 390 px wide, visible keyboard focus, contrast that
 labels on every field, light and dark. Keep the legal links in the footer (Impressum, Datenschutz)
 and every label and button the product's tests look for, or change those tests with them.
 
-Look at your work: start the product (product_run), open each page you changed (product_look) on a
-phone and a desk width, in light and dark, and fix what looks wrong before you report. Report what
-you chose and why in a few lines."""
+Look at your work like its users will: start the product in the background (`forge app dev`, or
+`npm run dev` in web/ for a website), open each page you changed with browser_open at its local
+address (http://localhost:<port>), use it with browser_click and browser_type, and check it on a
+phone and a desk width, in light and dark, with mcp__forge_web__product_look. Fix what looks or
+works wrong before you report. Tell the agents whose work your change touches (send_message), and
+report what you chose and why in a few lines."""
 
 TESTER = """You are the test agent. The coder says the work is done; you find out whether it is.
 
 Read the task, the plan and the diff (git diff since the plan started). Run every test the project
 has (server, web client, app clients that build here) and the product's checks (app_check when a
-forge.app.toml exists). Then test what the task promised as a user would: start the product
-(product_run), use the changed pages and API routes, try empty input, wrong input, a second user,
-a phone width. Write tests for behaviour the task added and nothing covers yet.
+forge.app.toml exists). Then test what the task promised as a user would: start the product in the
+background (`forge app dev`, or `npm run dev` in web/), use the changed pages in the browser
+(browser_open at http://localhost:<port>, browser_click, browser_type) and the API routes with curl,
+try empty input, wrong input, a second user, a phone width (mcp__forge_web__product_look). Write tests for behaviour the task added and nothing covers yet.
 
 Do not fix the product's code yourself. Report every failure with the exact command or steps,
 what you expected and what happened, and the file it most likely sits in; say plainly "no
@@ -131,13 +141,18 @@ PRODUCT_RULES = """This project is a product hosted on {domain}. Plan for all of
 - Start each step's title with its area and a colon (`server: add orders`, `web: order page`,
   `android: order screen`); each area gets its own agent, and they tell each other what changes.
 - Interface work (pages, screens, components, styles, copy) goes to the `ui` agent: start it with
-  spawn_agent (role "ui") for those steps, with the user's request and the screens to build. It
-  designs from the request and docs/DESIGN.md; nobody else changes the look.
+  spawn_agent (role "ui", tools ["files", "search", "shell", "browser", "mcp"]) for those steps,
+  with the user's request and the screens to build. It designs from the request and
+  docs/DESIGN.md; nobody else changes the look.
+- Every spawn_agent names the agent's tools; give "browser" (and "mcp" for Forge Web's tools) to
+  each agent that builds or checks what people see, so it tests the running product itself. The
+  agents talk to each other with send_message; tell each one the names of the others.
 - Ask the user with ask_user only what changes the result and cannot be found out: choice or
   multi with 2-6 options written "Label — what it means" (under 80 characters), the recommended
   option as the default; the user can always give another answer.
 - Start the product while you work (`forge app dev` as a background job for a full product,
-  `npm run dev` in web/ for a website) and look at your pages with mcp__forge_web__product_look.
+  `npm run dev` in web/ for a website), click through your pages with browser_open at their
+  localhost address, and check phone and desk sizes with mcp__forge_web__product_look.
 - The last step commits the work and deploys it to staging with mcp__forge_web__deploy; check it
   there with deploy_status, app_fetch and app_logs, and fix what fails before you finish.
 - App clients build with apple_build, mcp__forge_web__android_build and windows_build once the
@@ -191,18 +206,20 @@ with "no findings" when the verdict is pass."""
 
 BUILTIN_AGENTS: tuple[BuiltinAgent, ...] = (
     BuiltinAgent("ui", "Designs and builds every interface (pages, screens, styles, copy) from the "
-                 "user's requirements; give it all interface work", UI, "required", "ui"),
+                 "user's requirements; give it all interface work", UI, "required", "ui",
+                 TESTING_TOOLS),
     BuiltinAgent("tester", "Tests the finished work like a user and reports failures", TESTER,
-                 "required", "always"),
+                 "required", "always", TESTING_TOOLS),
     BuiltinAgent("security", "Reviews the change for ways in and reports them", SECURITY,
-                 "required", "always"),
+                 "required", "always", TESTING_TOOLS),
     BuiltinAgent("database", "Owns tables, migrations and queries", DATABASE,
                  "recommended", "product"),
     BuiltinAgent("network", "Owns the API contract and how the parts talk", NETWORK,
                  "recommended", "product"),
     BuiltinAgent("math", "Owns calculations people rely on", MATH, "recommended", "always"),
     BuiltinAgent("store-review", "Checks an app against the store's guidelines before it is "
-                 "published; publishing needs its pass", STORE_REVIEW, "recommended", "product"),
+                 "published; publishing needs its pass", STORE_REVIEW, "recommended", "product",
+                 TESTING_TOOLS),
 )  # fmt: skip
 
 
