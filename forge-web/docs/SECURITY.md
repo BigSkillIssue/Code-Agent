@@ -165,10 +165,21 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 - Staging is always open to the agent; production (deploys, logs, pages, the database) only with the
   admin's `hosting.agent_production`, and production deploys keep every other gate (the same commit
   live in staging, the operator's Impressum, a paid plan, the admin's approval where it applies).
-- SQL runs on the app's own database as the app's own role, read-only unless the agent asks to write,
-  with a statement timeout and a capped answer. Pages are fetched server-side from the app's own
-  host name only (the path cannot change the host). Production data reaches the model provider when
-  the agent reads it: that is the reason for the admin's switch.
+- SQL runs on the app's own database, never as the app's own role `app` (the database's superuser,
+  which could leave any read-only setting and run programs in the database container with
+  `COPY … TO PROGRAM`). The host worker sets up two roles without superuser rights or password
+  before every query: reads run as `forge_reader` (`pg_read_all_data`) in read-only transactions,
+  writes, only when the agent asks, as `forge_writer` (rows only, `pg_write_all_data`; schema
+  changes are the app's migrations). A read must be one statement that starts with SELECT, WITH,
+  TABLE, VALUES, EXPLAIN or SHOW, and nothing that starts with a backslash is run (psql would run
+  it as its own command, `\!` being a shell). A statement timeout and a capped answer apply (SEC-W6).
+  Pages are fetched server-side from the app's own host name only (the path cannot change the
+  host). Production data reaches the model provider when the agent reads it: that is the reason
+  for the admin's switch.
+- Open: the app itself still connects as `app`, the superuser, so the app's code (which the agent
+  writes and deploys to staging) can run programs in its own database container (gVisor, the app's
+  network only). Making `app` an ordinary owner needs a migration of every live database (the
+  official image's bootstrap superuser cannot lose its rights) and is not done yet.
 
 ### The agent and the stores (W58)
 

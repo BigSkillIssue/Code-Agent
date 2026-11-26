@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
+from forge_hostworker.agent_sql import run_sql
 from forge_hostworker.android import android_job
 from forge_hostworker.backup import archive_job, drill_job
 from forge_hostworker.build import SourceError, build_release, file_digest, hand_over, unpack
@@ -28,7 +29,7 @@ from forge_hostworker.firewall import BUILD_NETWORK, BUILD_SUBNET
 from forge_hostworker.lifecycle import delete_app, live_logs, set_domains, start_live
 from forge_hostworker.metrics import usage
 from forge_hostworker.migrate import migrate_release
-from forge_hostworker.postgres import dump_database, ensure_database, run_sql
+from forge_hostworker.postgres import dump_database, ensure_database
 from forge_hostworker.storage import ensure_files, files_mount
 from forge_hostworker.wire import (
     PLANNED,

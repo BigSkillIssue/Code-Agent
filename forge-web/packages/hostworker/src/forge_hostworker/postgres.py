@@ -148,29 +148,6 @@ async def throwaway_database(
     return f"postgresql://app:{chosen}@{name}:5432/app"
 
 
-SQL_OUTPUT = 19_000  # characters of a query's answer kept (a result's log_tail holds 20 000)
-
-
-async def run_sql(
-    docker: Docker, app: str, environment: str, query: str, write: bool, timeout_s: int
-) -> tuple[bool, str]:
-    """Run SQL on the app's own database as its own role (psql, CSV): whether it worked, and
-    what it printed. Read-only unless `write`; the statement timeout bounds it either way."""
-    name = container(app, environment)
-    state = await docker("container", "inspect", "-f", "{{.State.Running}}", name)
-    if state.code != 0 or state.out.strip() != "true":
-        return False, "the app has no running database in this environment"
-    options = f"-c statement_timeout={timeout_s * 1000}"
-    if not write:
-        options += " -c default_transaction_read_only=on"
-    done = await docker(
-        "exec", "-e", f"PGOPTIONS={options}", name, "psql", "-U", "app", "-d", "app", "-X",
-        "-v", "ON_ERROR_STOP=1", "--csv", "-c", query, timeout=timeout_s + 15,
-    )  # fmt: skip
-    text = "\n".join(t for t in (done.out.rstrip(), done.err.rstrip()) if t)
-    return done.code == 0, text[:SQL_OUTPUT]
-
-
 async def dump_database(docker: Docker, app: str, environment: str, folder: Path, tag: str) -> Path:
     """The app's database dumped (pg_dump's own format) into its folder; the newest few kept."""
     name = container(app, environment)
