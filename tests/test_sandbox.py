@@ -24,6 +24,7 @@ from forge.runtime.sandbox import (
     scratch_dir,
     seatbelt_profile,
 )
+from forge.runtime.shell import find_shell
 from forge.tools import call_tool
 from support import ScriptedRenderer, make_ctx
 
@@ -31,7 +32,9 @@ NO_SANDBOX = launch_for(SandboxPolicy(mode="workspace-write")).mechanism == "non
 needs_sandbox = pytest.mark.skipif(
     NO_SANDBOX, reason="no OS sandbox here (Windows has none yet; Linux needs Landlock or bwrap)"
 )
-needs_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+# The bash Forge would use: on Windows `which("bash")` finds WSL's launcher, and CI's
+# PowerShell jobs turn bash off with FORGE_BASH=none.
+needs_bash = pytest.mark.skipif(find_shell("bash") is None, reason="needs bash")
 
 
 @pytest.fixture
