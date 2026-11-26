@@ -25,7 +25,7 @@ export function price(cents: number, currency: string): string {
 
 /** What a plan includes, one line each (a limit the plan leaves out is no limit). */
 export function features(given: Partial<Limits>): string[] {
-  const limit = (key: keyof Omit<Limits, "store_publishing">) => given[key] ?? null;
+  const limit = (key: keyof Omit<Limits, "store_publishing" | "code_access">) => given[key] ?? null;
   const count = (value: number | null, some: "featureProjects" | "featureApps" | "featureDomains", all: "featureProjectsAll" | "featureAppsAll" | "featureDomainsAll") =>
     value === null ? t(all) : t(some, { n: String(value) });
   const lines = [count(limit("projects"), "featureProjects", "featureProjectsAll"), count(limit("hosted_apps"), "featureApps", "featureAppsAll")];
@@ -36,6 +36,7 @@ export function features(given: Partial<Limits>): string[] {
   if (limit("custom_domains") !== 0) lines.push(count(limit("custom_domains"), "featureDomains", "featureDomainsAll"));
   if (limit("mac_minutes")) lines.push(t("featureMac", { n: String(limit("mac_minutes")) }));
   if (given.store_publishing) lines.push(t("featureStores"));
+  if (given.code_access === true) lines.push(t("featureCode"));
   return lines;
 }
 

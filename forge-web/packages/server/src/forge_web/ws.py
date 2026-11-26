@@ -16,6 +16,7 @@ from forge_web import live_access
 from forge_web.access import require_chat
 from forge_web.auth.sessions import session_token, websocket_user
 from forge_web.chats.api import stored_items
+from forge_web.code_access import may_read_code
 from forge_web.db.models import User
 from forge_web.hub import Subscriber
 from forge_web.services import Services, services_of
@@ -106,7 +107,9 @@ async def subscribe(
     """Watch a chat: stored items after `after_seq`, then live ones, none twice or missing."""
     try:
         async with services.db.session() as session:
-            await require_chat(session, user, chat_id)
+            chat, _ = await require_chat(session, user, chat_id)
+        if not await may_read_code(services, user, chat.project_id):
+            subscriber.private.add(chat_id)  # W57: the chat arrives without the code
     except HTTPException:
         subscriber.put({"type": "error", "chat_id": chat_id, "message": "no such chat"})
         return

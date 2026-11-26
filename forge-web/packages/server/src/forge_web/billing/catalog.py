@@ -45,6 +45,7 @@ class Limits(BaseModel):
     storage_gb: float | None = Field(default=None, ge=0)
     custom_domains: int | None = Field(default=None, ge=0)
     store_publishing: bool = False
+    code_access: bool = True  # the customer may read the code (W57); off: only +/- lines
 
 
 class ItemIn(BaseModel):

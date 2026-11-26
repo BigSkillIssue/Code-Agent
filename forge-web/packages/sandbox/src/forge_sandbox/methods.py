@@ -266,6 +266,9 @@ class ChatOptions(Params):
     # Forge Web's own flow (W55): always planned, the product decided by the agent, required
     # agents after the coders, and only /undo for the user.
     product_flow: bool = False
+    # The owner's plan hides the code from people (W57): the agents describe the work, never
+    # the code itself.
+    code_private: bool = False
     apps_domain: str = Field(default="", max_length=200, pattern=r"^$|^[a-z0-9.-]+$")
 
 

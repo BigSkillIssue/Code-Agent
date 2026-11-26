@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.db.models import User
-from forge_web.files_api import MAX_PATH, allowed
+from forge_web.files_api import MAX_PATH, code_allowed
 from forge_web.gitsync import (
     check_branch,
     current_branch,
@@ -78,7 +78,7 @@ def reading_routes(router: APIRouter) -> None:
 
     @router.get("/status")
     async def status(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         return result_dict(await sandbox_call(services, project_id, "git.status"))
 
     @router.get("/diff")
@@ -89,25 +89,25 @@ def reading_routes(router: APIRouter) -> None:
         path: str = Query("", max_length=MAX_PATH),
         staged: bool = False,
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         params = {"path": path or None, "staged": staged}
         return result_dict(await sandbox_call(services, project_id, "git.diff", params))
 
     @router.get("/branches")
     async def branches(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         return result_dict(await sandbox_call(services, project_id, "git.branches"))
 
     @router.get("/log")
     async def log(
         project_id: str, request: Request, user: CurrentUser, limit: int = Query(50, ge=1, le=500)
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         return result_dict(await sandbox_call(services, project_id, "git.log", {"limit": limit}))
 
     @router.get("/remote")
     async def remote(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         found = result_dict(await sandbox_call(services, project_id, "git.remote"))
         url = found.get("url") if isinstance(found.get("url"), str) else None
         return {"url": url, "problem": remote_problem(url) if url else None}
@@ -123,7 +123,7 @@ def changing_routes(router: APIRouter) -> None:
     async def commit(
         project_id: str, body: CommitIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         name, email = committer(user)
         params = {"message": body.message, "name": name, "email": email}
         return result_dict(await sandbox_call(services, project_id, "git.commit", params))
@@ -132,7 +132,7 @@ def changing_routes(router: APIRouter) -> None:
     async def switch(
         project_id: str, body: SwitchIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         params = {"branch": body.branch, "create": body.create}
         return result_dict(await sandbox_call(services, project_id, "git.switch", params))
 
@@ -140,7 +140,7 @@ def changing_routes(router: APIRouter) -> None:
     async def set_remote(
         project_id: str, body: RemoteIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         require_source(services.settings, "git")
         local = local_remotes(services) and body.url.startswith("file://")
         problem = None if local else remote_problem(body.url)
@@ -157,7 +157,7 @@ def sync_routes(router: APIRouter) -> None:
     async def push_route(
         project_id: str, body: SyncIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         require_source(services.settings, "git")
         branch = check_branch(body.branch or await current_branch(services, project_id))
         remote_branch = check_branch(body.remote_branch or branch)
@@ -167,7 +167,7 @@ def sync_routes(router: APIRouter) -> None:
     async def pull_route(
         project_id: str, body: SyncIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         require_source(services.settings, "git")
         branch = check_branch(body.branch or await current_branch(services, project_id))
         remote_branch = check_branch(body.remote_branch or branch)
@@ -180,7 +180,7 @@ def add_paths_route(router: APIRouter, action: str) -> None:
     async def route(
         project_id: str, body: PathsIn, request: Request, user: CurrentUser
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         return result_dict(
             await sandbox_call(services, project_id, f"git.{action}", {"paths": body.paths})
         )

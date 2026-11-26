@@ -41,6 +41,7 @@ class Entitlements:
     storage_mb: int | None = None  # per project
     custom_domains: int | None = None
     store_publishing: bool = True
+    code_access: bool = True  # may read the code of their projects (W57)
 
 
 class EntitlementEngine:
@@ -52,7 +53,8 @@ class EntitlementEngine:
     async def of(self, user: User) -> Entitlements:
         """The user's limits."""
         if user.role == "admin":  # the server's limits, but no count of projects
-            return replace(await self.server_defaults(user), source="admin", projects=None)
+            return replace(await self.server_defaults(user), source="admin", projects=None,
+                           code_access=True)  # fmt: skip
         if self.settings.billing.enabled:
             paid = await self.plan_of(user)
             if paid is not None:
@@ -83,6 +85,7 @@ class EntitlementEngine:
             ai_month_usd=limit, server_keys=limit is not None,
             mac_minutes=settings.apple.minutes_per_month or None,
             storage_mb=settings.quotas.project_disk_mb or None,
+            code_access=settings.agents.code_access_without_plan,
         )  # fmt: skip
 
     async def plan_of(self, user: User) -> Entitlements | None:
@@ -128,6 +131,7 @@ class EntitlementEngine:
             mac_minutes=limits.mac_minutes, hosted_apps=limits.hosted_apps,
             storage_mb=None if limits.storage_gb is None else int(limits.storage_gb * 1000),
             custom_domains=limits.custom_domains, store_publishing=limits.store_publishing,
+            code_access=limits.code_access,
         )  # fmt: skip
 
 

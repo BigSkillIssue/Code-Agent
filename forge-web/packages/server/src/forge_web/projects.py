@@ -19,6 +19,7 @@ from forge_web.audit import audit
 from forge_web.auth.admin_role import acts_as_admin
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.chats.one import new_chat
+from forge_web.code_access import may_read_code
 from forge_web.db.hosting_models import HostedApp
 from forge_web.db.models import Project, ProjectMember, User
 from forge_web.gitsync import check_remote, clone
@@ -56,13 +57,15 @@ class ProjectOut(BaseModel):
     role: str
     source: str
     kind: str  # code | apple | app
+    code_access: bool = True  # this person may read the code (W57)
     created_at: float
     updated_at: float
 
 
-def project_out(project: Project, role: str) -> ProjectOut:
+def project_out(project: Project, role: str, code_access: bool = True) -> ProjectOut:
     """The UI view of a project."""
     return ProjectOut(
+        code_access=code_access,
         id=project.id,
         name=project.name,
         role=role,
@@ -79,8 +82,16 @@ def projects_router() -> APIRouter:
 
     @router.get("")
     async def list_projects(request: Request, user: CurrentUser) -> list[ProjectOut]:
-        async with services_of(request).db.session() as session:
-            return [project_out(p, role) for p, role in await member_projects(session, user)]
+        services = services_of(request)
+        async with services.db.session() as session:
+            found = await member_projects(session, user)
+        owners: dict[str, bool] = {}  # one plan look-up per owner
+        shown = []
+        for project, role in found:
+            if project.owner_id not in owners:
+                owners[project.owner_id] = await may_read_code(services, user, project.id)
+            shown.append(project_out(project, role, owners[project.owner_id]))
+        return shown
 
     @router.post("", status_code=201)
     async def create_project(body: ProjectIn, request: Request, user: CurrentUser) -> ProjectOut:
@@ -119,13 +130,14 @@ def projects_router() -> APIRouter:
             raise HTTPException(503, "the project's sandbox could not be started") from None
         await audit(services.db, "project_created", user_id=user.id, target=project.id,
                     ip=client_ip(request), source=body.source)  # fmt: skip
-        return project_out(project, "owner")
+        return project_out(project, "owner", await may_read_code(services, user, project.id))
 
     @router.get("/{project_id}")
     async def get_project(project_id: str, request: Request, user: CurrentUser) -> ProjectOut:
-        async with services_of(request).db.session() as session:
+        services = services_of(request)
+        async with services.db.session() as session:
             project, role = await require_project(session, user, project_id)
-            return project_out(project, role)
+        return project_out(project, role, await may_read_code(services, user, project_id))
 
     @router.patch("/{project_id}")
     async def patch_project(

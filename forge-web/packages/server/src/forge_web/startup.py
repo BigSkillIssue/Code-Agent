@@ -75,6 +75,10 @@ def chat_options(settings: WebSettings, entitlements: EntitlementEngine | None =
         options: dict[str, Any] = {"mode": mode, "sandbox_mode": sandbox_mode, "product_flow": flow}
         if entitlements is not None:
             options.update(await chat_agents(settings, entitlements, chat.project_id))
+            # W57: the agents keep the code to themselves when the owner's plan hides it
+            options["code_private"] = not (
+                await entitlements.of_project(chat.project_id)
+            ).code_access
         if chat.model and settings.agents.user_model_choice:
             options["model"] = chat.model
         if chat.effort != "auto" and not flow:

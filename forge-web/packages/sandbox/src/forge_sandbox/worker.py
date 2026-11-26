@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -185,6 +186,7 @@ class ChatWorker:
         """Run one prompt or slash command and report how it ended."""
         assert self.ctx is not None
         started = time.time()
+        base = await asyncio.to_thread(snapshot_ref, self.root)
         await self.out.send({"type": "status", "state": "running"})
         result: dict[str, Any] = {"type": "turn", "prompt": text, "ok": False}
         try:
@@ -197,6 +199,8 @@ class ChatWorker:
         except (PipelineError, ProviderError, ConfigError) as err:
             result.update(error=str(err), summary=f"The turn failed: {err}")
         result["seconds"] = round(time.time() - started, 2)
+        added, removed = await asyncio.to_thread(lines_changed, self.root, base)
+        result.update(lines_added=added, lines_removed=removed)
         if not text.startswith("/") or result.get("ran_prompt"):
             summary = str(result.get("summary", ""))
             self.state.turns.append(Turn(prompt=text, summary=summary, ok=bool(result["ok"])))
@@ -212,6 +216,7 @@ class ChatWorker:
         return await run_product_task(
             text, self.ctx, files, agents=self.options.agents,
             apps_domain=self.options.apps_domain, apple=self.options.apple_url is not None,
+            code_private=self.options.code_private,
         )  # fmt: skip
 
     async def _run(self, text: str, files: list[Attachment]) -> dict[str, Any]:
@@ -239,6 +244,31 @@ class ChatWorker:
         await self.cancel()
         if self.ctx is not None:
             await close_session(self.ctx)
+
+
+def git_out(root: Path, *args: str) -> str:
+    """What a read-only git command prints ("" when it fails)."""
+    done = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    return done.stdout if done.returncode == 0 else ""
+
+
+def snapshot_ref(root: Path) -> str:
+    """The commit a turn starts from ("" before the first one)."""
+    return git_out(root, "rev-parse", "HEAD").strip()
+
+
+def lines_changed(root: Path, base: str) -> tuple[int, int]:
+    """Lines added and removed since `base` (work tree included; new files counted whole)."""
+    added = removed = 0
+    if base:
+        for line in git_out(root, "diff", "--numstat", base).splitlines():
+            parts = line.split("\t")
+            if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+                added, removed = added + int(parts[0]), removed + int(parts[1])
+    for path in git_out(root, "ls-files", "--others", "--exclude-standard").splitlines():
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            added += (root / path).read_text(encoding="utf-8").count("\n")
+    return added, removed
 
 
 def slash_commands(root: Path) -> list[dict[str, Any]]:

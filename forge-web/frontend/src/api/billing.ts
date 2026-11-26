@@ -26,6 +26,7 @@ export interface Limits {
   storage_gb: number | null;
   custom_domains: number | null;
   store_publishing: boolean;
+  code_access?: boolean; // customers may read their code (W57); off: only +/- lines
 }
 
 export interface ItemInput {

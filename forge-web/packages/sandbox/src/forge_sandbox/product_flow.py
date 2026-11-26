@@ -246,6 +246,7 @@ async def run_product_task(
     agents: Sequence[AgentSpec] = (),
     apps_domain: str = "",
     apple: bool = False,
+    code_private: bool = False,
 ) -> Report:
     """Forge Web's task: always planned, the product decided by the agent (see the module)."""
     ctx.session.status = "active"
@@ -265,6 +266,10 @@ async def run_product_task(
         if decision.product != "none" or (ctx.root / "forge.app.toml").exists():
             rules = prompts.PRODUCT_RULES.format(domain=apps_domain or "Forge's servers")
             spec = spec.model_copy(update={"constraints": [*spec.constraints, rules]})
+        if code_private:
+            spec = spec.model_copy(
+                update={"constraints": [*spec.constraints, prompts.CODE_PRIVATE]}
+            )
         ctx.state.mode = "team" if spec.size == "large" else "subagents"
         checkpoints = checkpoints_for_product(ctx, apple)
         await release_flow.check_request(checkpoints, ctx, prompt)

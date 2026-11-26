@@ -24,7 +24,7 @@ const KINDS: Record<ItemKind, { text: TextKey; intervals: Interval[] }> = {
   addon: { text: "kindAddon", intervals: ["month"] },
 };
 const INTERVAL_TEXT: Record<Interval, TextKey> = { month: "amountMonth", year: "amountYear", once: "amountOnce" };
-const LIMITS: [keyof Omit<Limits, "store_publishing">, TextKey][] = [
+const LIMITS: [keyof Omit<Limits, "store_publishing" | "code_access">, TextKey][] = [
   ["projects", "limitProjects"],
   ["ai_budget_month_eur", "limitAiMonth"],
   ["ai_budget_per_product_eur", "limitAiProduct"],
@@ -152,6 +152,7 @@ function ItemForm({ item, onSaved }: { item: CatalogItem | null; onSaved: () => 
     Object.fromEntries(LIMITS.map(([key]) => [key, item?.limits[key] == null ? "" : String(item.limits[key])])),
   );
   const [store, setStore] = useState(item?.limits.store_publishing ?? false);
+  const [code, setCode] = useState(item?.limits.code_access ?? true);
   const act = useAction();
   const intervals = KINDS[kind].intervals;
   const save = async (event: FormEvent) => {
@@ -161,7 +162,7 @@ function ItemForm({ item, onSaved }: { item: CatalogItem | null; onSaved: () => 
     );
     const planLimits =
       kind === "plan"
-        ? { ...Object.fromEntries(LIMITS.map(([key]) => [key, number(limits[key] ?? "")])), store_publishing: store }
+        ? { ...Object.fromEntries(LIMITS.map(([key]) => [key, number(limits[key] ?? "")])), store_publishing: store, code_access: code }
         : {};
     const body = {
       kind,
@@ -203,6 +204,10 @@ function ItemForm({ item, onSaved }: { item: CatalogItem | null; onSaved: () => 
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={store} onChange={(e) => setStore(e.target.checked)} />
             {t("limitStore")}
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={code} onChange={(e) => setCode(e.target.checked)} />
+            {t("limitCode")}
           </label>
         </div>
       )}

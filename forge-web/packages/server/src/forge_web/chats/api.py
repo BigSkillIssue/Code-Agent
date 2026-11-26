@@ -16,6 +16,7 @@ from forge_web.access import RANK, project_role, require_chat, require_project
 from forge_web.apple.approvals import note_answer
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.chats.one import new_chat, project_chat
+from forge_web.code_access import may_read_code, redacted_item
 from forge_web.containers.driver import SandboxError
 from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.hosting.golive import note_go_live
@@ -189,9 +190,12 @@ def chats_router() -> APIRouter:
     ) -> dict[str, Any]:
         services = services_of(request)
         async with services.db.session() as session:
-            await require_chat(session, user, chat_id)
+            chat, _ = await require_chat(session, user, chat_id)
         items = await stored_items(services, chat_id, max(after, 0), max(limit, 1))
-        return {"items": items, "last_seq": items[-1]["seq"] if items else after}
+        last = items[-1]["seq"] if items else after
+        if not await may_read_code(services, user, chat.project_id):  # W57
+            items = [{**e, "item": redacted_item(e["item"]) or {"type": "hidden"}} for e in items]
+        return {"items": items, "last_seq": last}
 
     @router.post("/api/chats/{chat_id}/messages", status_code=202)
     async def send_message(

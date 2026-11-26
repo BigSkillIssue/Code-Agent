@@ -169,6 +169,21 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   host name only (the path cannot change the host). Production data reaches the model provider when
   the agent reads it: that is the reason for the admin's switch.
 
+### Code access by plan (W57)
+
+- A plan may leave out the code (`Limits.code_access`; people without a plan follow
+  `agents.code_access_without_plan`; admins always see it). Without it the server refuses the file
+  routes (reading, editing, search, downloads), git (status, diffs, log, commits, remotes, push and
+  pull), terminals and their sockets; uploading files and attaching them to messages stay allowed.
+- The chat is redacted per watcher before it leaves the server (WebSocket and the events API): tool
+  calls keep only the arguments that name their target (path, pattern, URL …), tool results and
+  command output are not sent, streamed model text is not sent (the finished message follows),
+  and fenced or indented code in the agents' answers, reports and approvals becomes "[code hidden]".
+  A turn reports only how many lines were added and removed.
+- The agents are told to describe the product without its code (`CODE_PRIVATE`); the server does
+  not rely on that. Known gap: a running dev server or the hosted web client serves its JavaScript
+  to anyone who opens it, as any website does; the server code stays on the server.
+
 ### Browser
 
 - Sessions are random tokens stored hashed in the database, in an `HttpOnly`, `Secure`, `SameSite=Lax`

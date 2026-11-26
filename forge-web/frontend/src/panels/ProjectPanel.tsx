@@ -20,25 +20,27 @@ interface Props {
   projectId: string;
   canEdit: boolean;
   apple?: boolean; // an Apple app: show its devices
+  codeAccess?: boolean; // false: the owner's plan hides the code (W57)
   refreshKey: number;
   onClose: () => void;
   onError: (message: string) => void;
   api?: ProjectApi; // tests pass their own
 }
 
-export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, onClose, onError, api }: Props) {
+export function ProjectPanel({ projectId, canEdit, apple = false, codeAccess = true, refreshKey, onClose, onError, api }: Props) {
   const sources = useStore((state) => state.user?.project_sources);
   const remotes = sources === undefined || sources.includes("git"); // W48: git turned off
   const client = useMemo(() => api ?? projectApi(projectId), [api, projectId]);
-  const [tab, setTab] = useState<Tab>("files");
+  const [tab, setTab] = useState<Tab>(codeAccess ? "files" : "product");
   const [file, setFile] = useState<string | null>(null);
   // Terminals and the preview stay alive once opened, also while another tab shows.
   const [opened, setOpened] = useState<Set<Tab>>(() => new Set());
+  // W57: without the code, the product and its preview only.
+  const code = (entries: [Tab, string][]) => (codeAccess ? entries : []);
   const tabs: [Tab, string][] = [
     ["product", t("productTab")],
-    ["files", t("files")],
-    ["changes", t("changes")],
-    ...(canEdit ? [["terminal", t("terminal")] as [Tab, string]] : []),
+    ...code([["files", t("files")], ["changes", t("changes")]]),
+    ...code(canEdit ? [["terminal", t("terminal")]] : []),
     ["preview", t("preview")],
     ...(apple ? [["devices", t("devices")] as [Tab, string]] : []),
   ];
@@ -74,7 +76,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, refreshKey, on
           ))}
         {tab === "product" && <ProductPanel api={client} refreshKey={refreshKey} onError={onError} />}
         {tab === "changes" && <Changes api={client} canEdit={canEdit} remotes={remotes} refreshKey={refreshKey} onError={onError} />}
-        {canEdit && opened.has("terminal") && (
+        {canEdit && codeAccess && opened.has("terminal") && (
           <div className={tab === "terminal" ? "h-full" : "hidden"}>
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
           </div>

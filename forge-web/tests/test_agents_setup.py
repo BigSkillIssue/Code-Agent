@@ -104,7 +104,7 @@ async def test_a_chats_options_carry_the_agents(tmp_path: Path, choice: bool) ->
 
     class Plans:
         async def of_project(self, project_id: str) -> SimpleNamespace:
-            return SimpleNamespace(source="server")
+            return SimpleNamespace(source="server", code_access=True)
 
     options_for = chat_options(settings, Plans())  # type: ignore[arg-type]
     chat = SimpleNamespace(mode="auto", model=MINI, effort="auto", project_id="p1")

@@ -67,6 +67,8 @@ export type Entry =
       summary: string;
       report: string;
       filesChanged: string[];
+      linesAdded: number;
+      linesRemoved: number;
       manualChecks: string[];
       assumptions: string[];
       usage: Usage;
@@ -308,6 +310,8 @@ function addItem(b: Builder, seq: number, item: ChatItem): void {
         summary: repeatsLastReply(b, item.summary) ? "" : item.summary,
         report: item.report ?? "",
         filesChanged: item.files_changed ?? [],
+        linesAdded: item.lines_added ?? 0,
+        linesRemoved: item.lines_removed ?? 0,
         manualChecks: item.manual_checks ?? [],
         assumptions: item.assumptions ?? [],
         usage: item.usage,

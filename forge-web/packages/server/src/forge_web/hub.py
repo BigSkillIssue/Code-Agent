@@ -10,6 +10,8 @@ import json
 from collections import defaultdict
 from typing import Any
 
+from forge_web.code_access import redacted_message
+
 # How far a slow browser may fall behind before it is disconnected (it reconnects and catches up
 # from the last item it has). Bytes count, not only messages: one item can be large.
 MAX_QUEUED = 20_000
@@ -34,9 +36,20 @@ class Subscriber:
         self._room = asyncio.Event()
         self._room.set()
         self.overflowed = False
+        self.private: set[str] = set()  # chats this person sees without the code (W57)
+
+    def visible(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        """The message as this person may see it (None: not at all)."""
+        if str(message.get("chat_id", "")) in self.private:
+            return redacted_message(message)
+        return message
 
     def put(self, message: dict[str, Any]) -> None:
         """Queue a message (or hold it while its chat is being replayed)."""
+        shown = self.visible(message)
+        if shown is None:
+            return
+        message = shown
         text = encode(message)
         held = self._held.get(str(message.get("chat_id", "")))
         if held is None:
@@ -47,6 +60,10 @@ class Subscriber:
 
     def put_now(self, message: dict[str, Any]) -> None:
         """Queue a message past any hold (the replay itself)."""
+        shown = self.visible(message)
+        if shown is None:
+            return
+        message = shown
         self._enqueue(encode(message))
 
     def _fits(self, size: int) -> bool:

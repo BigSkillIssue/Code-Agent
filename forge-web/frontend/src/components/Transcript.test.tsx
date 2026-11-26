@@ -90,3 +90,17 @@ describe("questions like a picker", () => {
     });
   });
 });
+
+describe("a turn's lines", () => {
+  it("says how many lines were added and removed", () => {
+    const entries: Entry[] = [
+      {
+        kind: "turn", key: "t", ok: true, summary: "Done.", report: "", filesChanged: [], linesAdded: 120, linesRemoved: 8,
+        manualChecks: [], assumptions: [], seconds: 3, cancelled: false, error: "",
+        usage: { input_tokens: 1, output_tokens: 1, cached_tokens: 0, cost_usd: 0 },
+      },
+    ];
+    render(<Transcript entries={entries} />);
+    expect(screen.getByTestId("lines-changed").textContent).toMatch(/\+120 −8 (lines|Zeilen)/);
+  });
+});

@@ -95,9 +95,13 @@ export function ChatView({ chat }: { chat: Chat }) {
 
   const transcript = useMemo(() => buildTranscript(data?.items ?? [], data?.live), [data?.items, data?.live]);
   const commands = useMemo(() => chatCommands(data?.items ?? []), [data?.items]);
-  const findFiles = useCallback((query: string) => searchFiles(chat.project_id, query), [searchFiles, chat.project_id]);
   const running = chat.state === "running" || chat.state === "waiting";
   const project = useStore((s) => s.projects.find((p) => p.id === chat.project_id));
+  const codeAccess = project?.code_access !== false; // W57: no file names for @-mentions without it
+  const findFiles = useCallback(
+    (query: string) => (codeAccess ? searchFiles(chat.project_id, query) : Promise.resolve([])),
+    [searchFiles, chat.project_id, codeAccess],
+  );
   const modelChoice = useStore((s) => s.user?.model_choice !== false);
   // Forge Web's product flow (W55): the agent plans and steers; people answer, stop and undo.
   const agentSteers = useStore((s) => s.user?.product_flow === true);
@@ -243,6 +247,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             projectId={chat.project_id}
             canEdit={project?.role !== "viewer"}
             apple={project?.kind === "apple"}
+            codeAccess={project?.code_access !== false}
             refreshKey={turns}
             onClose={() => togglePanel(false)}
             onError={setError}

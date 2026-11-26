@@ -25,8 +25,9 @@ from forge_sandbox.mux import Channel, ChannelClosed, OpenFailed, OpenRefused
 from forge_web import live_access
 from forge_web.access import require_project
 from forge_web.auth.sessions import CurrentUser, session_token, websocket_user
+from forge_web.code_access import may_read_code
 from forge_web.containers.driver import SandboxError
-from forge_web.files_api import allowed
+from forge_web.files_api import code_allowed
 from forge_web.sandbox_calls import sandbox_call
 from forge_web.services import Services, services_of
 
@@ -64,19 +65,19 @@ def terminals_router() -> APIRouter:
 
     @router.get("")
     async def terminals(project_id: str, request: Request, user: CurrentUser) -> list[Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         found = await sandbox_call(services, project_id, "pty.list")
         return found if isinstance(found, list) else []
 
     @router.post("", status_code=201)
     async def create(project_id: str, body: TerminalIn, request: Request, user: CurrentUser) -> Any:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         params = {"cols": body.cols, "rows": body.rows}
         return await sandbox_call(services, project_id, "pty.create", params)
 
     @router.delete("/{terminal_id}", status_code=204)
     async def close(project_id: str, terminal_id: str, request: Request, user: CurrentUser) -> None:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         params = {"id": check_terminal_id(terminal_id)}
         await sandbox_call(services, project_id, "pty.close", params)
 
@@ -102,6 +103,9 @@ async def open_terminal(websocket: WebSocket, project_id: str, terminal_id: str)
         except HTTPException as err:
             await websocket.close(code=4403 if err.status_code == 403 else 4404)
             return None
+    if not await may_read_code(services, user, project_id):  # W57: a terminal reads the code
+        await websocket.close(code=4403)
+        return None
     channel = await attach(services, project_id, terminal_id)
     if channel is None:
         await websocket.close(code=4404)

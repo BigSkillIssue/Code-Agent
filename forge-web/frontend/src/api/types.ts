@@ -33,6 +33,7 @@ export interface Project {
   role: Role;
   source: string;
   kind?: "code" | "apple" | "app"; // apple: an Apple app (builds on the server's Macs); app: a full-stack product
+  code_access?: boolean; // false: the owner's plan hides the code (W57)
   created_at: number;
   updated_at: number;
 }
@@ -119,6 +120,8 @@ export type ChatItem =
       summary: string;
       report: string;
       files_changed: string[];
+      lines_added?: number;
+      lines_removed?: number;
       manual_checks: string[];
       assumptions?: string[];
       usage: Usage;

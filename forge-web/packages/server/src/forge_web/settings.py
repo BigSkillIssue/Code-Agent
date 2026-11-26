@@ -121,6 +121,9 @@ class AgentsSettings(_Strict):
     # Forge Web's own flow (W55): every task planned with questions, the product decided by the
     # agent, required agents after the coders; people keep stop, undo and their answers.
     product_flow: bool = True
+    # Whether people without a plan (or with billing off) may read their projects' code (W57);
+    # a plan sets it for its customers.
+    code_access_without_plan: bool = True
     # tier ("default" or a catalog plan's id) -> role or agent name -> model fallback chain
     roles: dict[
         Annotated[str, Field(pattern=r"^[a-z0-9_-]{1,40}$")],

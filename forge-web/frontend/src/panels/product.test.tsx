@@ -26,3 +26,14 @@ describe("the product tab", () => {
     expect(await screen.findByText(/No product yet|Noch kein Produkt/)).toBeTruthy();
   });
 });
+
+describe("without the code", () => {
+  it("shows the product and its preview, not files, changes or a terminal", async () => {
+    const { ProjectPanel } = await import("./ProjectPanel");
+    const api = { product: vi.fn(async () => ({ product: false })) } as unknown as ProjectApi;
+    render(<ProjectPanel projectId="p1" canEdit codeAccess={false} refreshKey={0} onClose={vi.fn()} onError={vi.fn()} api={api} />);
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs).toEqual([expect.stringMatching(/^(Product|Produkt)$/), expect.stringMatching(/^(Preview|Vorschau)$/)]);
+    expect(await screen.findByText(/No product yet|Noch kein Produkt/)).toBeTruthy();
+  });
+});

@@ -116,54 +116,57 @@ export function Changes({ api, canEdit, remotes = true, refreshKey, onError }: P
       </div>
 
       {remotes && (
-        <div className="space-y-2 border-b border-line px-2 py-2">
-          <form
-            className="flex gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void act(() => api.setRemote(remote.trim()));
-            }}
-          >
-            <input
-              aria-label={t("remoteUrl")}
-              placeholder={t("remoteUrl")}
-              className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-0.5 font-mono text-xs"
-              value={remote}
-              readOnly={!canEdit}
-              onChange={(e) => setRemote(e.target.value)}
-            />
+        <details className="border-b border-line px-2 py-2">
+          <summary className="cursor-pointer text-sm text-muted">{t("exportCode")}</summary>
+          <div className="mt-2 space-y-2">
+            <form
+              className="flex gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(() => api.setRemote(remote.trim()));
+              }}
+            >
+              <input
+                aria-label={t("remoteUrl")}
+                placeholder={t("remoteUrl")}
+                className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-0.5 font-mono text-xs"
+                value={remote}
+                readOnly={!canEdit}
+                onChange={(e) => setRemote(e.target.value)}
+              />
+              {canEdit && (
+                <button type="submit" disabled={busy} className="rounded border border-line px-2 text-xs">
+                  {t("setRemote")}
+                </button>
+              )}
+            </form>
             {canEdit && (
-              <button type="submit" disabled={busy} className="rounded border border-line px-2 text-xs">
-                {t("setRemote")}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy || !remote}
+                  className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
+                  onClick={() => void act(async () => setNote((await api.pull()).reason ?? t("pulled")))}
+                >
+                  {t("pull")}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !remote}
+                  className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
+                  onClick={() => void act(() => api.push(), t("pushed"))}
+                >
+                  {t("push")}
+                </button>
+              </div>
             )}
-          </form>
-          {canEdit && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={busy || !remote}
-                className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
-                onClick={() => void act(async () => setNote((await api.pull()).reason ?? t("pulled")))}
-              >
-                {t("pull")}
-              </button>
-              <button
-                type="button"
-                disabled={busy || !remote}
-                className="h-8 rounded-md border border-line bg-card px-3 hover:bg-panel disabled:opacity-40"
-                onClick={() => void act(() => api.push(), t("pushed"))}
-              >
-                {t("push")}
-              </button>
-            </div>
-          )}
-          {note && (
-            <p className="text-xs text-muted" role="status">
-              {note}
-            </p>
-          )}
-        </div>
+            {note && (
+              <p className="text-xs text-muted" role="status">
+                {note}
+              </p>
+            )}
+          </div>
+        </details>
       )}
 
       <section className="px-2 py-2">

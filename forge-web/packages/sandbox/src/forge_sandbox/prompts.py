@@ -143,6 +143,14 @@ PRODUCT_RULES = """This project is a product hosted on {domain}. Plan for all of
 - App clients build with apple_build, mcp__forge_web__android_build and windows_build once the
   server they talk to runs in staging."""
 
+CODE_PRIVATE = """The person you work for does not get this product's code: their plan does not
+include it. In everything you write to them (answers, questions, plans, reports), describe what
+the product does and how it is built in plain terms, such as the languages, frameworks and services
+used (React, FastAPI, PostgreSQL) and what each part is for, but never the code itself: no code
+blocks, no file contents, no diffs, no exact schemas, prompts, keys or configuration, and nothing
+detailed enough to rebuild it from. If they ask for code, say that their plan does not include it.
+Your own work on the code is unchanged."""
+
 UI_TASK = """Design and finish the interface of this product for the task: {goal}
 
 Read the user's request and docs/DESIGN.md, then follow your instructions: write DESIGN.md from

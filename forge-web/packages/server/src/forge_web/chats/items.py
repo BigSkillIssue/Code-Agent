@@ -52,6 +52,8 @@ class TurnFields(BaseModel):
     seconds: float = 0
     cancelled: bool = False
     error: str = Field(default="", max_length=MAX_TEXT)
+    lines_added: int = Field(default=0, ge=0)  # since the turn began (W57)
+    lines_removed: int = Field(default=0, ge=0)
 
 
 def short(value: Any, limit: int = MAX_TEXT) -> str:

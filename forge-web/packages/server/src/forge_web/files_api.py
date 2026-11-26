@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from forge_web.access import require_project
 from forge_web.auth.sessions import CurrentUser
+from forge_web.code_access import require_code
 from forge_web.quotas import disk_room
 from forge_web.sandbox_calls import result_dict, sandbox_call
 from forge_web.services import Services, services_of
@@ -52,6 +53,15 @@ async def allowed(request: Request, user: Any, project_id: str, need: str = "vie
     return services
 
 
+async def code_allowed(
+    request: Request, user: Any, project_id: str, need: str = "viewer"
+) -> Services:
+    """`allowed`, and the person's plan includes the project's code (W57; 403 otherwise)."""
+    services = await allowed(request, user, project_id, need)
+    await require_code(services, user, project_id)
+    return services
+
+
 def files_router() -> APIRouter:
     """`/api/projects/{id}/files/...`."""
     router = APIRouter(prefix="/api/projects/{project_id}/files")
@@ -71,7 +81,7 @@ def reading_routes(router: APIRouter) -> None:
         user: CurrentUser,
         path: str = Query("", max_length=MAX_PATH),
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         found = result_dict(await sandbox_call(services, project_id, "fs.list", {"path": path}))
         entries = found.get("entries")
         return {"path": path, "entries": entries if isinstance(entries, list) else []}
@@ -83,7 +93,7 @@ def reading_routes(router: APIRouter) -> None:
         user: CurrentUser,
         path: str = Query("", max_length=MAX_PATH),
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         if not path:
             raise HTTPException(400, "which file?")
         read = result_dict(await sandbox_call(services, project_id, "fs.read", {"path": path}))
@@ -102,7 +112,7 @@ def reading_routes(router: APIRouter) -> None:
         query: str = Query("", max_length=200),
         limit: int = Query(50, ge=1, le=200),
     ) -> dict[str, Any]:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         params = {"query": query, "limit": limit}
         found = result_dict(await sandbox_call(services, project_id, "git.files", params))
         files = found.get("files")
@@ -116,21 +126,21 @@ def changing_routes(router: APIRouter) -> None:
 
     @router.put("/content")
     async def save(project_id: str, body: TextFileIn, request: Request, user: CurrentUser) -> Any:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         params = {"path": body.path, "text": body.text, "create_dirs": True,
                   "expected_mtime": body.expected_mtime}  # fmt: skip
         return result_dict(await sandbox_call(services, project_id, "fs.write", params))
 
     @router.post("/mkdir")
     async def mkdir(project_id: str, body: PathIn, request: Request, user: CurrentUser) -> Any:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         return result_dict(
             await sandbox_call(services, project_id, "fs.mkdir", {"path": body.path})
         )
 
     @router.post("/rename")
     async def rename(project_id: str, body: RenameIn, request: Request, user: CurrentUser) -> Any:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         params = {"src": body.src, "dst": body.dst}
         return result_dict(await sandbox_call(services, project_id, "fs.rename", params))
 
@@ -142,7 +152,7 @@ def changing_routes(router: APIRouter) -> None:
         path: str = Query("", max_length=MAX_PATH),
         recursive: bool = False,
     ) -> None:
-        services = await allowed(request, user, project_id, "editor")
+        services = await code_allowed(request, user, project_id, "editor")
         if not path:
             raise HTTPException(400, "which file?")
         await sandbox_call(
@@ -179,7 +189,7 @@ def transfer_routes(router: APIRouter) -> None:
         user: CurrentUser,
         path: str = Query("", max_length=MAX_PATH),
     ) -> StreamingResponse:
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)
         if not path:
             raise HTTPException(400, "which file?")
         first = await read_part(services, project_id, path, 0)

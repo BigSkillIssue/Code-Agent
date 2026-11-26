@@ -66,6 +66,12 @@ export function TurnCard({ entry }: { entry: Extract<Entry, { kind: "turn" }> })
       </div>
       {entry.summary && !entry.cancelled && <Markdown text={entry.summary} />}
       {entry.error && <div className="text-bad">{entry.error}</div>}
+      {(entry.linesAdded > 0 || entry.linesRemoved > 0) && (
+        <div className="mt-1 text-xs" data-testid="lines-changed">
+          <span className="text-ok">+{entry.linesAdded}</span> <span className="text-bad">−{entry.linesRemoved}</span>{" "}
+          <span className="text-muted">{t("linesChanged")}</span>
+        </div>
+      )}
       {entry.filesChanged.length > 0 && (
         <div className="mt-1 text-xs text-muted">
           {t("filesChanged")}: <span className="font-mono">{entry.filesChanged.join(", ")}</span>
