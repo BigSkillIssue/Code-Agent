@@ -17,7 +17,9 @@ import httpx
 
 from forge_winworker import __version__
 from forge_winworker.build import APP_ZIP, SOURCE, UPLOAD, build_job, pack_job
+from forge_winworker.device_client import DeviceClient
 from forge_winworker.runners import Runner
+from forge_winworker.sandbox import SandboxRunner
 from forge_winworker.wire import JobOffer, JobResult, PollAnswer, PollRequest
 
 log = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ class WorkerClient:
         slots: int = 1,
         sign_template: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
+        devices: bool = False,
     ) -> None:
         headers = {"Authorization": f"Bearer {token}", "X-Forge-Win-Worker": __version__}
         self.http = httpx.AsyncClient(base_url=server.rstrip("/"), headers=headers,
@@ -44,10 +47,15 @@ class WorkerClient:
         self.sign_template = sign_template  # set on a signing machine only
         self.tasks: set[asyncio.Task[None]] = set()
         self.room = asyncio.Condition()
+        # W62: the products' apps for Forge's agent, only ever in a Windows Sandbox
+        self.devices = devices and isinstance(runner, SandboxRunner) and not sign_template
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down."""
         backoff = 1.0
+        side: list[asyncio.Task[None]] = []
+        if self.devices and isinstance(self.runner, SandboxRunner):
+            side.append(asyncio.create_task(DeviceClient(self.http, self.runner).serve(stop)))
         try:
             while not stop.is_set():
                 await self.wait_for_room(stop)
@@ -64,9 +72,9 @@ class WorkerClient:
                 if offer is not None:
                     self.start(offer)
         finally:
-            for task in list(self.tasks):
+            for task in [*side, *self.tasks]:
                 task.cancel()
-            await asyncio.gather(*self.tasks, return_exceptions=True)
+            await asyncio.gather(*side, *self.tasks, return_exceptions=True)
             await self.http.aclose()
 
     async def poll_unless(self, stop: asyncio.Event) -> JobOffer | None:

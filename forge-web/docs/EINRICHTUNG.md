@@ -1057,6 +1057,12 @@ Auf jedem der Rechner:
        --sign-template "signtool sign /fd sha256 /tr http://timestamp.acs.microsoft.com /td sha256 /dlib C:\forge\Azure.CodeSigning.Dlib.dll /dmdf C:\forge\signing.json {{file}}"
    ```
 
+   Mit `--devices` (nur zusammen mit `--sandbox`) bedient Forges Agent auf diesem Rechner auch die
+   Windows-App seines Produkts: sie startet in einer eigenen Windows Sandbox mit Desktop, der Agent
+   klickt, tippt, scrollt und sieht Screenshots. Solange eine solche Sitzung läuft (höchstens
+   30 Minuten), wartet jeder Build auf diesem Rechner. Einschalten unter *Verwaltung →
+   Einstellungen → Geräte des Agenten*.
+
    `--sandbox`, `--direct` und `--sign-template` schließen sich aus: ein Rechner baut oder signiert.
    Der Signier-Rechner startet die Programme der Produkte nie, auch nicht zum Prüfen (vpk mit
    `--skipVeloAppCheck`). Als Dienst dauerhaft: mit der Aufgabenplanung ausführen lassen.

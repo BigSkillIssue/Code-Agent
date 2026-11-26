@@ -57,6 +57,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--sign-template", default="",
                      help="a signing machine: its signing command, with {{file}}")  # fmt: skip
     run.add_argument("--slots", type=int, default=1, choices=(1, 2), help="jobs at once")
+    run.add_argument("--devices", action="store_true",
+                     help="run the products' apps for Forge's agent (with --sandbox)")  # fmt: skip
     run.add_argument("--work", type=Path, default=Path.home() / ".forge-win-worker",
                      help="where the job folders go")  # fmt: skip
     return top
@@ -131,8 +133,11 @@ async def serve(args: argparse.Namespace, token: str) -> int:
             signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
     role = "signing" if args.sign_template else "build"
     logging.info("taking %s jobs from %s, %d at once", role, args.server, args.slots)
+    if args.devices and not args.sandbox:  # the agent would use this machine's own desktop
+        logging.error("--devices needs --sandbox: the agent works only in a Windows Sandbox")
+        return 2
     runner: Runner = SandboxRunner(args.work) if args.sandbox else DirectRunner(args.work)
     client = WorkerClient(args.server, token, runner, slots=args.slots,
-                          sign_template=args.sign_template)  # fmt: skip
+                          sign_template=args.sign_template, devices=args.devices)  # fmt: skip
     await client.serve(stop)
     return 0
