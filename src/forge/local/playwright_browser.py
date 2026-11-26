@@ -1,14 +1,15 @@
 """The Browser port with Playwright: one Chromium per session, a fresh context per agent."""
 
-import asyncio
 import base64
 import contextlib
 import re
 import subprocess
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from forge.config import BrowserConfig
+from forge.local.browser_proxy import GuardedProxy, browser_policy
 from forge.ports import Browser, BrowserError, PageView
 from forge.providers.base import ImagePart
 from forge.runtime.web import is_ip, is_local, is_loopback_host, resolve_host
@@ -17,9 +18,9 @@ if TYPE_CHECKING:
     from playwright.async_api import Browser as PwBrowser
     from playwright.async_api import (
         BrowserContext,
+        Frame,
         Page,
         Playwright,
-        Response,
         Route,
         WebSocketRoute,
     )
@@ -28,6 +29,16 @@ INSTALL_HINT = 'run `forge browser install` once, or set [browser] channel = "ch
 MAX_TEXT = 20_000
 POINT = re.compile(r"^\s*(\d+)\s*,\s*(\d+)\s*$")
 UNCHECKED_SCHEMES = ("data", "blob", "about")
+# WebRTC sends UDP past any proxy; only proxied (TCP) connections are allowed
+LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
+
+
+@dataclass
+class Gate:
+    """Whether an agent's browser may reach this machine's own servers right now (S78): only
+    while the agent has opened one of them, never while it shows a page from elsewhere."""
+
+    loopback: bool = False
 
 
 class PlaywrightBrowsers:
@@ -48,20 +59,31 @@ class PlaywrightBrowsers:
         (unless allowed); `viewport` (width, height) replaces the configured size."""
         browser = await self._launch()
         width, height = viewport or (self.cfg.viewport_width, self.cfg.viewport_height)
+        gate = Gate()
+        options: dict[str, Any] = {}
+        proxy = None
+        if not self.allow_local:
+            # every connection, redirect hops and WebSockets included, is checked by address
+            proxy = GuardedProxy(browser_policy(lambda: self.loopback and gate.loopback))
+            options["proxy"] = {"server": await proxy.start()}
         context = await browser.new_context(
             viewport={"width": width, "height": height},
             accept_downloads=False,
             service_workers="block",
+            **options,
         )
         context.set_default_timeout(self.cfg.timeout_s * 1000)
-        await context.route("**/*", self._guard)
-        await context.route_web_socket("**/*", self._guard_socket)
-        return PlaywrightPage(
-            context,
-            await context.new_page(),
-            check_addresses=not self.allow_local,
-            loopback=self.loopback,
-        )
+
+        async def guard(route: "Route") -> None:
+            await self._guard(route, gate)
+
+        async def guard_socket(socket: "WebSocketRoute") -> None:
+            await self._guard_socket(socket, gate)
+
+        await context.route("**/*", guard)
+        await context.route_web_socket("**/*", guard_socket)
+        page = await context.new_page()
+        return PlaywrightPage(context, page, proxy=proxy, gate=gate if self.loopback else None)
 
     async def close(self) -> None:
         """Stop the browser and Playwright."""
@@ -86,6 +108,7 @@ class PlaywrightBrowsers:
                 headless=self.cfg.headless,
                 channel=self.cfg.channel,
                 executable_path=self.cfg.executable,
+                args=[] if self.allow_local else LAUNCH_ARGS,
             )
         except Exception as exc:
             await self.close()
@@ -94,10 +117,10 @@ class PlaywrightBrowsers:
             ) from exc
         return self._browser
 
-    async def _guard(self, route: "Route") -> None:
+    async def _guard(self, route: "Route", gate: Gate) -> None:
         """Abort requests to local or private hosts (the browser must not reach the LAN)."""
         parts = urlsplit(route.request.url)
-        if parts.scheme in UNCHECKED_SCHEMES or self._allowed(parts.hostname or ""):
+        if parts.scheme in UNCHECKED_SCHEMES or self._allowed(parts.hostname or "", gate):
             await route.continue_()
             return
         # checked for every request, not remembered: a name may point elsewhere a moment later
@@ -106,17 +129,18 @@ class PlaywrightBrowsers:
         else:
             await route.continue_()
 
-    async def _guard_socket(self, socket: "WebSocketRoute") -> None:
+    async def _guard_socket(self, socket: "WebSocketRoute", gate: Gate) -> None:
         """WebSockets bypass `route`: the same check before they connect."""
         host = urlsplit(socket.url).hostname or ""
-        if self._allowed(host) or not await host_is_local(host):
+        if self._allowed(host, gate) or not await host_is_local(host):
             socket.connect_to_server()
         else:
             await socket.close(code=1008, reason="local or private address")
 
-    def _allowed(self, host: str) -> bool:
-        """Hosts let through unchecked: everything (tests), or this machine's own servers."""
-        return self.allow_local or (self.loopback and is_loopback_host(host))
+    def _allowed(self, host: str, gate: Gate) -> bool:
+        """Hosts let through unchecked: everything (tests), or this machine's own servers
+        while the agent is on one of them."""
+        return self.allow_local or (self.loopback and gate.loopback and is_loopback_host(host))
 
 
 async def host_is_local(host: str) -> bool:
@@ -138,42 +162,45 @@ class PlaywrightPage:
         context: "BrowserContext",
         page: "Page",
         *,
-        check_addresses: bool = False,
-        loopback: bool = False,
+        proxy: GuardedProxy | None = None,
+        gate: Gate | None = None,
     ) -> None:
         self.context = context
         self.page = page
-        self.loopback = loopback  # answers to requests for localhost may come from localhost
-        # The request guard checks a name before Chromium resolves it again; the address a
-        # response really came from is checked too, so a page from a local address is not shown.
-        self._checks: list[asyncio.Task[None]] = []
-        self._local_answer = ""
-        if check_addresses:
-            context.on("response", self._note_response)
+        self.proxy = proxy  # None only where local hosts are allowed (tests, previews)
+        self.gate = gate  # None: this browser never opens this machine's servers
+        if gate is not None:
+            context.on("page", self._watch)
+            self._watch(page)
 
-    def _note_response(self, response: "Response") -> None:
-        if self.loopback and is_loopback_host(urlsplit(response.url).hostname or ""):
+    def _watch(self, page: "Page") -> None:
+        page.on("framenavigated", self._navigated)
+
+    def _navigated(self, frame: "Frame") -> None:
+        """A page that leaves this machine's servers closes the way back to them: what a
+        product links or redirects to may be anyone's page."""
+        parts = urlsplit(frame.url)
+        if frame.parent_frame is not None or parts.scheme not in ("http", "https"):
             return
-        self._checks.append(asyncio.ensure_future(self._check_address(response)))
+        if self.gate is not None and not is_loopback_host(parts.hostname or ""):
+            self.gate.loopback = False
 
-    async def _check_address(self, response: "Response") -> None:
-        with contextlib.suppress(Exception):  # a response without an address is not local
-            address = await response.server_addr()
-            if address and is_local(address["ipAddress"]):
-                self._local_answer = address["ipAddress"]
-
-    async def _refuse_local(self) -> None:
-        """Raise when anything on the page came from a local or private address."""
-        checks, self._checks = self._checks, []
-        await asyncio.gather(*checks)
-        if self._local_answer:
-            answer, self._local_answer = self._local_answer, ""
-            with contextlib.suppress(Exception):
-                await self.page.goto("about:blank")
-            raise BrowserError(f"the page came from a local or private address ({answer})")
+    async def _aim(self, url: str) -> None:
+        """Before the agent opens `url`: this machine's servers become reachable only for one
+        of them, and only after the page shown before has gone (its scripts end with it)."""
+        if self.gate is None:
+            return
+        wanted = is_loopback_host(urlsplit(url).hostname or "")
+        if wanted and not self.gate.loopback:
+            await self._do(self.page.goto("about:blank"))
+            for other in self.context.pages:
+                if other is not self.page:
+                    await other.close()
+        self.gate.loopback = wanted
 
     async def open(self, url: str) -> PageView:
         """Load `url`."""
+        await self._aim(url)
         await self._do(self.page.goto(url, wait_until="domcontentloaded"))
         return await self.view()
 
@@ -206,20 +233,20 @@ class PlaywrightPage:
 
     async def view(self) -> PageView:
         """URL, title and a screenshot of what is visible."""
-        await self._refuse_local()
         shot = await self._do(self.page.screenshot(type="jpeg", quality=70))
         image = ImagePart(media_type="image/jpeg", data_b64=base64.b64encode(shot).decode("ascii"))
         return PageView(url=self.page.url, title=await self.page.title(), image=image)
 
     async def read(self) -> str:
         """The visible text of the page, capped."""
-        await self._refuse_local()
         text: str = await self._do(self.page.inner_text("body"))
         return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + "\n[text truncated]"
 
     async def close(self) -> None:
         """Close this agent's context."""
         await self.context.close()
+        if self.proxy is not None:
+            await self.proxy.close()
 
     def _locate(self, target: str) -> Any:
         if target.startswith("css="):
@@ -238,9 +265,16 @@ class PlaywrightPage:
         return await self.view()
 
     async def _do(self, action: Any) -> Any:
+        if self.proxy is not None:
+            self.proxy.take_refused()  # only what this action asked for explains its failure
         try:
             return await action
         except Exception as exc:
+            refused = self.proxy.take_refused() if self.proxy is not None else []
+            if refused:
+                raise BrowserError(
+                    f"{refused[-1]} is a local or private address: the browser does not go there"
+                ) from exc
             raise BrowserError(first_line(exc)) from exc
 
 

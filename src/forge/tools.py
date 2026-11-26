@@ -1419,7 +1419,7 @@ async def browser_of(ctx: Ctx) -> Browser:
     if browser is not None:
         return browser
     factory = ctx.state.browser_factory
-    if ctx.role != "browser" and ctx.state.test_browsers is not None:
+    if tests_products(ctx) and ctx.state.test_browsers is not None:
         factory = ctx.state.test_browsers  # S78: may also open this machine's own servers
     if factory is None:
         raise ToolError("unsupported", "no browser is available in this session")
@@ -1465,10 +1465,16 @@ async def browser_open(ctx: Ctx, url: Annotated[str, "Full http(s) URL."]) -> To
     return await browse(ctx, lambda b: b.open(target))
 
 
+def tests_products(ctx: Ctx) -> bool:
+    """S78: agents that build may open this machine's servers in their browser; the browser
+    agent researching the web and read-only roles (even with the tools granted) may not."""
+    return ctx.role != "browser" and ctx.role not in READ_ONLY_ROLES
+
+
 async def browser_target(ctx: Ctx, url: str) -> str:
     """S78: an agent testing the product may open its servers on this machine; the browser
     agent researching the web, and every agent for other local addresses, may not."""
-    if ctx.role != "browser" and ctx.cfg.browser.loopback:
+    if tests_products(ctx) and ctx.cfg.browser.loopback:
         local = loopback_url(url)
         if local is not None:
             return local
