@@ -5,6 +5,7 @@ import { chainOf, mergedAgents } from "./AdminAgents";
 const view: AgentsView = {
   user_model_choice: true,
   roles: {},
+  parallel: {},
   tiers: ["default", "pro"],
   role_groups: ["planner", "coder"],
   builtin: [{ name: "ui", description: "Designs", prompt: "You are the UI agent.", policy: "required", applies_to: "ui" }],

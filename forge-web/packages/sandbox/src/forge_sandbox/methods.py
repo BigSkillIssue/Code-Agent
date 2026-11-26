@@ -247,6 +247,7 @@ class ChatOptions(Params):
     effort: Effort = "auto"  # how hard reasoning models think (Forge S74); auto: their default
     roles: dict[str, list[str]] = Field(default_factory=dict)  # per-role fallback chains
     agents: list[AgentSpec] = Field(default_factory=list, max_length=40)  # the admin's (W53)
+    max_parallel_agents: int | None = Field(default=None, ge=1, le=16)  # per plan (W56)
     providers: dict[str, dict[str, Any]] = Field(default_factory=dict)  # name -> ProviderConfig
     sandbox_mode: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
     max_cost_usd: float | None = Field(default=None, ge=0)

@@ -58,3 +58,35 @@ describe("Transcript", () => {
     expect(onAnswer).toHaveBeenCalledWith("r2", { answers: [{ question_index: 0, values: ["blue"] }] });
   });
 });
+
+describe("questions like a picker", () => {
+  it("shows what each option means, marks the recommended one and takes another answer", () => {
+    const onAnswer = vi.fn().mockResolvedValue(true);
+    const entries: Entry[] = [
+      {
+        kind: "question",
+        key: "q",
+        id: "r3",
+        questions: [
+          {
+            text: "Which platforms?",
+            kind: "multi",
+            options: ["Web — in the browser", "Android — Google Play app"],
+            default: "Web — in the browser",
+            why: "decides which apps are built",
+          },
+        ],
+      },
+    ];
+    render(<Transcript entries={entries} onAnswer={onAnswer} />);
+    expect(screen.getByText("in the browser")).toBeTruthy();
+    expect(screen.getByText(/^(recommended|empfohlen)$/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Android/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Another answer|Andere Antwort/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Another answer|Andere Antwort/ }), { target: { value: "Smart TV" } });
+    fireEvent.click(screen.getByRole("button", { name: /^(Answer|Antworten)$/ }));
+    expect(onAnswer).toHaveBeenCalledWith("r3", {
+      answers: [{ question_index: 0, values: ["Web — in the browser", "Android — Google Play app", "Smart TV"] }],
+    });
+  });
+});

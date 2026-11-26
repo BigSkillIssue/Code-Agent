@@ -27,6 +27,7 @@ function AgentsForm({ view, onSaved }: { view: AgentsView; onSaved: () => Promis
   const [choice, setChoice] = useState(view.user_model_choice);
   const [tier, setTier] = useState("default");
   const [roles, setRoles] = useState(view.roles);
+  const [parallel, setParallel] = useState(view.parallel ?? {});
   const [agents, setAgents] = useState<AgentEntry[]>(() => mergedAgents(view));
   const [newName, setNewName] = useState("");
   const act = useAction();
@@ -40,7 +41,7 @@ function AgentsForm({ view, onSaved }: { view: AgentsView; onSaved: () => Promis
     const cleaned = Object.fromEntries(
       Object.entries(roles).map(([key, row]) => [key, Object.fromEntries(Object.entries(row).filter(([, c]) => c.length > 0))]),
     );
-    if (await act(() => admin.saveAgents({ user_model_choice: choice, roles: cleaned, agents: agents.map(stored(view)) }))) await onSaved();
+    if (await act(() => admin.saveAgents({ user_model_choice: choice, roles: cleaned, agents: agents.map(stored(view)), parallel }))) await onSaved();
   };
   return (
     <div data-testid="agents-settings">
@@ -58,6 +59,22 @@ function AgentsForm({ view, onSaved }: { view: AgentsView; onSaved: () => Promis
           onChange={setTier}
           options={view.tiers.map((id) => ({ value: id, label: id === "default" ? t("everyoneElse") : id }))}
         />
+        <div className="max-w-xs">
+          <TextInput
+            label={t("agentsAtOnce")}
+            value={parallel[tier] ? String(parallel[tier]) : ""}
+            placeholder="4"
+            onChange={(v) =>
+              setParallel((all) => {
+                const next = { ...all };
+                const n = Number(v);
+                if (Number.isInteger(n) && n >= 1 && n <= 16) next[tier] = n;
+                else delete next[tier];
+                return next;
+              })
+            }
+          />
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {rows.map((row) => (
             <TextInput key={`${tier}-${row}`} label={row} value={chain(row)} placeholder="anthropic/claude-sonnet, openai/gpt-5" onChange={(v) => setChain(row, v)} />

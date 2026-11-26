@@ -11,6 +11,7 @@ public functions, but the user steers less and the agents decide more.
 """
 
 import re
+import subprocess
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -150,14 +151,57 @@ async def run_as(ctx: Ctx, name: str, task: str) -> str:
     return result.text
 
 
-async def required_pass(ctx: Ctx, spec: TaskSpec, agents: Sequence[AgentSpec]) -> list[str]:
-    """Run the required agents; their findings go back to the coder. Notes for the report."""
+# Files of an interface: web pages and styles, Apple views, Android screens, Windows XAML.
+UI_FILE = re.compile(
+    r"^(web/src/|apple/|android/app/src/main/|windows/App/).+\.(tsx|jsx|css|html|swift|kt|xml|xaml)$"
+)
+
+
+def git_lines(root: Path, *args: str) -> list[str]:
+    """What a read-only git command prints, line by line ([] when it fails)."""
+    done = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    return (
+        [line for line in done.stdout.splitlines() if line.strip()] if done.returncode == 0 else []
+    )
+
+
+def task_start(root: Path) -> str:
+    """The commit a task starts from ("" before the first one)."""
+    found = git_lines(root, "rev-parse", "HEAD")
+    return found[0] if found else ""
+
+
+def ui_changed(root: Path, start: str) -> bool:
+    """Whether the task touched an interface: changed or new UI files since `start`."""
+    changed = git_lines(root, "diff", "--name-only", start) if start else []
+    changed += git_lines(root, "ls-files", "--others", "--exclude-standard")
+    if not start:
+        changed += git_lines(root, "ls-files")
+    return any(UI_FILE.match(path) for path in changed)
+
+
+def ui_runs(ctx: Ctx, names: set[str]) -> int:
+    """How many UI agents the session's lead has started so far."""
+    team = ctx.state.team
+    agents = getattr(team, "agents", {}) if team is not None else {}
+    return sum(1 for info in agents.values() if getattr(info, "role", "") in names)
+
+
+async def required_pass(
+    ctx: Ctx, spec: TaskSpec, agents: Sequence[AgentSpec], start: str = "", ui_before: int = 0
+) -> list[str]:
+    """Run the required agents; their findings go back to the coder. Notes for the report.
+
+    The UI agent is a sub-agent the lead hands interface work to (W56); it runs here only when
+    the task changed an interface and the lead did not use it."""
     notes: list[str] = []
+    ui_names = {a.name for a in agents if a.applies_to == "ui"}
     for agent in required_agents(ctx, agents):
         if over_budget(ctx):
             break
-        if agent.applies_to == "ui":  # the UI agent builds: one pass
-            await run_as(ctx, agent.name, prompts.UI_TASK.format(goal=spec.goal))
+        if agent.applies_to == "ui":
+            if ui_changed(ctx.root, start) and ui_runs(ctx, ui_names) <= ui_before:
+                await run_as(ctx, agent.name, prompts.UI_TASK.format(goal=spec.goal))
             continue
         for round_ in range(FIX_ROUNDS):
             found = await run_as(ctx, agent.name, prompts.REVIEW_TASK.format(goal=spec.goal))
@@ -172,8 +216,9 @@ async def required_pass(ctx: Ctx, spec: TaskSpec, agents: Sequence[AgentSpec]) -
 
 
 async def run_product_planned(spec: TaskSpec, ctx: Ctx, checkpoints: list[release_flow.Checkpoint],
-                              agents: Sequence[AgentSpec]) -> Report:  # fmt: skip
+                              agents: Sequence[AgentSpec], start: str = "") -> Report:  # fmt: skip
     """Forge's run_planned with the required agents between the coders and the final review."""
+    ui_before = ui_runs(ctx, {a.name for a in agents if a.applies_to == "ui"})
     spec = await release_flow.prepare_plan(checkpoints, ctx, spec)
     plan = await make_plan(spec, ctx)
 
@@ -185,7 +230,7 @@ async def run_product_planned(spec: TaskSpec, ctx: Ctx, checkpoints: list[releas
     plan = await execute(plan, ctx)
     if over_budget(ctx):
         return await budget_report(ctx)
-    notes = await required_pass(ctx, spec, agents)
+    notes = await required_pass(ctx, spec, agents, start, ui_before)
     fields = await release_flow.finish(checkpoints, ctx)
     report = await final_review(plan, ctx)
     if notes:
@@ -209,6 +254,7 @@ async def run_product_task(
         return stopped_report(ctx, f"A prompt_submit hook stopped this task: {submitted.message}")
     try:
         ctx.state.attachments = await check_attachments(ctx.root, attachments)
+        start = task_start(ctx.root)
         spec = await refine(prompt, ctx)
         ctx.session.spec = spec
         spec = await clarify(spec, ctx)
@@ -222,7 +268,7 @@ async def run_product_task(
         ctx.state.mode = "team" if spec.size == "large" else "subagents"
         checkpoints = checkpoints_for_product(ctx, apple)
         await release_flow.check_request(checkpoints, ctx, prompt)
-        report = await run_product_planned(spec, ctx, checkpoints, agents)
+        report = await run_product_planned(spec, ctx, checkpoints, agents, start)
     except PlanRejected:
         report = stopped_report(ctx, "You rejected the plan, so nothing was changed.")
     except (PipelineError, release_flow.CheckpointStopped, AttachmentError) as err:

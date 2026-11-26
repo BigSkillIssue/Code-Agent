@@ -86,6 +86,8 @@ def config_overrides(options: ChatOptions, root: Path | None = None) -> dict[str
         roles["product"] = roles.get("planner") or list(DEFAULT_ROLES["planner"])
     if roles:
         overrides["roles"] = roles
+    if options.max_parallel_agents is not None:
+        overrides["limits.max_parallel_agents"] = options.max_parallel_agents
     if options.max_cost_usd is not None:
         overrides["limits.max_cost_usd"] = options.max_cost_usd
     if options.effort != "auto":

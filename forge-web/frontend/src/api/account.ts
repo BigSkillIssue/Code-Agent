@@ -124,6 +124,7 @@ export interface AgentsSettings {
   user_model_choice: boolean;
   roles: Record<string, Record<string, string[]>>; // plan ("default" or a plan's id) -> role -> chain
   agents: AgentEntry[];
+  parallel: Record<string, number>; // plan -> agents at once
 }
 
 export interface AgentsView extends AgentsSettings {

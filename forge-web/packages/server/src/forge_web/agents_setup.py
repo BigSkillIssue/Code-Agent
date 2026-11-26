@@ -82,7 +82,8 @@ async def chat_agents(
     settings: WebSettings, entitlements: EntitlementEngine, project_id: str
 ) -> dict[str, Any]:
     """What a chat's worker gets: role chains and the agents with their own chains."""
-    chains = chains_for(settings.agents, await tier_of(entitlements, project_id))
+    tier = await tier_of(entitlements, project_id)
+    chains = chains_for(settings.agents, tier)
     agents = [
         {key: item[key] for key in ("name", "description", "prompt", "tools", "policy",
                                     "applies_to")} | {"models": chains.get(item["name"], [])}
@@ -91,7 +92,11 @@ async def chat_agents(
     roles = {
         role: chain for role, chain in chains.items() if role not in {a["name"] for a in agents}
     }
-    return {"roles": roles, "agents": agents}
+    found: dict[str, Any] = {"roles": roles, "agents": agents}
+    parallel = settings.agents.parallel.get(tier) or settings.agents.parallel.get(DEFAULT_TIER)
+    if parallel:
+        found["max_parallel_agents"] = parallel
+    return found
 
 
 async def load_saved_agents(db: Database, settings: WebSettings) -> None:

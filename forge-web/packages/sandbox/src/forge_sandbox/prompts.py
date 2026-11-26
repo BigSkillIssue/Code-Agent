@@ -130,7 +130,12 @@ docs/DESIGN.md before planning."""
 PRODUCT_RULES = """This project is a product hosted on {domain}. Plan for all of it, not just code:
 - Start each step's title with its area and a colon (`server: add orders`, `web: order page`,
   `android: order screen`); each area gets its own agent, and they tell each other what changes.
-- The interface follows docs/DESIGN.md; the UI agent designs it from the user's request.
+- Interface work (pages, screens, components, styles, copy) goes to the `ui` agent: start it with
+  spawn_agent (role "ui") for those steps, with the user's request and the screens to build. It
+  designs from the request and docs/DESIGN.md; nobody else changes the look.
+- Ask the user with ask_user only what changes the result and cannot be found out: choice or
+  multi with 2-6 options written "Label — what it means" (under 80 characters), the recommended
+  option as the default; the user can always give another answer.
 - Start the product while you work (`forge app dev` as a background job for a full product,
   `npm run dev` in web/ for a website) and look at your pages with mcp__forge_web__product_look.
 - The last step commits the work and deploys it to staging with mcp__forge_web__deploy; check it
@@ -157,8 +162,8 @@ Fix every finding (or say plainly why one is not a problem), run the tests again
 
 
 BUILTIN_AGENTS: tuple[BuiltinAgent, ...] = (
-    BuiltinAgent("ui", "Designs and builds the interface from the user's requirements", UI,
-                 "required", "ui"),
+    BuiltinAgent("ui", "Designs and builds every interface (pages, screens, styles, copy) from the "
+                 "user's requirements; give it all interface work", UI, "required", "ui"),
     BuiltinAgent("tester", "Tests the finished work like a user and reports failures", TESTER,
                  "required", "always"),
     BuiltinAgent("security", "Reviews the change for ways in and reports them", SECURITY,

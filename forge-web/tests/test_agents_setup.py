@@ -113,3 +113,26 @@ async def test_a_chats_options_carry_the_agents(tmp_path: Path, choice: bool) ->
     assert ui["models"] == [OPUS] and ui["policy"] == "required"
     assert ("model" in options) is choice
     ChatOptions.model_validate(options)  # the worker accepts them
+
+
+async def test_agents_at_once_follow_the_plan(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from forge_sandbox.worker import config_overrides
+    from forge_web.agents_setup import chat_agents
+
+    settings = server_settings(tmp_path / "data")
+    settings.agents = AgentsSettings(parallel={"default": 3, "pro": 8})
+
+    class Plans:
+        def __init__(self, source: str) -> None:
+            self.source = source
+
+        async def of_project(self, project_id: str) -> SimpleNamespace:
+            return SimpleNamespace(source=self.source)
+
+    pro = await chat_agents(settings, Plans("plan:pro"), "p1")  # type: ignore[arg-type]
+    free = await chat_agents(settings, Plans("server"), "p1")  # type: ignore[arg-type]
+    assert (pro["max_parallel_agents"], free["max_parallel_agents"]) == (8, 3)
+    options = ChatOptions.model_validate(pro)
+    assert config_overrides(options)["limits.max_parallel_agents"] == 8

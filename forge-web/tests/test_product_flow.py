@@ -79,10 +79,17 @@ def test_required_agents_apply_by_what_the_project_is(tmp_path: Path) -> None:
     assert [a.name for a in required_agents(ctx, agents)] == ["ui", "tester", "security"]  # type: ignore[arg-type]
 
 
-async def test_findings_go_back_to_the_coder_until_the_agent_is_satisfied(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def git(root: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x.y", *args], cwd=root,
+                   check=True, capture_output=True)  # fmt: skip
+
+
+def review_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ui_spawned: int = 0) -> Any:
+    """A committed site and stand-ins for the agents; `ran` lists who ran, in order."""
     create(tmp_path, "site", "lehm", None, (), "apps.example")
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "site")
     ran: list[str] = []
     answers = {"tester": ["the hours are missing on phones", "no findings"],
                "security": ["No findings."]}  # fmt: skip
@@ -98,11 +105,41 @@ async def test_findings_go_back_to_the_coder_until_the_agent_is_satisfied(
     monkeypatch.setattr(product_flow, "run_as", run_as)
     monkeypatch.setattr(product_flow, "run_agent", run_agent)
     monkeypatch.setattr(product_flow, "over_budget", lambda ctx: False)
-    ctx = SimpleNamespace(root=tmp_path, cfg=SimpleNamespace(limits=SimpleNamespace(
-        max_turns_per_step=10)))  # fmt: skip
-    notes = await required_pass(ctx, SPEC, [TESTER, SECURITY, UI])  # type: ignore[arg-type]
-    assert ran == ["ui", "tester", "coder: the hours are missing on phones", "tester", "security"]
+    spawned = {f"a{i}": SimpleNamespace(role="ui") for i in range(ui_spawned)}
+    team = SimpleNamespace(agents=spawned)
+    limits = SimpleNamespace(max_turns_per_step=10)
+    ctx = SimpleNamespace(root=tmp_path, state=SimpleNamespace(team=team),
+                          cfg=SimpleNamespace(limits=limits))  # fmt: skip
+    return ctx, ran
+
+
+async def test_findings_go_back_to_the_coder_until_the_agent_is_satisfied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx, ran = review_world(tmp_path, monkeypatch)
+    start = product_flow.task_start(tmp_path)
+    notes = await required_pass(ctx, SPEC, [TESTER, SECURITY, UI], start)
+    # nothing of the interface changed since the task began: the UI agent is not called
+    assert ran == ["tester", "coder: the hours are missing on phones", "tester", "security"]
     assert notes == []
+
+
+async def test_the_ui_agent_takes_interface_work_the_lead_did_not_give_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx, ran = review_world(tmp_path, monkeypatch)
+    start = product_flow.task_start(tmp_path)
+    page = tmp_path / "web" / "src" / "App.tsx"
+    page.write_text(page.read_text() + "\n// opening hours\n")
+    await required_pass(ctx, SPEC, [UI], start, ui_before=0)
+    assert ran == ["ui"]  # the coder changed a page without the UI agent: it looks at it now
+    spawned, ran2 = review_world(tmp_path / "other", monkeypatch, ui_spawned=1)
+    start2 = product_flow.task_start(tmp_path / "other")
+    page2 = tmp_path / "other" / "web" / "src" / "App.tsx"
+    page2.write_text(page2.read_text() + "\n// hours\n")
+    await required_pass(spawned, SPEC, [UI], start2, ui_before=0)
+    assert ran2 == []  # the lead gave the page to the UI agent: no second pass
+
 
 
 async def test_the_user_keeps_only_undo(root: Path, home: Path) -> None:

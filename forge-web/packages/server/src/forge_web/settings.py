@@ -130,6 +130,10 @@ class AgentsSettings(_Strict):
         ],
     ] = Field(default_factory=dict, max_length=50)
     agents: list[AgentEntry] = Field(default_factory=list, max_length=40)
+    # tier -> how many agents may work at once (W56); a plan's value wins over "default"
+    parallel: dict[
+        Annotated[str, Field(pattern=r"^[a-z0-9_-]{1,40}$")], Annotated[int, Field(ge=1, le=16)]
+    ] = Field(default_factory=dict, max_length=50)
 
 
 class ProjectSourceSettings(_Strict):
