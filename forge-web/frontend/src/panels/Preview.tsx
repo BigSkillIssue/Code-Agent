@@ -156,6 +156,7 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
   };
   const start = (line: string) => void run(() => api.startProgram(line));
   const running = overview.programs.filter((p) => p.running);
+  const code = overview.code_access !== false; // W57: without it, suggestions only and no output
   return (
     <section>
       <h3 className="mb-1 text-sm font-medium text-muted">{t("devServer")}</h3>
@@ -174,25 +175,27 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
               </button>
             ))}
           </div>
-          <form
-            className="mb-2 flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (command.trim()) start(command.trim());
-              setCommand("");
-            }}
-          >
-            <input
-              aria-label={t("ownCommand")}
-              placeholder={t("ownCommand")}
-              className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
-              value={command}
-              onChange={(event) => setCommand(event.target.value)}
-            />
-            <button type="submit" className="rounded-md border border-line bg-card px-2.5 py-1 text-xs hover:bg-panel">
-              {t("startProgram")}
-            </button>
-          </form>
+          {code && (
+            <form
+              className="mb-2 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (command.trim()) start(command.trim());
+                setCommand("");
+              }}
+            >
+              <input
+                aria-label={t("ownCommand")}
+                placeholder={t("ownCommand")}
+                className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none"
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+              />
+              <button type="submit" className="rounded-md border border-line bg-card px-2.5 py-1 text-xs hover:bg-panel">
+                {t("startProgram")}
+              </button>
+            </form>
+          )}
         </>
       )}
       <ul className="space-y-1">
@@ -201,13 +204,15 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
             <div className="flex items-center gap-2">
               <span className="size-2 shrink-0 rounded-full bg-ok" aria-label={t("running")} />
               <code className="min-w-0 flex-1 truncate text-xs">{commandOf(program)}</code>
-              <button
-                type="button"
-                className="text-xs text-muted"
-                onClick={() => setOutputOf(outputOf === program.id ? null : program.id)}
-              >
-                {t("output")}
-              </button>
+              {code && (
+                <button
+                  type="button"
+                  className="text-xs text-muted"
+                  onClick={() => setOutputOf(outputOf === program.id ? null : program.id)}
+                >
+                  {t("output")}
+                </button>
+              )}
               {canEdit && (
                 <button
                   type="button"
@@ -219,7 +224,7 @@ export function Programs({ api, canEdit, overview, onChange, onError }: Programs
                 </button>
               )}
             </div>
-            {outputOf === program.id && <Output api={api} program={program} />}
+            {code && outputOf === program.id && <Output api={api} program={program} />}
           </li>
         ))}
       </ul>

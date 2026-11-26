@@ -189,14 +189,23 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   `agents.code_access_without_plan`; admins always see it). Without it the server refuses the file
   routes (reading, editing, search, downloads), git (status, diffs, log, commits, remotes, push and
   pull), terminals and their sockets; uploading files and attaching them to messages stay allowed.
+- The preview (SEC-W3): without code access an editor starts only the commands the server itself
+  suggests for the project (in its folder; no static file server, which would hand out every file
+  and `.git`), never reads a program's output (`/preview/programs/<id>/output` needs the code),
+  and sees the command lines of other programs only when they are such suggestions.
 - The chat is redacted per watcher before it leaves the server (WebSocket and the events API): tool
   calls keep only the arguments that name their target (path, pattern, URL …), tool results and
   command output are not sent, streamed model text is not sent (the finished message follows),
   and fenced or indented code in the agents' answers, reports and approvals becomes "[code hidden]".
   A turn reports only how many lines were added and removed.
 - The agents are told to describe the product without its code (`CODE_PRIVATE`); the server does
-  not rely on that. Known gap: a running dev server or the hosted web client serves its JavaScript
-  to anyone who opens it, as any website does; the server code stays on the server.
+  not rely on that. Known gaps: a running dev server or the hosted web client serves its JavaScript
+  to anyone who opens it, as any website does, and a dev server (Vite, say) may serve other files
+  of the folder it runs in; a hosted app's server code stays on the server. The suggested commands run what the
+  project defines (`package.json` scripts, `manage.py`), and the agent writes the project for the
+  person, so someone without the code who talks the agent into exposing it is stopped only by the
+  agent's instructions. The built Android and Windows packages can be downloaded; they are the
+  product, compiled.
 
 ### Browser
 

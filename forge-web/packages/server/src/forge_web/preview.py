@@ -2,7 +2,9 @@
 
 Programs are the sandbox's `procs`; ports are what programs in the sandbox listen on. Opening a
 preview hands out a one-time ticket URL on the preview's own host (see `preview_auth`). Viewers
-may look at previews; only editors start and stop programs.
+may look at previews; only editors start and stop programs. Without code access (W57) a person
+starts only the server's own suggestions in the project's folder, never reads a program's output,
+and sees only the command lines of suggested programs (SEC-W3).
 """
 
 import json
@@ -18,8 +20,9 @@ from pydantic import BaseModel, Field
 
 from forge_web.apps.template import app_port
 from forge_web.auth.sessions import CurrentUser, session_token, token_id
+from forge_web.code_access import may_read_code
 from forge_web.db.models import Project
-from forge_web.files_api import allowed
+from forge_web.files_api import allowed, code_allowed
 from forge_web.preview_auth import ENTER_PATH, preview_base, preview_target
 from forge_web.sandbox_calls import result_dict, sandbox_call
 from forge_web.services import Services, services_of
@@ -29,6 +32,10 @@ NODE_SCRIPTS = ("dev", "start", "serve", "preview")
 LOCK_FILES = (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"),
               ("bun.lock", "bun"))  # fmt: skip
 SANDBOX_FORGE = "/opt/forge/bin/forge"  # docker/sandbox.Dockerfile
+# A static file server hands out every file of the project, .git included: not without the code.
+STATIC_SERVER = "python3 -m http.server 8000 --bind 127.0.0.1"
+ONLY_SUGGESTED = "your plan does not include the code: start one of the suggested commands"
+HIDDEN_COMMAND = "(command hidden: your plan does not include the code)"
 NO_DOMAIN = "previews need a preview domain on this server ([preview] domain in the settings)"
 
 
@@ -53,15 +60,22 @@ def preview_router() -> APIRouter:
     @router.get("")
     async def overview(project_id: str, request: Request, user: CurrentUser) -> dict[str, Any]:
         services = await allowed(request, user, project_id)
-        programs = await sandbox_call(services, project_id, "procs.list")
+        code = await may_read_code(services, user, project_id)
+        programs = objects(await sandbox_call(services, project_id, "procs.list"))
         local = services.settings.sandbox.isolation == "local"  # the host's ports are there too
         ports = await sandbox_call(
             services, project_id, "ports.list", {"owned": True} if local else {}
         )
+        offered = await suggestions(services, project_id, code=code)
+        if not code:
+            known = {s["command"] for s in offered}
+            programs = [p if command_of(p) in known else {**p, "argv": [HIDDEN_COMMAND]}
+                        for p in programs]  # fmt: skip
         return {
             "enabled": preview_base(services.settings) is not None,
-            "suggestions": await suggestions(services, project_id),
-            "programs": objects(programs),
+            "code_access": code,
+            "suggestions": offered,
+            "programs": programs,
             "ports": listening(services, ports),
             "app_port": app_port(await read_text(services, project_id, MANIFEST)),
         }
@@ -69,6 +83,10 @@ def preview_router() -> APIRouter:
     @router.post("/programs", status_code=201)
     async def start(project_id: str, body: ProgramIn, request: Request, user: CurrentUser) -> Any:
         services = await allowed(request, user, project_id, "editor")
+        if not await may_read_code(services, user, project_id):
+            offered = await suggestions(services, project_id, code=False)
+            if body.cwd or body.command not in {s["command"] for s in offered}:
+                raise HTTPException(403, ONLY_SUGGESTED)
         params = {"command": body.command, "cwd": body.cwd, "name": "preview"}
         return result_dict(await sandbox_call(services, project_id, "procs.start", params))
 
@@ -81,7 +99,7 @@ def preview_router() -> APIRouter:
     @router.get("/programs/{program_id}/output")
     async def output(project_id: str, program_id: str, request: Request, user: CurrentUser,
                      since: int = 0) -> Any:  # fmt: skip
-        services = await allowed(request, user, project_id)
+        services = await code_allowed(request, user, project_id)  # output shows code (SEC-W3)
         params = {"id": check_program_id(program_id), "since": max(since, 0), "limit": 500}
         return result_dict(await sandbox_call(services, project_id, "procs.output", params))
 
@@ -98,6 +116,14 @@ def preview_router() -> APIRouter:
         return {"url": base.url(project_id, port, f"{ENTER_PATH}?{query}")}
 
     return router
+
+
+def command_of(program: dict[str, Any]) -> str:
+    """The command line a program from `procs.list` runs (the shell's `-c` argument)."""
+    argv = program.get("argv")
+    if isinstance(argv, list) and len(argv) >= 3 and argv[-2] in ("-c", "/c"):  # bash, cmd.exe
+        return str(argv[2])
+    return ""
 
 
 def objects(found: Any) -> list[dict[str, Any]]:
@@ -161,8 +187,11 @@ async def read_text(services: Services, project_id: str, path: str) -> str:
     return text if isinstance(text, str) else ""
 
 
-async def suggestions(services: Services, project_id: str) -> list[dict[str, str]]:
-    """Commands that probably start the project's dev server, best first."""
+async def suggestions(
+    services: Services, project_id: str, *, code: bool = True
+) -> list[dict[str, str]]:
+    """Commands that probably start the project's dev server, best first (without `code`, none
+    that serves the project's files as they are)."""
     listing = result_dict(await sandbox_call(services, project_id, "fs.list", {"path": ""}))
     names = {e.get("name") for e in objects(listing.get("entries"))}
     found: list[tuple[str, str]] = []
@@ -181,8 +210,8 @@ async def suggestions(services: Services, project_id: str) -> list[dict[str, str
                 )
             elif "Flask(" in text:
                 found.append(("Flask", f"python3 -m flask --app {name[:-3]} run --port 5000"))
-    if "index.html" in names:
-        found.append(("index.html", "python3 -m http.server 8000 --bind 127.0.0.1"))
+    if "index.html" in names and code:
+        found.append(("index.html", STATIC_SERVER))
     return [{"label": label, "command": command} for label, command in found]
 
 

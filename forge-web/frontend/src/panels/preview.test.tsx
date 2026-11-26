@@ -99,6 +99,17 @@ describe("PreviewPanel", () => {
     expect(tab.opener).toBeNull();
   });
 
+  it("without the code, offers only the suggestions and no output (SEC-W3)", async () => {
+    const api = fakeApi({ code_access: false });
+    render(<PreviewPanel api={asApi(api)} canEdit active onError={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /npm install && npm run dev/ }));
+    await waitFor(() => expect(api.startProgram).toHaveBeenCalledWith("npm install && npm run dev"));
+    expect(screen.queryByRole("textbox", { name: /npm run dev/ })).toBeNull(); // no own command
+    const row = screen.getByText("npm run dev").closest("li")!;
+    expect(within(row).queryByRole("button", { name: /^(Output|Ausgabe)$/ })).toBeNull();
+    expect(within(row).getByTitle(/^(Stop|Stoppen)$/)).toBeTruthy();
+  });
+
   it("lets viewers look but not start or stop, and explains when previews are off", async () => {
     const api = fakeApi({ enabled: false });
     render(<PreviewPanel api={asApi(api)} canEdit={false} active onError={vi.fn()} />);

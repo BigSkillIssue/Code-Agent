@@ -73,6 +73,7 @@ export interface Program {
 
 export interface PreviewOverview {
   enabled: boolean; // false: this server has no preview domain
+  code_access?: boolean; // false (W57): only the suggestions start, and no output (SEC-W3)
   suggestions: { label: string; command: string }[];
   programs: Program[];
   ports: { port: number; address: string }[];
