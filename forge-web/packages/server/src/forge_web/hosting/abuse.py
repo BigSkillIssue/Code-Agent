@@ -3,11 +3,16 @@
 Every app has a report form at the edge's fixed path `/melden` (served from
 `/legal/<app>/melden`). A notice names the place, explains why it is illegal, and (except for
 child sexual abuse) gives the notifier's name and email with a statement of good faith; the
-notifier gets a confirmation and every admin a mail. An admin decides: dismiss (the notifier hears
-so, with the reasons) or suspend the app, which stops it at once and sends its creator a statement
-of reasons with the ways to contest it. Decisions are made by people, never automatically.
+notifier gets a confirmation and the admins a mail. Since anyone may send the form, its mails
+carry nothing the sender wrote (a notice number, the app and the category only), confirmations
+to one address and notices from one address across apps are limited, and the admins get at most
+one mail per while that sums up the new notices (SEC-W4). An admin decides: dismiss (the
+notifier hears so, with the reasons) or suspend the app, which stops it at once and sends its
+creator a statement of reasons with the ways to contest it. Decisions are made by people, never
+automatically.
 """
 
+import asyncio
 import hashlib
 import secrets
 import time
@@ -27,6 +32,7 @@ from forge_web.db.hosting_models import AbuseNotice, HostedApp
 from forge_web.db.models import Project, User
 from forge_web.hosting.admin import suspend_app
 from forge_web.hosting.legal_pages import esc, page
+from forge_web.hosting.notice_mail import Waiting
 from forge_web.services import Services, services_of
 
 CATEGORIES = {
@@ -40,6 +46,7 @@ CATEGORIES = {
 }
 NO_NAME_NEEDED = {"child_abuse"}  # DSA Art. 16(2)(c)
 PER_HOUR = 20  # notices from one address and app (behind an edge: often its host)
+BUSY = "<p>Von Ihrer Adresse kamen gerade viele Meldungen. Bitte später noch einmal.</p>"
 MAX_FORM_BYTES = 32 * 1024
 EMAIL = r"^[^@\s<>\"']{1,64}@[^@\s<>\"']{1,255}$"
 
@@ -109,16 +116,17 @@ def report_router() -> APIRouter:
         notice, found = problems(form)
         if notice is None:
             return page("Inhalt melden", form_body(app, form, found), status=400)
-        sender = hashlib.sha256(f"{client_ip(request)}|{app}".encode()).hexdigest()
+        address = client_ip(request)
+        sender = hashlib.sha256(f"{address}|{app}".encode()).hexdigest()
         if await recent(services, sender) >= PER_HOUR:
-            busy = (
-                "<p>Von Ihrer Adresse kamen gerade viele Meldungen. Bitte später noch einmal.</p>"
-            )
-            return page("Inhalt melden", busy, status=429)
+            return page("Inhalt melden", BUSY, status=429)
+        if not services.limits.notices_by_address.allow(address):  # across app names (SEC-W4)
+            return page("Inhalt melden", BUSY, status=429)
         row = await store(services, hosted, notice, sender)
-        services.background(tell_admins(services, row))
-        if notice.email:
-            subject = f"Ihre Meldung zu „{app}“ ist eingegangen"
+        if services.notice_mail.add(Waiting(row.id, row.app, row.category)):
+            services.background(tell_admins(services))
+        if notice.email and services.limits.confirmations_by_email.allow(notice.email.lower()):
+            subject = f"Ihre Meldung zu „{row.app}“ ist eingegangen"
             services.background(mail(services, notice.email, subject, confirmation(row)))
         return page("Danke für Ihre Meldung", f"<p>Ihre Meldung ist eingegangen (Nummer {row.id}). "
                                               "Wir prüfen sie und teilen Ihnen die Entscheidung "
@@ -199,21 +207,36 @@ async def mail(services: Services, to: str, subject: str, body: str) -> None:
         await send_mail(smtp, to, subject, body, reply_to=services.settings.hosting.contact_email)
 
 
-async def tell_admins(services: Services, row: AbuseNotice) -> None:
-    """Every admin hears of a new notice."""
+async def tell_admins(services: Services) -> None:
+    """Every admin hears of the new notices: at once, or when the last mail is a while ago."""
+    waiting = services.notice_mail
+    while (left := waiting.left()) > 0:
+        await asyncio.sleep(min(left, 1.0))  # short naps: a shorter window applies at once
+    new, more = waiting.take()
+    if not new:
+        return
     async with services.db.session() as session:
         emails = list(await session.scalars(select(User.email).where(User.role == "admin")))
-    text = (f"Eine neue Meldung zu „{row.app}“: {CATEGORIES[row.category]}\nWo: {row.location}\n\n"
-            f"Prüfen: {services.settings.base_url()}/admin (Hosting, Meldungen)")  # fmt: skip
+    subject, text = admin_mail(new, more, services.settings.base_url())
     for email in emails:
-        await mail(services, email or "", f"Neue Meldung zu {row.app}", text)
+        await mail(services, email or "", subject, text)
+
+
+def admin_mail(new: list[Waiting], more: int, base_url: str) -> tuple[str, str]:
+    """The admins' mail about new notices: what the server knows, never the sender's text."""
+    count = len(new) + more
+    subject = f"Neue Meldung zu {new[0].app}" if count == 1 else f"{count} neue Meldungen"
+    lines = "\n".join(f"- {n.app}: {CATEGORIES[n.category]} (Nummer {n.id})" for n in new)
+    rest = f"\n… und {more} weitere" if more else ""
+    return subject, (f"Neue Meldungen:\n{lines}{rest}\n\n"
+                     f"Prüfen: {base_url}/admin (Hosting, Meldungen)")  # fmt: skip
 
 
 def confirmation(row: AbuseNotice) -> str:
-    """The notifier's confirmation (DSA Art. 16(4))."""
+    """The notifier's confirmation (DSA Art. 16(4)): only what the server itself knows."""
     return (f"Ihre Meldung (Nummer {row.id}) zu „{row.app}“ ist eingegangen.\n\nGemeldet: "
-            f"{CATEGORIES[row.category]}\nWo: {row.location}\n\nWir prüfen sie und teilen Ihnen "
-            "unsere Entscheidung mit.")  # fmt: skip
+            f"{CATEGORIES[row.category]}\n\nWir prüfen sie und teilen Ihnen unsere "
+            "Entscheidung mit.")  # fmt: skip
 
 
 def notice_view(row: AbuseNotice, project: str) -> dict[str, Any]:

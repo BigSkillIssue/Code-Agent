@@ -259,6 +259,18 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 - Sign-ins (also failed ones), changes of rights, members, keys, git tokens and server settings are in
   the audit log.
 
+### The report form (W28b, SEC-W4)
+
+- `/legal/<app>/melden` needs no sign-in, so its mails carry nothing the sender wrote: the
+  confirmation names the notice number, the app and the category (DSA Art. 16(4)), and the admins'
+  mail lists new notices the same way; place and reasons are read in the admin panel. Every notice
+  is recorded, and the page confirms it with its number.
+- Limits: 20 notices an hour per address and app, 60 an hour per address across apps (refused with
+  429), 5 confirmations an hour per recipient (beyond that the notice is kept, but not mailed), and
+  at most one admin mail per quarter of an hour, summing up what came in meanwhile. The counters
+  live in memory (a restart resets them, as for sign-in); a pending admin mail is lost on a
+  restart, the panel still shows the notices.
+
 ## What was checked
 
 Each step had its own security tests; `tests/test_access.py` calls every API route as a signed-out
@@ -292,6 +304,9 @@ two reviews of the whole code:
    - `/api/preview/allowed-host` said yes for any port of an existing project.
 
 ## Accepted risks
+
+- **Report-form limits behind an edge**: notices forwarded by a host's edge arrive from the host's
+  address, so a flood through one host can make the form answer 429 for an hour for all apps on it.
 
 - **Two admins demoting each other at the same moment** can leave the server without an active admin.
   `forge-web user add --admin` on the server's command line can always make a new one.

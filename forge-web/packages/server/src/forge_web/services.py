@@ -26,6 +26,7 @@ from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.hosting.alerts import Alerts
 from forge_web.hosting.deploy import Deploys
 from forge_web.hosting.hosts import HostQueue
+from forge_web.hosting.notice_mail import NoticeMail
 from forge_web.hosting.ops import Backups
 from forge_web.hosting.removal import Removals
 from forge_web.hub import Hub
@@ -74,6 +75,7 @@ class Services:
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up
     limits: AuthLimits = field(default_factory=AuthLimits)
+    notice_mail: NoticeMail = field(default_factory=NoticeMail)  # the admins' mail of notices
     tasks: list[asyncio.Task[None]] = field(default_factory=list)  # background work
     git_locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one git job per project
     disk_use: dict[str, tuple[float, int]] = field(default_factory=dict)  # project -> (when, bytes)

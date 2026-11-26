@@ -1,4 +1,5 @@
-"""Simple sliding-window rate limits for sign-in, sign-up and reset requests."""
+"""Simple sliding-window rate limits for sign-in, sign-up and reset requests, and for the public
+report form's notices and confirmations (SEC-W4)."""
 
 import time
 from collections import defaultdict, deque
@@ -38,3 +39,5 @@ class AuthLimits:
         self.oauth_by_ip = RateLimiter(30, 900)
         self.code_by_user = RateLimiter(10, 900)  # two-factor codes
         self.members_by_user = RateLimiter(30, 3600)  # adding people by email reveals accounts
+        self.notices_by_address = RateLimiter(60, 3600)  # the report form, across app names
+        self.confirmations_by_email = RateLimiter(5, 3600)  # its mails to one address
