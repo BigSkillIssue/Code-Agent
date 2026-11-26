@@ -44,7 +44,7 @@ while not (control / "stop").exists():
         req.unlink()
         seq = action["seq"]
         if mode == "link":
-            os.symlink("/etc/hostname", control / f"res-{seq}.json")
+            os.symlink(folder / "nowhere", control / f"res-{seq}.json")  # dangles, as on macOS
             continue
         text = f"did {action['kind']} {action.get('target', '')}"
         if action["kind"] == "read":
@@ -119,7 +119,7 @@ async def test_a_failed_start_or_a_link_ends_the_session(
     with pytest.raises(DeviceProblem, match="no Windows app"):
         await missing.start(packed(tmp_path, app=False))
     await missing.close()
-    linked = WindowsDevice(sandbox, OFFER)
+    linked = WindowsDevice(sandbox, OFFER)  # a link is refused at once, even where it dangles
     await linked.start(packed(tmp_path, "link"))
     with pytest.raises(DeviceProblem, match="other than an answer"):
         await linked.act(DeviceAction(seq=1, kind="screenshot"))
