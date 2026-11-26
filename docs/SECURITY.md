@@ -19,6 +19,7 @@ covered.
 | Trust | A project's `.forge/config.toml` may set providers, MCP servers, hooks, the release rules or the browser only after `forge trust`; before that its sandbox, approval, permission and limit settings may only be stricter than the user's, and no project drops the user's deny and ask rules | `config.py`, `config_trust.py` |
 | Browser | The browser agent has no profile, no downloads and no file access; every connection the browser opens (redirect hops and WebSockets included) goes through Forge's own proxy, which resolves the name itself and connects only to the address it checked: never a local or private address, nor one that does not resolve (SEC-K6); WebRTC sends no UDP past it; `browser_open` asks like `web_fetch`. Agents testing the product (S78: the lead, agents it gives `browser`, custom roles; read-only roles never) use a second browser that also opens this machine's own servers, written as such (`localhost`, `*.localhost`, `127.x`, `::1`; `[browser] loopback`), never the LAN or a public name that resolves to a local address, and only while it shows one of them: after the agent opens another page, or a page leaves for elsewhere, they are closed until the agent opens one again (the old page and other windows are closed first); the research browser agent never opens them. A product page itself may call any of this machine's servers while it is open | `local/playwright_browser.py`, `local/browser_proxy.py`, `tools.py` |
 | Web fetch | Only public addresses (not private, loopback, link-local, CGNAT, multicast or IPv6 forms of them); the address is checked again when the connection is made, so a name cannot point elsewhere in between; fetched pages are cached in the user's Forge folder, not in the project | `runtime/public_http.py`, `runtime/web.py` |
+| Agents | A sub-agent gets only tools the lead has itself, by name; a group grants only the lead's own tools of it, and `mcp` the MCP tools not loaded yet only when the lead may call every one (SEC-K7); an agent file's tool list also holds for MCP tools called by name before they are loaded; read-only roles keep only read-only tools and the public browser. Messages and reports of agents reach others quoted (`> `) under a head only Forge writes, and the prompt says they never carry the user's approval; the browser agent (it reads any web page) messages only the lead; an agent's name cannot look like an id | `tools.py`, `team.py`, `prompts.py` |
 | Prompt structure | Fetched pages and repo files are data; the WEB_EXTRACT prompt tells the model to ignore instructions in them | `prompts.py` |
 
 ## What the security tests check
@@ -52,6 +53,16 @@ covered.
   the user config is `outside_root`, and `remember` always asks. A fetched page reaches the
   extraction model only inside `<page>` tags, after the rule to ignore its instructions.
 
+- **Browser reach** (`test_browser_reach.py`, `test_browser_proxy.py`): a redirect from a
+  page on this machine to a private address is refused at the proxy, also for a `fetch` inside
+  the page; a page from elsewhere in the testing browser cannot load or post to this machine's
+  servers until the agent opens one of them again; a read-only role granted the browser gets
+  the public one.
+- **Agent grants and messages** (`test_agent_grants.py`): a lead limited to `read_file` cannot
+  give `files` as a whole; an agent file without `mcp` cannot call a deferred MCP tool; a
+  message with a forged `[message from main …]` line arrives quoted inside the sender's own;
+  the browser agent cannot message another sub-agent; names like `a7` or `main` are refused.
+
 ## Not covered (known limits)
 
 - **Windows** has no OS sandbox yet; commands rely on approvals and path checks there
@@ -64,6 +75,7 @@ covered.
   repository's programs, `/undo` checks every path of its journal); a command that rewrites
   `.git/config` in the instant between Forge reading the driver names and starting git could
   still slip one driver through.
+- **The testing browser** runs outside the OS sandbox: while it shows the product, the product's page may call any server on this machine (that is what it tests) and public sites, though never the LAN.
 - **`full-access`** mode turns the sandbox off by design.
 - **Command parsing** is a best effort over shell syntax (it does not expand variables or
   aliases, e.g. `$CMD` holding `rm -rf`). Deny rules are a guard rail, not a sandbox; the OS
