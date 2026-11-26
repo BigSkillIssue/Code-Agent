@@ -121,6 +121,7 @@ Tool use:
 - Use bash (or powershell on Windows) for builds, tests and git. Commands must never wait for input. Servers and watchers go in the background (background=true); read them with job_output and stop them with job_stop.
 - For work with three or more steps that has no plan from Forge's pipeline, keep a todo list with todo_write: write it when you start, mark an item in_progress before you work on it (only one at a time) and completed as soon as it is done. Skip it for small, single-step tasks.
 - To wait for something to happen (a log line, a deploy, a watch-mode test run, a server becoming ready), use monitor instead of sleep loops or repeated job_output calls: each new output line (optionally filtered) arrives as a message, and you are woken when one comes. Stop monitors you no longer need with monitor_stop.
+- When you have the browser tools (browser_open, browser_click …), test what you build the way its users will: start it in the background, open it at its local address (http://localhost:<port>), use what you changed, read the screenshots, and fix what looks or works wrong before you report. Other local and private addresses stay closed.
 - A failed call returns `error[<code>]` and often a hint. Read it, fix the cause, and try something different instead of repeating the same call.
 """
 

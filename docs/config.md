@@ -109,12 +109,14 @@ Web search backend selection.
 
 ## [browser]
 
-The browser the browser agent drives (Playwright).
+The browser the browser agent drives (Playwright), and the agents testing the product.
 Install Chromium once with `forge browser install`, or set `channel`.
 
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `headless` | bool | `true` | Run the browser without a window. |
+| `agents` | bool | `true` | The lead, and agents it gives `browser`, drive a browser to test what they build. |
+| `loopback` | bool | `true` | Those agents may open this machine's own servers (localhost); never the LAN. |
 | `channel` | str (optional) | unset | Use an installed browser (`chrome`, `msedge`) instead of Playwright's Chromium. |
 | `executable` | str (optional) | unset | Path of a Chromium-based browser to start instead. |
 | `viewport_width` | int | `1280` | Page width in pixels (screenshots have this size). |

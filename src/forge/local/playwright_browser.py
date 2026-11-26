@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from forge.config import BrowserConfig
 from forge.ports import Browser, BrowserError, PageView
 from forge.providers.base import ImagePart
-from forge.runtime.web import is_ip, is_local, resolve_host
+from forge.runtime.web import is_ip, is_local, is_loopback_host, resolve_host
 
 if TYPE_CHECKING:
     from playwright.async_api import Browser as PwBrowser
@@ -33,9 +33,13 @@ UNCHECKED_SCHEMES = ("data", "blob", "about")
 class PlaywrightBrowsers:
     """BrowserFactory: starts Chromium on first use; every agent gets its own context."""
 
-    def __init__(self, cfg: BrowserConfig, allow_local: bool = False) -> None:
+    def __init__(
+        self, cfg: BrowserConfig, allow_local: bool = False, loopback: bool = False
+    ) -> None:
         self.cfg = cfg
         self.allow_local = allow_local  # tests serve pages from localhost
+        # S78: agents test the product they run on this machine; the LAN stays blocked
+        self.loopback = loopback
         self._playwright: Playwright | None = None
         self._browser: PwBrowser | None = None
 
@@ -53,7 +57,10 @@ class PlaywrightBrowsers:
         await context.route("**/*", self._guard)
         await context.route_web_socket("**/*", self._guard_socket)
         return PlaywrightPage(
-            context, await context.new_page(), check_addresses=not self.allow_local
+            context,
+            await context.new_page(),
+            check_addresses=not self.allow_local,
+            loopback=self.loopback,
         )
 
     async def close(self) -> None:
@@ -90,7 +97,7 @@ class PlaywrightBrowsers:
     async def _guard(self, route: "Route") -> None:
         """Abort requests to local or private hosts (the browser must not reach the LAN)."""
         parts = urlsplit(route.request.url)
-        if parts.scheme in UNCHECKED_SCHEMES or self.allow_local:
+        if parts.scheme in UNCHECKED_SCHEMES or self._allowed(parts.hostname or ""):
             await route.continue_()
             return
         # checked for every request, not remembered: a name may point elsewhere a moment later
@@ -101,10 +108,15 @@ class PlaywrightBrowsers:
 
     async def _guard_socket(self, socket: "WebSocketRoute") -> None:
         """WebSockets bypass `route`: the same check before they connect."""
-        if self.allow_local or not await host_is_local(urlsplit(socket.url).hostname or ""):
+        host = urlsplit(socket.url).hostname or ""
+        if self._allowed(host) or not await host_is_local(host):
             socket.connect_to_server()
         else:
             await socket.close(code=1008, reason="local or private address")
+
+    def _allowed(self, host: str) -> bool:
+        """Hosts let through unchecked: everything (tests), or this machine's own servers."""
+        return self.allow_local or (self.loopback and is_loopback_host(host))
 
 
 async def host_is_local(host: str) -> bool:
@@ -122,10 +134,16 @@ class PlaywrightPage:
     """Browser: one page; every action waits for the page to settle, then shows it."""
 
     def __init__(
-        self, context: "BrowserContext", page: "Page", *, check_addresses: bool = False
+        self,
+        context: "BrowserContext",
+        page: "Page",
+        *,
+        check_addresses: bool = False,
+        loopback: bool = False,
     ) -> None:
         self.context = context
         self.page = page
+        self.loopback = loopback  # answers to requests for localhost may come from localhost
         # The request guard checks a name before Chromium resolves it again; the address a
         # response really came from is checked too, so a page from a local address is not shown.
         self._checks: list[asyncio.Task[None]] = []
@@ -134,6 +152,8 @@ class PlaywrightPage:
             context.on("response", self._note_response)
 
     def _note_response(self, response: "Response") -> None:
+        if self.loopback and is_loopback_host(urlsplit(response.url).hostname or ""):
+            return
         self._checks.append(asyncio.ensure_future(self._check_address(response)))
 
     async def _check_address(self, response: "Response") -> None:

@@ -59,6 +59,8 @@ DOCS: dict[str, str] = {
     "app": "See `[app]`.",
     "release": "See `[release]`.",
     "headless": "Run the browser without a window.",
+    "agents": "The lead, and agents it gives `browser`, drive a browser to test what they build.",
+    "loopback": "Those agents may open this machine's own servers (localhost); never the LAN.",
     "channel": "Use an installed browser (`chrome`, `msedge`) instead of Playwright's Chromium.",
     "executable": "Path of a Chromium-based browser to start instead.",
     "viewport_width": "Page width in pixels (screenshots have this size).",
