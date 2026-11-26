@@ -8,7 +8,8 @@ own App Store Connect key and Play service account, else the admin's Forge accou
 (`stores.forge_account`) when one is set. Apple: the commit is approved for Apple in the person's
 name (the review is the approval) and uploaded to TestFlight; App Review stays a click on the
 release page. Google Play: the newest Android build of the commit goes to the track asked for;
-production keeps the admin's approval for people who are not trusted.
+it waits for the admin's approval unless the person is trusted, also when the Forge account
+publishes for them.
 
 A computer-use fallback for what the stores' APIs cannot do is not built: see PROGRESS (W58).
 """
@@ -143,19 +144,17 @@ async def publish_apple(
     return [{"release": r.id, "platform": r.platform, "step": r.step} for r in rows]
 
 
-async def publish_play(
-    services: Services, chat: Chat, user: User, body: PublishIn
-) -> dict[str, Any]:
-    """Send the newest Android build of the commit to a Google Play track."""
-    from forge_web.stores.play_api import PlayReleaseIn, new_release
-
-    owner = await key_owner(services, user, "google_play")
+async def stand_in_approval(
+    services: Services, chat: Chat, user: User, commit: str
+) -> tuple[AndroidBuild, str]:
+    """The commit's newest Android build, and the id of the go-live approval the store review
+    stands for when the person gave none for this commit ("" when they did)."""
     async with services.db.session() as session, session.begin():
         build = await session.scalar(
             select(AndroidBuild)
             .where(
                 AndroidBuild.project_id == chat.project_id,
-                AndroidBuild.commit == body.commit,
+                AndroidBuild.commit == commit,
                 AndroidBuild.status == "built",
             )
             .order_by(AndroidBuild.created_at.desc())
@@ -165,24 +164,43 @@ async def publish_play(
             raise HTTPException(409, "build the Android app of this commit first (android_build)")
         approved = await session.scalar(
             select(GoLiveApproval.id).where(
-                GoLiveApproval.project_id == chat.project_id, GoLiveApproval.commit == body.commit
+                GoLiveApproval.project_id == chat.project_id, GoLiveApproval.commit == commit
             )
         )
-        if approved is None:  # the store review stands for the person's go-live of this commit
-            session.add(
-                GoLiveApproval(
-                    id=secrets.token_hex(16),
-                    project_id=chat.project_id,
-                    chat_id=chat.id,
-                    user_id=user.id,
-                    request_id="store-review",
-                    commit=body.commit,
-                    clean=True,
-                    created_at=time.time(),
-                )
-            )
+        if approved is not None:
+            return build, ""
+        made = GoLiveApproval(
+            id=secrets.token_hex(16),
+            project_id=chat.project_id,
+            chat_id=chat.id,
+            user_id=user.id,
+            request_id="store-review",
+            commit=commit,
+            clean=True,
+            created_at=time.time(),
+        )
+        session.add(made)
+    return build, made.id
+
+
+async def publish_play(
+    services: Services, chat: Chat, user: User, body: PublishIn
+) -> dict[str, Any]:
+    """Send the newest Android build of the commit to a Google Play track."""
+    from forge_web.stores.play_api import PlayReleaseIn, new_release
+
+    owner = await key_owner(services, user, "google_play")
+    build, made = await stand_in_approval(services, chat, user, body.commit)
     release_in = PlayReleaseIn(build_id=build.id, track=body.track, notes=body.notes)
-    row, _ = await new_release(services, owner, chat.project_id, release_in)
+    try:  # the person's trust, not the Forge account's, decides whether an admin approves
+        row, _ = await new_release(services, owner, chat.project_id, release_in, requester=user)
+    except HTTPException:
+        if made:  # a publish that did not start approves nothing (SEC-W5)
+            async with services.db.session() as session, session.begin():
+                gone = await session.get(GoLiveApproval, made)
+                if gone is not None:
+                    await session.delete(gone)
+        raise
     if row.status == "releasing":
         services.play.launch(row.id)
     return {"release": row.id, "track": row.track, "status": row.status}

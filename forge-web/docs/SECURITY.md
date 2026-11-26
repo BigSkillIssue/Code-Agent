@@ -98,6 +98,7 @@ A Mac worker runs projects' code (build scripts, tests, the app itself) and is a
   to the same question is refused), with who gave it, when, the project's commit and whether anything
   was uncommitted, and written to the audit log. Opening the approval page approves nothing. The App
   Store step (W22) works from that commit and asks the user again before anything goes to Apple.
+  The one exception is the agent's store publishing (W58, below), which an admin turns on.
 
 ### Containers
 
@@ -168,6 +169,24 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   with a statement timeout and a capped answer. Pages are fetched server-side from the app's own
   host name only (the path cannot change the host). Production data reaches the model provider when
   the agent reads it: that is the reason for the admin's switch.
+
+### The agent and the stores (W58)
+
+- On the user's request the agent may publish its product to the stores, but only on servers whose
+  admin turned on `stores.agent_publishing`, for people whose plan includes store publishing, and
+  for a commit with a passing store review. All three are checked by the server on every call to
+  `/product/store/publish`; the commit, store and track are the only things the sandbox names.
+- The review is recorded with the same run token that publishes, so it is a process control, not a
+  security boundary: with the admin's switch on, the sandbox can record a "pass" itself. What the
+  switch then lets it do in the person's name (whose run it is, from the token, never from the
+  sandbox): approve the project's clean HEAD for Apple (`request_id` `store-review:…`) and upload it
+  to TestFlight, and record a go-live approval of the commit (`request_id` `store-review`) to send
+  its Android build to a Google Play track. A publish that does not start leaves no approval behind.
+- What it cannot do: submit to App Review or release on the App Store (still the person's click on
+  the release page), deploy to production hosting beyond W54's rules, or skip the admin: a Play
+  release of a person who is not trusted waits for an admin also when the admin's Forge account
+  (`stores.forge_account`) publishes for them, because the person's trust counts, never the
+  account's (SEC-W5).
 
 ### The agent on devices (W60–W62)
 

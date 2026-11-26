@@ -142,9 +142,18 @@ async def built(services: Services, project_id: str, build_id: str) -> AndroidBu
 
 
 async def new_release(
-    services: Services, user: User, project_id: str, body: PlayReleaseIn
+    services: Services,
+    user: User,
+    project_id: str,
+    body: PlayReleaseIn,
+    *,
+    requester: User | None = None,
 ) -> tuple[PlayRelease, AndroidBuild]:
-    """A release of an approved build, once everything it needs is there (else 409)."""
+    """A release of an approved build, once everything it needs is there (else 409).
+
+    `user` is whose Play account publishes; `requester`, when someone else asked for the release
+    (the agent for its person with the admin's Forge account, W58), is whose trust decides
+    whether it waits for an admin, so that account never lends its trust (SEC-W5)."""
     build = await built(services, project_id, body.build_id)
     if not build.package_name:
         raise HTTPException(409, "the Android app names no applicationId in "
@@ -164,8 +173,9 @@ async def new_release(
             PlayRelease.project_id == project_id, PlayRelease.status.in_(ACTIVE)))  # fmt: skip
         if busy is not None:
             raise HTTPException(409, "a Google Play release of this app is under way")
-        admin = acts_as_admin(user, services.settings.auth.admin_two_factor)
-        trusted = admin or user.hosting_trusted
+        asking = requester or user
+        admin = acts_as_admin(asking, services.settings.auth.admin_two_factor)
+        trusted = admin or asking.hosting_trusted
         now = time.time()
         row = PlayRelease(id=secrets.token_hex(16), project_id=project_id,
                           build_id=build.id, user_id=user.id, track=body.track, notes=body.notes,
