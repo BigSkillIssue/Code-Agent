@@ -233,6 +233,12 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
 - Google and GitHub sign-ins join an existing account by email only when that account has a confirmed
   address and no password; otherwise its owner links the provider in their settings.
 - A new password ends the person's other sessions and every reset link still open.
+- Nobody becomes a member, an owner, the owner of record or the payer of a project without agreeing
+  (SEC-W1): adding someone to a project (`POST /api/projects/{id}/members`) or making a member an
+  owner only invites them; they accept (`POST /api/invitations/{id}`) or decline
+  (`DELETE /api/invitations/{id}`) their own invitations (`GET /api/invitations`), and owners
+  withdraw them. The owner of record, whose plan, keys, quota and store accounts a project uses,
+  only ever passes to an owner who accepted; until one has, the last owner cannot step down or leave.
 - `auth.passwords = false` turns off password sign-in, resets and "forgot password" entirely.
 - Two-factor sign-in (TOTP, RFC 6238) with ten one-time recovery codes; codes are claimed with a
   compare-and-set, so a code works once. Turning it on ends the person's other sessions; an admin who

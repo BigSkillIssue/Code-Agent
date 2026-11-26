@@ -48,7 +48,11 @@ const exact: Record<string, string> = {
   "only the chat's owner can do that": "Das darf nur, wem der Chat gehört.",
   "the server needs at least one active admin": "Der Server braucht mindestens einen aktiven Admin.",
   "a project needs at least one owner": "Ein Projekt braucht mindestens einen Besitzer.",
+  "a project needs at least one owner; the invited owner has not accepted yet":
+    "Ein Projekt braucht mindestens einen Besitzer – der eingeladene Besitzer hat noch nicht angenommen.",
   "already a member": "Schon Mitglied.",
+  "already invited": "Schon eingeladen.",
+  "no such invitation": "Diese Einladung gibt es nicht (mehr).",
   "no active account with this email": "Es gibt kein aktives Konto mit dieser E-Mail-Adresse.",
   "this account has not confirmed its email yet": "Dieses Konto hat seine E-Mail-Adresse noch nicht bestätigt.",
   "no account waiting for approval": "Kein Konto wartet auf Freischaltung.",

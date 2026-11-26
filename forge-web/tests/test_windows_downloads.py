@@ -86,6 +86,8 @@ async def test_a_release_goes_onto_the_website_after_the_admins_approval(
         maker = await person(server, "maker")
         await admin.post(f"/api/projects/{project_id}/members",
                          json={"email": maker.email, "role": "editor"})  # fmt: skip
+        joined = await maker.web.post(f"/api/invitations/{project_id}")  # SEC-W1: accept
+        assert joined.status_code == 200 and joined.json()["role"] == "editor"
         first = await built(server, project_id, 1)
         url = f"/api/projects/{project_id}/windows/releases"
         refused = await maker.web.request("POST", url, json={"build_id": first})

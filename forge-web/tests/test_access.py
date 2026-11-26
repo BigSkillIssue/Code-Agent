@@ -64,7 +64,7 @@ OWN = {
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
     "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
     "GET /api/me/play-key", "PUT /api/me/play-key", "POST /api/me/play-key/check",
-    "DELETE /api/me/play-key",
+    "DELETE /api/me/play-key", "GET /api/invitations",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.
@@ -465,8 +465,13 @@ async def test_members_are_managed_by_owners(world: World) -> None:
     owner = world.owner.web
     added = await owner.post(base, {"email": "OUTSIDER@example.com", "role": "editor"})
     assert added.status_code == 201 and added.json()["role"] == "editor"
+    assert added.json()["pending"] is True  # invited: a member once they accept (SEC-W1)
     assert (await owner.post(base, {"email": world.outsider.email})).status_code == 409
     assert (await owner.post(base, {"email": "nobody@example.com"})).status_code == 404
+    assert (await world.outsider.web.get("/api/projects")).json() == []
+    accepted = await world.outsider.web.post(f"/api/invitations/{world.project_id}")
+    assert accepted.status_code == 200 and accepted.json()["role"] == "editor"
+    assert (await owner.post(base, {"email": world.outsider.email})).status_code == 409
     names = [p["name"] for p in (await world.outsider.web.get("/api/projects")).json()]
     assert names == ["Secret"]
     roles = {m["email"]: m["role"] for m in (await world.viewer.web.get(base)).json()}
@@ -477,7 +482,10 @@ async def test_members_are_managed_by_owners(world: World) -> None:
     assert demote_self.status_code == 409  # the last owner
     assert (await owner.request("DELETE", f"{base}/{world.owner.id}")).status_code == 409
     promote = await owner.request("PATCH", f"{base}/{world.outsider.id}", json={"role": "owner"})
-    assert promote.status_code == 200
+    assert promote.status_code == 202  # offered; the owner stays the only owner until accepted
+    assert (await owner.request("DELETE", f"{base}/{world.owner.id}")).status_code == 409
+    accepted = await world.outsider.web.post(f"/api/invitations/{world.project_id}")
+    assert accepted.status_code == 200 and accepted.json()["role"] == "owner"
     assert (await owner.request("DELETE", f"{base}/{world.owner.id}")).status_code == 204
     assert (await owner.get(f"/api/projects/{world.project_id}")).status_code == 404  # left
     async with world.server.services.db.session() as session:

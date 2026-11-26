@@ -129,7 +129,9 @@ async def test_clearing_leaves_an_empty_chat_and_the_new_owner_pays(tmp_path: Pa
         promoted = await owner.web.request(
             "PATCH", f"{members}/{editor.id}", json={"role": "owner"}
         )
-        assert promoted.status_code == 200
+        assert promoted.status_code == 202  # offered (SEC-W1): the editor must accept
+        accepted = await editor.web.post(f"/api/invitations/{project_id}")
+        assert accepted.status_code == 200 and accepted.json()["role"] == "owner"
         left = await owner.web.request("DELETE", f"{members}/{owner.id}")
         assert left.status_code == 204
         async with server.services.db.session() as session:

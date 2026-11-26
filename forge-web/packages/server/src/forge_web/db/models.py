@@ -59,6 +59,24 @@ class ProjectMember(Base):
     role: Mapped[str] = mapped_column(String(16))  # owner | editor | viewer
 
 
+class ProjectInvitation(Base):
+    """A role someone was offered in a project and has not accepted yet (SEC-W1): until they
+    accept, they are not a member (or keep their old role), so they never pay for it."""
+
+    __tablename__ = "project_invitations"
+    __table_args__ = (Index("project_invitations_by_user", "user_id"),)
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role: Mapped[str] = mapped_column(String(16))  # owner | editor | viewer
+    invited_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[float] = mapped_column(Float)
+
+
 class Chat(Base):
     """A project's one conversation with Forge (W44): every member reads it, editors write."""
 

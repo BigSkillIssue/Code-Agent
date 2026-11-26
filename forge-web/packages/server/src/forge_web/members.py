@@ -1,9 +1,10 @@
-"""Project members: owners add people (who already have an account) as owner, editor or viewer."""
+"""Project members: owners invite people (who already have an account) as owner, editor or
+viewer; they become members when they accept (SEC-W1, `invitations.py`)."""
 
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,8 @@ from forge_web.audit import audit
 from forge_web.auth.mail import mail_enabled
 from forge_web.auth.sessions import CurrentUser, client_ip
 from forge_web.chats.one import follow_owner
-from forge_web.db.models import Chat, Project, ProjectMember, User
+from forge_web.db.models import Chat, Project, ProjectInvitation, ProjectMember, User
+from forge_web.invitations import no_owner_left, offer, pending_invitations, withdraw
 from forge_web.services import Services, services_of
 
 log = logging.getLogger(__name__)
@@ -35,7 +37,8 @@ class RoleIn(BaseModel):
 
 async def hand_on(session: AsyncSession, project_id: str, leaving: str) -> None:
     """When the project's owner of record stops being an owner, another owner becomes it: the
-    project's plan, limits, payments and notices are theirs from now on."""
+    project's plan, limits, payments and notices are theirs from now on. Only members are heirs,
+    and nobody is an owner without having accepted it (SEC-W1)."""
     project = await session.get(Project, project_id)
     if project is None or project.owner_id != leaving:
         return
@@ -75,9 +78,21 @@ async def stop_chats(services: Services, user_id: str, project_id: str | None = 
             log.warning("could not stop chat %s: %s", chat.id, err)
 
 
-def member_view(user: User, role: str) -> dict[str, Any]:
-    """A member as the web UI sees them."""
-    return {"user_id": user.id, "email": user.email, "name": user.name, "role": role}
+async def set_role(session: AsyncSession, member: ProjectMember, role: str) -> None:
+    """Give a member a role they already hold or that takes rights away (no consent needed)."""
+    project_id, user_id = member.project_id, member.user_id
+    if role != "owner" and await owners_left(session, project_id, user_id) == 0:
+        raise await no_owner_left(session, project_id)
+    member.role = role
+    await withdraw(session, project_id, user_id)  # the new role is what counts
+    if role != "owner":
+        await hand_on(session, project_id, user_id)
+
+
+def member_view(user: User, role: str, pending: bool = False) -> dict[str, Any]:
+    """A member (or someone invited, `pending`) as the web UI sees them."""
+    return {"user_id": user.id, "email": user.email, "name": user.name, "role": role,
+            "pending": pending}  # fmt: skip
 
 
 def members_router() -> APIRouter:
@@ -89,14 +104,17 @@ def members_router() -> APIRouter:
         project_id: str, request: Request, user: CurrentUser
     ) -> list[dict[str, Any]]:
         async with services_of(request).db.session() as session:
-            await require_project(session, user, project_id)
+            _, role = await require_project(session, user, project_id)
             rows = await session.execute(
                 select(User, ProjectMember.role)
                 .join(ProjectMember, ProjectMember.user_id == User.id)
                 .where(ProjectMember.project_id == project_id)
                 .order_by(User.name)
             )
-            return [member_view(row[0], row[1]) for row in rows]
+            members = [member_view(row[0], row[1]) for row in rows]
+            # Who was invited is the owners' business until they accept.
+            pending = await pending_invitations(session, project_id) if role == "owner" else []
+            return members + pending
 
     @router.post("", status_code=201)
     async def add_member(
@@ -115,28 +133,40 @@ def members_router() -> APIRouter:
                 raise HTTPException(409, "this account has not confirmed its email yet")
             if await session.get(ProjectMember, (project_id, person.id)) is not None:
                 raise HTTPException(409, "already a member")
-            session.add(ProjectMember(project_id=project_id, user_id=person.id, role=body.role))
+            if await session.get(ProjectInvitation, (project_id, person.id)) is not None:
+                raise HTTPException(409, "already invited")
+            await offer(session, project_id, person.id, body.role, user.id)
         await audit(
-            services.db, "member_added", user_id=user.id, target=project_id,
+            services.db, "member_invited", user_id=user.id, target=project_id,
             ip=client_ip(request), member=person.id, role=body.role,
         )  # fmt: skip
-        return member_view(person, body.role)
+        return member_view(person, body.role, pending=True)
 
     @router.patch("/{member_id}")
     async def change_role(
-        project_id: str, member_id: str, body: RoleIn, request: Request, user: CurrentUser
-    ) -> dict[str, Any]:
+        project_id: str, member_id: str, body: RoleIn, request: Request, user: CurrentUser,
+        response: Response,
+    ) -> dict[str, Any]:  # fmt: skip
         services = services_of(request)
         async with services.db.session() as session, session.begin():
             await require_project(session, user, project_id, "owner")
             member = await session.get(ProjectMember, (project_id, member_id))
             if member is None:
                 raise HTTPException(404, "no such member")
-            if body.role != "owner" and await owners_left(session, project_id, member_id) == 0:
-                raise HTTPException(409, "a project needs at least one owner")
-            member.role = body.role
-            if body.role != "owner":
-                await hand_on(session, project_id, member_id)
+            current = member.role
+            # An owner may become the owner of record (and pay): only by accepting (SEC-W1).
+            promote = body.role == "owner" and current != "owner"
+            if promote:
+                await offer(session, project_id, member_id, "owner", user.id)
+            else:
+                await set_role(session, member, body.role)
+        if promote:
+            await audit(
+                services.db, "member_invited", user_id=user.id, target=project_id,
+                ip=client_ip(request), member=member_id, role=body.role,
+            )  # fmt: skip
+            response.status_code = 202
+            return {"user_id": member_id, "role": current, "pending": body.role}
         if body.role == "viewer":  # viewers cannot run chats
             await stop_chats(services, member_id, project_id)
         await audit(
@@ -155,16 +185,19 @@ def members_router() -> APIRouter:
         async with services.db.session() as session, session.begin():
             await require_project(session, user, project_id, need)
             member = await session.get(ProjectMember, (project_id, member_id))
-            if member is None:
+            if member is not None:
+                if await owners_left(session, project_id, member_id) == 0:
+                    raise await no_owner_left(session, project_id)
+                await session.delete(member)
+                await hand_on(session, project_id, member_id)
+            invited = await withdraw(session, project_id, member_id)
+            if member is None and not invited:
                 raise HTTPException(404, "no such member")
-            if await owners_left(session, project_id, member_id) == 0:
-                raise HTTPException(409, "a project needs at least one owner")
-            await session.delete(member)
-            await hand_on(session, project_id, member_id)
-        await stop_chats(services, member_id, project_id)
+        if member is not None:
+            await stop_chats(services, member_id, project_id)
         await audit(
-            services.db, "member_removed", user_id=user.id, target=project_id,
-            ip=client_ip(request), member=member_id,
+            services.db, "member_removed" if member is not None else "invitation_withdrawn",
+            user_id=user.id, target=project_id, ip=client_ip(request), member=member_id,
         )  # fmt: skip
 
     return router
