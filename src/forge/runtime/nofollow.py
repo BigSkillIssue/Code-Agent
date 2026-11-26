@@ -17,6 +17,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+# Windows has neither flag (mypy checks this file for Windows too); POSIX code alone uses them
+NOFOLLOW: int = getattr(os, "O_NOFOLLOW", 0)
+DIRECTORY: int = getattr(os, "O_DIRECTORY", 0)
 POSIX = hasattr(os, "O_NOFOLLOW") and {
     os.open,
     os.mkdir,
@@ -115,7 +118,7 @@ def folder_below(base: Path, folder: Path, *, create: bool) -> Iterator[int | No
         _check_parts(base, parts, create)
         yield None
         return
-    fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY)
+    fd = os.open(base, os.O_RDONLY | DIRECTORY)
     try:
         for name in parts:
             child = _enter(fd, name, create)
@@ -128,7 +131,7 @@ def folder_below(base: Path, folder: Path, *, create: bool) -> Iterator[int | No
 
 def _enter(parent: int, name: str, create: bool) -> int:
     """Open the sub-folder `name` of `parent`; never through a link."""
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags = os.O_RDONLY | DIRECTORY | NOFOLLOW
     try:
         try:
             return os.open(name, flags, dir_fd=parent)
@@ -176,7 +179,7 @@ def _open(folder: int | None, path: Path, flags: int, mode: int = 0o666) -> int:
             raise LinkError(errno.ELOOP, f"{path} is a link")
         return os.open(path, flags | binary, mode)
     try:
-        return os.open(path.name, flags | os.O_NOFOLLOW | binary, mode, dir_fd=folder)
+        return os.open(path.name, flags | NOFOLLOW | binary, mode, dir_fd=folder)
     except OSError as exc:
         if exc.errno in LINK_ERRNOS:
             raise LinkError(exc.errno, f"{path} is a link") from exc
