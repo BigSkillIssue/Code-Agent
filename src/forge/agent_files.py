@@ -1,18 +1,22 @@
 """Custom agents from agent files: `.forge/agents/<name>.md` and `~/.forge/agents/<name>.md`.
 
 Front matter between `---` lines (`name`, `model`, `tools`, `description`), then the prompt.
-Project files win over user files with the same name.
+Project files win over user files with the same name. A project's files are its own text, so
+they count only after `forge trust` (SEC-K8), and never replace a built-in role.
 """
 
 import asyncio
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from forge.config import forge_home
+from forge.config import forge_home, is_trusted
 from forge.ctx import Ctx, CustomRole
 from forge.runtime.errors import ToolError
-from forge.tools import REGISTRY, TOOL_GROUPS
+from forge.tools import BUILTIN_ROLES, READ_ONLY_ROLES, REGISTRY, TOOL_GROUPS
+
+log = logging.getLogger(__name__)
 
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
 
@@ -36,17 +40,26 @@ class AgentDef:
     path: Path
 
 
+RESERVED_ROLES = BUILTIN_ROLES | READ_ONLY_ROLES  # a project's file cannot become one of them
+
+
 def agent_dirs(root: Path) -> list[Path]:
-    """User folder first, project folder last (so project files win on a name clash)."""
-    return [forge_home() / "agents", root / ".forge" / "agents"]
+    """User folder first, project folder last (so project files win on a name clash); the
+    project folder only for a trusted project."""
+    project = [root / ".forge" / "agents"] if is_trusted(root) else []
+    return [forge_home() / "agents", *project]
 
 
 def load_agents(root: Path) -> dict[str, AgentDef]:
-    """Every agent file of the user and the project, by name."""
+    """Every agent file of the user and (if trusted) the project, by name."""
     agents: dict[str, AgentDef] = {}
+    user = forge_home() / "agents"
     for folder in agent_dirs(root):
         for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
             agent = parse_agent_file(path)
+            if folder != user and agent.name in RESERVED_ROLES:
+                log.warning("%s: a project cannot replace the built-in %s role", path, agent.name)
+                continue
             agents[agent.name] = agent
     return agents
 

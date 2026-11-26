@@ -98,9 +98,11 @@ async def test_siblings_message_each_other_by_name(tmp_project: Path) -> None:
     sent = await run(api_ctx, "send_message", to="web", text="GET /orders returns {id, total}")
     assert sent.ok and f"delivered to {web.id}" in sent.text
     assert agents.take_messages(web.id) == [
-        f"[message from {api.id} (tester)]: GET /orders returns {{id, total}}"
+        f"[message from {api.id} (tester)]\n> GET /orders returns {{id, total}}"
     ]
     back = make_ctx(tmp_project, agent_id=web.id, role="explore")
     back.state = lead.state
     assert (await run(back, "send_message", to="main", text="the page is ready")).ok
-    assert agents.take_messages("main") == [f"[message from {web.id} (explore)]: the page is ready"]
+    assert agents.take_messages("main") == [
+        f"[message from {web.id} (explore)]\n> the page is ready"
+    ]

@@ -7,7 +7,7 @@ import pytest
 
 from forge.agent import run_agent
 from forge.agent_files import AgentFileError, load_agents, parse_agent_file
-from forge.config import ForgeConfig
+from forge.config import ForgeConfig, set_trusted
 from forge.providers.fake import FakeProvider, FakeToolCall, FakeTurn
 from forge.providers.registry import register_provider
 from support import make_ctx
@@ -17,10 +17,12 @@ FIXTURES = Path(__file__).parent / "fixtures" / "agents"
 
 @pytest.fixture
 def agent_dirs(tmp_project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Project agents in tmp_project/.forge/agents, user agents in $FORGE_HOME/agents."""
+    """Project agents in tmp_project/.forge/agents (a trusted project: SEC-K8), user agents in
+    $FORGE_HOME/agents."""
     shutil.copytree(FIXTURES / "project", tmp_project / ".forge" / "agents")
     shutil.copytree(FIXTURES / "user", tmp_path / "home" / "agents")
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "home"))
+    set_trusted(tmp_project)
     return tmp_project
 
 
@@ -83,6 +85,7 @@ async def test_custom_role_runs_with_its_own_model_and_tools(agent_dirs: Path) -
 
 async def test_bad_agent_file_is_reported_to_the_lead(tmp_project: Path) -> None:
     shutil.copytree(FIXTURES / "bad", tmp_project / ".forge" / "agents")
+    set_trusted(tmp_project)  # an untrusted project's agent files are not read at all
     spawn = FakeToolCall(
         name="spawn_agent", arguments={"role": "broken", "task": "x", "tools": ["files"]}
     )
