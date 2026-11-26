@@ -141,7 +141,6 @@ async def test_the_ui_agent_takes_interface_work_the_lead_did_not_give_it(
     assert ran2 == []  # the lead gave the page to the UI agent: no second pass
 
 
-
 async def test_the_user_keeps_only_undo(root: Path, home: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     worker, out = await started(root, options(fake_script={"turns": []}))

@@ -150,6 +150,8 @@ export interface ServerSettings {
   server_keys_for: "admins" | "granted" | "everyone";
   monthly_limit_usd: number;
   agent_production: boolean;
+  agent_publishing: boolean;
+  forge_account: string;
   apple_enabled: boolean;
   apple_allowed: "admins" | "granted" | "everyone";
   apple_minutes_per_month: number;
@@ -202,4 +204,7 @@ export const admin = {
   saveSettings: (changes: Partial<ServerSettings>) => api.patch<ServerSettings>("/api/admin/settings", changes),
   agents: () => api.get<AgentsView>("/api/admin/agents"),
   saveAgents: (agents: AgentsSettings) => api.put<AgentsView>("/api/admin/agents", agents),
+  storeGuidelines: () => api.get<Record<string, string>>("/api/admin/store-guidelines"),
+  saveStoreGuidelines: (texts: { apple: string; google_play: string }) =>
+    api.put<Record<string, string>>("/api/admin/store-guidelines", texts),
 };

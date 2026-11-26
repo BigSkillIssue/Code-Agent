@@ -45,6 +45,7 @@ from forge_web.quotas import enforce_disk
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
+from forge_web.stores.agent_store_api import store_routes
 from forge_web.stores.android import AndroidBuilds
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
@@ -146,6 +147,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     gateway.routers.append(apple_routes(gateway, apple, settings.apple, entitlements.of))
     later: dict[str, Services] = {}  # the agent's product routes need every service (W54)
     gateway.routers.append(agent_routes(gateway, lambda: later["services"]))
+    gateway.routers.append(store_routes(gateway, lambda: later["services"]))
     gateway_server = PrivateServer(gateway.app(), settings.data_dir / "run")
     await gateway_server.start()
     policy = EgressPolicy(settings.egress.allow, settings.egress.allow_private)

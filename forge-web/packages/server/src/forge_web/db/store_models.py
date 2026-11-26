@@ -165,3 +165,21 @@ class WindowsRelease(Base):
     withdrawn_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[float] = mapped_column(Float)
+
+
+class StoreReview(Base):
+    """A store review of a project's commit by Forge's store-review agent (W58): the verdict
+    against the store's guidelines the admin loaded, which an agent's publishing needs."""
+
+    __tablename__ = "store_reviews"
+    __table_args__ = (Index("store_reviews_by_project", "project_id", "store", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    chat_id: Mapped[str] = mapped_column(String(32))
+    store: Mapped[str] = mapped_column(String(16))  # apple, google_play
+    commit: Mapped[str] = mapped_column(String(64))
+    verdict: Mapped[str] = mapped_column(String(16))  # pass, concern, violation
+    summary: Mapped[str] = mapped_column(Text, default="")
+    findings: Mapped[str] = mapped_column(Text, default="[]")  # JSON
+    created_at: Mapped[float] = mapped_column(Float)

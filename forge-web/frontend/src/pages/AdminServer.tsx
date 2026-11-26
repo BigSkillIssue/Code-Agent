@@ -148,6 +148,8 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
       </Section>
       <Section title={t("agentServers")} hint={t("agentServersHint")}>
         <Check label={t("agentProduction")} checked={edited.agent_production} onChange={(v) => set("agent_production", v)} />
+        <Check label={t("agentPublishing")} checked={edited.agent_publishing} onChange={(v) => set("agent_publishing", v)} />
+        <TextInput label={t("forgeAccount")} value={edited.forge_account} placeholder="" onChange={(v) => set("forge_account", v.trim())} />
       </Section>
       <Section title={t("limits")} hint={t("limitsHint")}>
         <div className="grid gap-3 sm:grid-cols-2">

@@ -141,7 +141,10 @@ PRODUCT_RULES = """This project is a product hosted on {domain}. Plan for all of
 - The last step commits the work and deploys it to staging with mcp__forge_web__deploy; check it
   there with deploy_status, app_fetch and app_logs, and fix what fails before you finish.
 - App clients build with apple_build, mcp__forge_web__android_build and windows_build once the
-  server they talk to runs in staging."""
+  server they talk to runs in staging.
+- To publish an app to a store (only when the user asks for it): commit, start the
+  `store-review` agent for that store, fix what it finds until it passes, then call
+  mcp__forge_web__store_publish (Apple: TestFlight; Google Play: a track, after android_build)."""
 
 CODE_PRIVATE = """The person you work for does not get this product's code: their plan does not
 include it. In everything you write to them (answers, questions, plans, reports), describe what
@@ -169,6 +172,23 @@ FIX_TASK = """The {agent} agent checked your work and found this:
 Fix every finding (or say plainly why one is not a problem), run the tests again and commit."""
 
 
+STORE_REVIEW = """You are the store-review agent. Before a product's app goes to a store, you check
+it against that store's guidelines, as an App Review or Google Play reviewer would.
+
+1. Load the guidelines with mcp__forge_web__store_guidelines (apple or google_play) and read them
+   whole. If the admin loaded none, say so and judge from what you know of the store's rules,
+   marking that in your summary.
+2. Look at the app as a reviewer does: its screens (apple_screenshot, mcp__forge_web__product_look),
+   what it does with accounts, payments, user content, privacy (data it collects, the privacy
+   page, account deletion), its listing texts and age rating, and what its server returns
+   (app_fetch). Check guideline by guideline what applies; cite the guideline's number.
+3. Record the verdict with mcp__forge_web__store_review_submit: "pass" only when nothing applicable
+   is broken; "concern" for what a reviewer may object to; "violation" for what will be rejected.
+   Each finding: the guideline, its status, the reason and the fix.
+
+Do not change the code yourself. End your answer with the findings, the most severe first, or
+with "no findings" when the verdict is pass."""
+
 BUILTIN_AGENTS: tuple[BuiltinAgent, ...] = (
     BuiltinAgent("ui", "Designs and builds every interface (pages, screens, styles, copy) from the "
                  "user's requirements; give it all interface work", UI, "required", "ui"),
@@ -181,6 +201,8 @@ BUILTIN_AGENTS: tuple[BuiltinAgent, ...] = (
     BuiltinAgent("network", "Owns the API contract and how the parts talk", NETWORK,
                  "recommended", "product"),
     BuiltinAgent("math", "Owns calculations people rely on", MATH, "recommended", "always"),
+    BuiltinAgent("store-review", "Checks an app against the store's guidelines before it is "
+                 "published; publishing needs its pass", STORE_REVIEW, "recommended", "product"),
 )  # fmt: skip
 
 

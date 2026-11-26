@@ -56,7 +56,8 @@ MAX_LINE = 4 * 1024 * 1024
 
 USER_COMMANDS = ("/undo",)  # what the user may still type in Forge Web's product flow
 PRODUCT_TOOLS = ("product_create", "product_add", "product_look", "deploy", "deploy_status",
-                 "app_logs", "app_fetch", "app_sql", "android_build", "windows_build")  # fmt: skip
+                 "app_logs", "app_fetch", "app_sql", "android_build", "windows_build",
+                 "store_guidelines", "store_review_submit", "store_publish")  # fmt: skip
 
 
 def product_server(root: Path, options: ChatOptions) -> dict[str, Any]:

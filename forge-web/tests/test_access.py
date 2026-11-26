@@ -89,6 +89,7 @@ OWNER_READS = {
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
     "AgentsSettings": {"user_model_choice": False},
+    "GuidelinesIn": {"apple": "x"},
     "InviteIn": {"email": "new@example.com"},
     "ProjectIn": {"name": "Mine"},
     "ProjectPatch": {"name": "Taken over"},

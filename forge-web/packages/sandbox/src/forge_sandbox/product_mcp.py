@@ -165,6 +165,46 @@ def server(tools: Tools) -> MCPServer:
         return await tools.call("POST", "/product/sql", body)
 
     @mcp.tool()
+    async def store_guidelines(store: Literal["apple", "google_play"]) -> str:
+        """The store's review guidelines as the admin loaded them: read them all before a store
+        review."""
+        return await tools.call("GET", f"/product/store/guidelines/{store}")
+
+    @mcp.tool()
+    async def store_review_submit(
+        store: Literal["apple", "google_play"],
+        verdict: Literal["pass", "concern", "violation"],
+        summary: str,
+        findings: list[dict[str, str]] | None = None,
+    ) -> str:
+        """Record the store review of the committed HEAD (the store-review agent's job):
+        findings as {"guideline", "status", "reason", "fix"}. Publishing needs "pass"."""
+        try:
+            commit = tools.head()
+        except ProductError as err:
+            return f"error: {err}"
+        body = {"store": store, "commit": commit, "verdict": verdict, "summary": summary,
+                "findings": findings or []}  # fmt: skip
+        return await tools.call("POST", "/product/store/review", body)
+
+    @mcp.tool()
+    async def store_publish(
+        store: Literal["apple", "google_play"],
+        platforms: list[Literal["ios", "macos", "watchos"]] | None = None,
+        track: Literal["internal", "alpha", "beta", "production"] = "internal",
+        notes: str = "",
+    ) -> str:
+        """Publish the committed HEAD through the store's API once its store review passed:
+        Apple to TestFlight (platforms), Google Play to a track (its Android build first)."""
+        try:
+            commit = tools.head()
+        except ProductError as err:
+            return f"error: {err}"
+        body = {"store": store, "commit": commit, "platforms": platforms or ["ios"],
+                "track": track, "notes": notes}  # fmt: skip
+        return await tools.call("POST", "/product/store/publish", body)
+
+    @mcp.tool()
     async def android_build() -> str:
         """Build the Android app of the committed HEAD on Forge's servers."""
         return await build(tools, "android")

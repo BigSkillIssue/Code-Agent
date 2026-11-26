@@ -20,7 +20,40 @@ export function chainOf(text: string): string[] {
 export function AgentsTab() {
   const [view, reload] = useLoaded(useCallback(() => admin.agents(), []));
   if (!view) return null;
-  return <AgentsForm key={JSON.stringify(view)} view={view} onSaved={reload} />;
+  return (
+    <>
+      <AgentsForm key={JSON.stringify(view)} view={view} onSaved={reload} />
+      <GuidelinesForm />
+    </>
+  );
+}
+
+/** The stores' guidelines the store-review agent loads (W58). */
+function GuidelinesForm() {
+  const [saved, reload] = useLoaded(useCallback(() => admin.storeGuidelines(), []));
+  const [texts, setTexts] = useState<{ apple: string; google_play: string } | null>(null);
+  const act = useAction();
+  if (!saved) return null;
+  const shown = texts ?? { apple: saved.apple ?? "", google_play: saved.google_play ?? "" };
+  const area = (key: "apple" | "google_play", label: string) => (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium">{label}</span>
+      <textarea
+        className="h-40 w-full rounded-md border border-line bg-card px-2.5 py-2 font-mono text-xs focus:border-accent focus:outline-none"
+        value={shown[key]}
+        onChange={(e) => setTexts({ ...shown, [key]: e.target.value })}
+      />
+    </label>
+  );
+  return (
+    <Section title={t("storeGuidelines")} hint={t("storeGuidelinesHint")}>
+      {area("apple", t("guidelinesApple"))}
+      {area("google_play", t("guidelinesPlay"))}
+      <Button kind="primary" onClick={() => void act(() => admin.saveStoreGuidelines(shown)).then(reload)}>
+        {t("save")}
+      </Button>
+    </Section>
+  );
 }
 
 function AgentsForm({ view, onSaved }: { view: AgentsView; onSaved: () => Promise<void> }) {

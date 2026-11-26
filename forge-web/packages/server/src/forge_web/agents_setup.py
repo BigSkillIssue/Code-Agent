@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Request
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 
 from forge_sandbox.prompts import BUILTIN_AGENTS
@@ -24,6 +24,7 @@ from forge_web.db.engine import Database
 from forge_web.db.models import ServerSetting
 from forge_web.services import services_of
 from forge_web.settings import AgentsSettings, WebSettings
+from forge_web.stores.agent_store_api import GUIDELINES, MAX_GUIDELINES, guidelines_of
 
 log = logging.getLogger(__name__)
 SETTING = "agents"
@@ -35,6 +36,14 @@ ROLE_GROUPS: dict[str, tuple[str, ...]] = {
     "reviewer": ("reviewer", "release_reviewer", "apple_reviewer"),
     "compressor": ("compressor",),
 }
+
+
+class GuidelinesIn(BaseModel):
+    """The stores' guidelines as the admin keeps them (the store-review agent reads them)."""
+
+    model_config = ConfigDict(extra="forbid")
+    apple: str = Field(default="", max_length=MAX_GUIDELINES)
+    google_play: str = Field(default="", max_length=MAX_GUIDELINES)
 
 
 def effective_agents(agents: AgentsSettings) -> list[dict[str, Any]]:
@@ -133,6 +142,25 @@ def agents_router() -> APIRouter:
                          "policy": a.policy, "applies_to": a.applies_to}
                         for a in builtin.values()],
         }  # fmt: skip
+
+    @router.get("/store-guidelines")
+    async def get_guidelines(request: Request, admin: AdminUser) -> dict[str, str]:
+        return await guidelines_of(services_of(request))
+
+    @router.put("/store-guidelines")
+    async def put_guidelines(
+        body: GuidelinesIn, request: Request, admin: AdminUser
+    ) -> dict[str, str]:
+        services = services_of(request)
+        texts = {k: v for k, v in body.model_dump().items() if v}
+        async with services.db.session() as session, session.begin():
+            row = ServerSetting(key=GUIDELINES, value=json.dumps(texts), updated_at=time.time(),
+                                updated_by=admin.id)  # fmt: skip
+            await session.merge(row)
+        await audit(
+            services.db, "store_guidelines_changed", user_id=admin.id, ip=client_ip(request)
+        )
+        return texts
 
     @router.get("/agents")
     async def get_agents(request: Request, admin: AdminUser) -> dict[str, Any]:

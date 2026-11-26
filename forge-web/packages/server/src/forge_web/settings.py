@@ -351,6 +351,13 @@ class StoreSettings(_Strict):
     windows_timeout_s: float = Field(default=3_600, gt=0)  # one build or pack job
     windows_grace_s: float = Field(default=600, gt=0)  # a worker's report may take this longer
     max_package_mb: int = Field(default=1_000, ge=1)  # what a job may send
+    # Forge's agent publishing to the stores (W58): after its store review passed, it uploads
+    # to TestFlight and to Google Play's tracks. Off: people start releases on their pages.
+    agent_publishing: bool = False
+    # The account that publishes for people without their own App Store Connect key or Play
+    # service account: an admin's user id, whose keys are used ("" = none; Apple guideline
+    # 4.2.6 and Google's policies on publishing others' apps are the admin's to weigh).
+    forge_account: str = Field(default="", max_length=32)
 
 
 class WebSettings(_Strict):
