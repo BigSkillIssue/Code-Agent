@@ -37,6 +37,7 @@ class Entitlements:
     ai_product_usd: float | None = None  # the same, for each product (project) on its own
     server_keys: bool = True  # may use the server's AI keys at all
     mac_minutes: float | None = None  # a month
+    device_minutes: float | None = None  # a month (W60)
     hosted_apps: int | None = None
     storage_mb: int | None = None  # per project
     custom_domains: int | None = None
@@ -84,6 +85,7 @@ class EntitlementEngine:
             projects=settings.quotas.projects_per_user or None,
             ai_month_usd=limit, server_keys=limit is not None,
             mac_minutes=settings.apple.minutes_per_month or None,
+            device_minutes=settings.devices.minutes_per_month or None,
             storage_mb=settings.quotas.project_disk_mb or None,
             code_access=settings.agents.code_access_without_plan,
         )  # fmt: skip
@@ -128,7 +130,8 @@ class EntitlementEngine:
             else limits.ai_budget_month_eur * rate,
             ai_product_usd=None if limits.ai_budget_per_product_eur is None
             else limits.ai_budget_per_product_eur * rate,
-            mac_minutes=limits.mac_minutes, hosted_apps=limits.hosted_apps,
+            mac_minutes=limits.mac_minutes, device_minutes=limits.device_minutes,
+            hosted_apps=limits.hosted_apps,
             storage_mb=None if limits.storage_gb is None else int(limits.storage_gb * 1000),
             custom_domains=limits.custom_domains, store_publishing=limits.store_publishing,
             code_access=limits.code_access,
@@ -142,6 +145,7 @@ def added(base: Entitlements, item: CatalogItem, quantity: int) -> Entitlements:
     else:
         extra = Limits.model_validate(json.loads(item.limits))
         more = {"projects": extra.projects or 0, "mac_minutes": extra.mac_minutes or 0,
+                "device_minutes": extra.device_minutes or 0,
                 "hosted_apps": extra.hosted_apps or 0, "custom_domains": extra.custom_domains or 0,
                 "storage_mb": int((extra.storage_gb or 0) * 1000)}  # fmt: skip
         more = {name: value * quantity for name, value in more.items()}

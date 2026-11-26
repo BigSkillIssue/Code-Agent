@@ -8,12 +8,17 @@ sandbox (`python -m forge_sandbox.product_mcp`). In Forge they are `mcp__forge_w
 - deploy, deploy_status, app_logs, app_fetch, app_sql, android_build, windows_build: the product
   on Forge's servers, through the gateway with the chat's run token; the server limits every call
   to this project's own app.
+- device_start, device_tap, device_type, device_swipe, device_key, device_screenshot,
+  device_read, device_stop (W60): the product's Android app on an emulator, or its Windows app in
+  a Windows Sandbox, used as a person would, with a screenshot after each action.
 """
 
 import argparse
 import asyncio
+import base64
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +33,8 @@ from forge_sandbox.products.place import Placed, add, create
 from forge_sandbox.products.render import ProductError
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+POINT = re.compile(r"^\s*(\d{1,5})\s*,\s*(\d{1,5})\s*$")
+Key = Literal["back", "home", "enter", "tab", "escape", "menu", "delete"]
 Environment = Literal["staging", "production"]
 
 
@@ -71,6 +78,15 @@ class Tools:
 
     async def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> str:
         """A gateway call; its answer as indented JSON (errors too, for the agent to read)."""
+        data = await self.call_json(method, path, body)
+        if isinstance(data, str):
+            return data
+        return json.dumps(data, indent=2, ensure_ascii=False)[:120_000]
+
+    async def call_json(
+        self, method: str, path: str, body: dict[str, Any] | None = None
+    ) -> dict[str, Any] | str:
+        """A gateway call's answer (an error as {"error": ...}), or why it could not be made."""
         if not self.gateway:
             return "this sandbox has no connection to Forge Web's servers"
         headers = {"Authorization": f"Bearer {os.environ.get(self.token_env, '')}"}
@@ -82,7 +98,7 @@ class Tools:
             return f"Forge Web could not be reached: {err}"
         if isinstance(data, dict) and "detail" in data:
             data = {"error": data["detail"]}
-        return json.dumps(data, indent=2, ensure_ascii=False)[:120_000]
+        return data if isinstance(data, dict) else {"answer": data}
 
 
 def server(tools: Tools) -> MCPServer:
@@ -214,7 +230,83 @@ def server(tools: Tools) -> MCPServer:
         """Build and pack the Windows app of the committed HEAD on Forge's Windows machines."""
         return await build(tools, "windows")
 
+    device_tools(mcp, tools)
     return mcp
+
+
+def device_tools(mcp: MCPServer, tools: Tools) -> None:
+    """The device tools (W60): the product's apps used as a person would."""
+
+    @mcp.tool()
+    async def device_start(platform: Literal["android", "windows"]) -> str:
+        """Run the committed HEAD's app to use it as a person would: Android on an emulator
+        (deploy the product to staging first: the app talks to it there), Windows in a fresh
+        Windows Sandbox. Building and starting take minutes; device_screenshot waits for it.
+        Stop it with device_stop when you are done, and before you deploy again."""
+        try:
+            commit = tools.head()
+        except ProductError as err:
+            return f"error: {err}"
+        return await tools.call("POST", "/product/device/start",
+                                {"platform": platform, "commit": commit})  # fmt: skip
+
+    @mcp.tool(structured_output=False)
+    async def device_tap(target: str) -> list[Any]:
+        """Tap (on Windows: click) an element by its visible text or accessibility name, or a
+        point `x,y` in pixels of the latest screenshot. Shows the screen afterwards."""
+        point = POINT.match(target)
+        where = {"x": int(point[1]), "y": int(point[2])} if point else {"target": target}
+        return await act(tools, {"kind": "tap", **where})
+
+    @mcp.tool(structured_output=False)
+    async def device_type(text: str, submit: bool = False) -> list[Any]:
+        """Type text into the focused field (tap the field first); submit presses Enter."""
+        return await act(tools, {"kind": "type", "text": text, "submit": submit})
+
+    @mcp.tool(structured_output=False)
+    async def device_swipe(direction: Literal["up", "down", "left", "right"]) -> list[Any]:
+        """Swipe across the screen (up scrolls the content down); on Windows the mouse wheel."""
+        return await act(tools, {"kind": "swipe", "direction": direction})
+
+    @mcp.tool(structured_output=False)
+    async def device_key(key: Key) -> list[Any]:
+        """Press a key: back, home, enter, tab, escape, menu or delete."""
+        return await act(tools, {"kind": "key", "key": key})
+
+    @mcp.tool(structured_output=False)
+    async def device_screenshot() -> list[Any]:
+        """The screen now (also waits for a device that is still starting)."""
+        return await act(tools, {"kind": "screenshot"})
+
+    @mcp.tool(structured_output=False)
+    async def device_read() -> list[Any]:
+        """The elements on the screen as text: kind, text or name, and where (x,y,width,height):
+        cheaper than a screenshot, and the names device_tap can use."""
+        return await act(tools, {"kind": "read"})
+
+    @mcp.tool()
+    async def device_stop() -> str:
+        """Stop the device; its minutes stop counting."""
+        return await tools.call("POST", "/product/device/stop")
+
+
+async def act(tools: Tools, body: dict[str, Any]) -> list[Any]:
+    """One device action: a line of text and, when there is one, the screen afterwards."""
+    data = await tools.call_json("POST", "/product/device/act", body)
+    if isinstance(data, str):
+        return [data]
+    lines = [f"status: {data.get('status', '?')}"]
+    if data.get("error"):
+        lines.append(f"error: {data['error']}" + (f" ({data['hint']})" if data.get("hint") else ""))
+    if data.get("text"):
+        lines.append(str(data["text"]))
+    found: list[Any] = []
+    if data.get("image_b64"):
+        lines.append(f"screenshot {data.get('width', 0)}x{data.get('height', 0)} px; "
+                     "tap points use these pixels")  # fmt: skip
+        kind = "jpeg" if data.get("media_type") == "image/jpeg" else "png"
+        found.append(Image(data=base64.b64decode(data["image_b64"]), format=kind))
+    return ["\n".join(lines), *found]
 
 
 async def build(tools: Tools, platform: str) -> str:

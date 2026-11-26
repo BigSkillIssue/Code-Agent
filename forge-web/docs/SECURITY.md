@@ -169,6 +169,20 @@ proxy that only allows the calls in `containers/docker.py` lowers the damage of 
   host name only (the path cannot change the host). Production data reaches the model provider when
   the agent reads it: that is the reason for the admin's switch.
 
+### The agent on devices (W60–W62)
+
+- A device session runs the project's own committed app (packed by its sandbox, like a build) on a
+  worker: Android on the app's own host, Windows on a Windows build machine (never a signing
+  machine). The gateway's `/product/device/*` routes act on the token's project only; a worker
+  reaches only the sessions it took (others get 409) and fetches the commit only while it starts.
+- One session per project; it ends when the agent stops it, after `devices.idle_minutes` without an
+  action, after `devices.session_minutes`, or when its worker gives up; a server restart ends all.
+  Its minutes count against `devices.minutes_per_month` or the plan's `device_minutes`.
+- Screenshots and the screen's elements reach the model provider, as the browser's do. What the app
+  shows comes from staging (its own data), never production.
+- The device offer carries only checked names (the app's slug, a Java package name) to the worker,
+  which passes them to `adb` and PowerShell as arguments, never through a shell.
+
 ### Code access by plan (W57)
 
 - A plan may leave out the code (`Limits.code_access`; people without a plan follow

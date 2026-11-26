@@ -29,6 +29,7 @@ const LIMITS: [keyof Omit<Limits, "store_publishing" | "code_access">, TextKey][
   ["ai_budget_month_eur", "limitAiMonth"],
   ["ai_budget_per_product_eur", "limitAiProduct"],
   ["mac_minutes", "limitMacMinutes"],
+  ["device_minutes", "limitDeviceMinutes"],
   ["hosted_apps", "limitHostedApps"],
   ["storage_gb", "limitStorage"],
   ["custom_domains", "limitDomains"],

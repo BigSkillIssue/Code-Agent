@@ -151,6 +151,14 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
         <Check label={t("agentPublishing")} checked={edited.agent_publishing} onChange={(v) => set("agent_publishing", v)} />
         <TextInput label={t("forgeAccount")} value={edited.forge_account} placeholder="" onChange={(v) => set("forge_account", v.trim())} />
       </Section>
+      <Section title={t("agentDevices")} hint={t("agentDevicesHint")}>
+        <Check label={t("devicesAndroid")} checked={edited.devices_android} onChange={(v) => set("devices_android", v)} />
+        <TextInput label={t("deviceAndroidImage")} value={edited.device_android_image} placeholder="registry.example/forge-android-emulator:34" onChange={(v) => set("device_android_image", v.trim())} />
+        <Check label={t("devicesWindows")} checked={edited.devices_windows} onChange={(v) => set("devices_windows", v)} />
+        <div className="max-w-xs">
+          <TextInput label={t("deviceMinutes")} value={String(edited.device_minutes_per_month)} onChange={(v) => set("device_minutes_per_month", Number(v))} />
+        </div>
+      </Section>
       <Section title={t("limits")} hint={t("limitsHint")}>
         <div className="grid gap-3 sm:grid-cols-2">
           {number("projects_per_user", t("projectsPerUser"))}

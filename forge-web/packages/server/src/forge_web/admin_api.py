@@ -21,7 +21,7 @@ from forge_web.db.engine import Database
 from forge_web.db.models import KeyGrant, ServerSetting, UsageRecord, User
 from forge_web.gateway.meter import month_start
 from forge_web.services import services_of
-from forge_web.settings import WebSettings
+from forge_web.settings import IMAGE, WebSettings
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ FIELDS: dict[str, tuple[str, str]] = {
     "agent_production": ("hosting", "agent_production"),
     "agent_publishing": ("stores", "agent_publishing"),
     "forge_account": ("stores", "forge_account"),
+    "devices_android": ("devices", "android"), "devices_windows": ("devices", "windows"),
+    "device_android_image": ("devices", "android_image"),
+    "device_minutes_per_month": ("devices", "minutes_per_month"),
     "apple_enabled": ("apple", "enabled"), "apple_allowed": ("apple", "allowed"),
     "apple_minutes_per_month": ("apple", "minutes_per_month"),
     "apple_reviewer_model": ("apple", "reviewer_model"),
@@ -69,6 +72,10 @@ class AdminSettings(BaseModel):
     agent_production: bool | None = None
     agent_publishing: bool | None = None
     forge_account: str | None = Field(default=None, pattern=r"^$|^[0-9a-f]{16,32}$")
+    devices_android: bool | None = None
+    devices_windows: bool | None = None
+    device_android_image: str | None = Field(default=None, pattern=IMAGE)
+    device_minutes_per_month: float | None = Field(default=None, ge=0, le=1_000_000)
     apple_enabled: bool | None = None
     apple_allowed: Literal["admins", "granted", "everyone"] | None = None
     apple_minutes_per_month: float | None = Field(default=None, ge=0, le=1_000_000)

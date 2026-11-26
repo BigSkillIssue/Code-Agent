@@ -41,6 +41,7 @@ class Limits(BaseModel):
     ai_budget_month_eur: float | None = Field(default=None, ge=0)
     ai_budget_per_product_eur: float | None = Field(default=None, ge=0)
     mac_minutes: int | None = Field(default=None, ge=0)
+    device_minutes: int | None = Field(default=None, ge=0)  # W60: the agent on a device
     hosted_apps: int | None = Field(default=None, ge=0)
     storage_gb: float | None = Field(default=None, ge=0)
     custom_domains: int | None = Field(default=None, ge=0)

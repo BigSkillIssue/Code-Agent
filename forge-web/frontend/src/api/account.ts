@@ -152,6 +152,10 @@ export interface ServerSettings {
   agent_production: boolean;
   agent_publishing: boolean;
   forge_account: string;
+  devices_android: boolean;
+  devices_windows: boolean;
+  device_android_image: string;
+  device_minutes_per_month: number;
   apple_enabled: boolean;
   apple_allowed: "admins" | "granted" | "everyone";
   apple_minutes_per_month: number;

@@ -28,6 +28,8 @@ from forge_web.containers.local import LocalDriver
 from forge_web.db.engine import Database
 from forge_web.db.models import Chat, Project, User
 from forge_web.db.writer import EventWriter
+from forge_web.devices.agent_api import device_routes
+from forge_web.devices.sessions import DeviceSessions
 from forge_web.egress import Egress, EgressPolicy
 from forge_web.fake import fake_script
 from forge_web.gateway.proxy import Gateway, PrivateServer
@@ -148,6 +150,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     later: dict[str, Services] = {}  # the agent's product routes need every service (W54)
     gateway.routers.append(agent_routes(gateway, lambda: later["services"]))
     gateway.routers.append(store_routes(gateway, lambda: later["services"]))
+    gateway.routers.append(device_routes(gateway, lambda: later["services"]))
     gateway_server = PrivateServer(gateway.app(), settings.data_dir / "run")
     await gateway_server.start()
     policy = EgressPolicy(settings.egress.allow, settings.egress.allow_private)
@@ -174,6 +177,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     android = AndroidBuilds(db, settings, hosts, runs.call, deploys.packing)
     play = PlayReleases(db, vault, settings, android)
     windows = WindowsBuilds(db, settings, runs.call, deploys.packing)
+    devices = DeviceSessions(db, settings, runs.call)
     backups = Backups(db, vault, settings, hosts)
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
@@ -188,7 +192,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
-        android=android, play=play, windows=windows,
+        android=android, play=play, windows=windows, devices=devices,
     )  # fmt: skip
     later["services"] = services
     await after_start(services, docker)
@@ -198,6 +202,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     await android.start()  # and Android builds and Play releases
     await play.start()
     await windows.start()
+    devices.start_expiry()
     await removals.start()  # and so do deletions of apps
     if settings.billing.enabled:
         billing.events.start()  # Stripe's events that wait
@@ -298,6 +303,7 @@ async def stop_services(services: Services) -> None:
     await services.alerts.close()
     await services.backups.close()
     await services.windows.close()
+    await services.devices.close()
     await services.play.close()
     await services.android.close()
     await services.deploys.close()

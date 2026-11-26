@@ -79,6 +79,7 @@ async def test_without_a_plan_the_servers_own_limits_apply(server: LiveServer) -
         source="server", projects=settings.quotas.projects_per_user, ai_month_usd=None,
         server_keys=False,  # no grant for the server's keys
         mac_minutes=settings.apple.minutes_per_month, storage_mb=settings.quotas.project_disk_mb,
+        device_minutes=settings.devices.minutes_per_month,  # the agent on devices (W60)
         hosted_apps=0, custom_domains=0, store_publishing=False,  # those are paid for
     )  # fmt: skip
     admin = await account(server, server.services.dev_user_id)

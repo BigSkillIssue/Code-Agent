@@ -22,6 +22,7 @@ export interface Limits {
   ai_budget_month_eur: number | null;
   ai_budget_per_product_eur: number | null;
   mac_minutes: number | null;
+  device_minutes?: number | null; // the agent on Android and Windows devices (W60)
   hosted_apps: number | null;
   storage_gb: number | null;
   custom_domains: number | null;
@@ -106,6 +107,7 @@ export interface Entitlements {
   ai_product_usd: number | null;
   server_keys: boolean;
   mac_minutes: number | null;
+  device_minutes?: number | null;
   hosted_apps: number | null;
   storage_mb: number | null;
   custom_domains: number | null;

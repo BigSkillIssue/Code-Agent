@@ -1095,6 +1095,19 @@ Unter **Verwaltung → Agenten** legst du fest:
   mit deinen Änderungen, ausgeschaltete, und eigene (z. B. „seo“) mit Anweisungen, jeweils als
   **Pflicht** oder **Empfohlen** und für welche Aufgaben sie gelten.
 
+**Geräte des Agenten.** Der Agent kann die Android- und Windows-Apps seines Produkts bedienen wie
+ein Mensch – tippen, schreiben, wischen, Tasten, Screenshots, die Elemente des Bildschirms lesen –,
+während er sie baut. Du schaltest das unter *Verwaltung → Einstellungen → Geräte des Agenten* ein:
+
+- **Android:** ein Emulator auf dem App-Server, der die App schon in Staging betreibt. Der Server
+  braucht dafür KVM (`/dev/kvm`, auf einer VM verschachtelte Virtualisierung) und ein
+  Emulator-Image (Abschnitt 11, `forge-android-emulator`); das Build-Image für Android muss auch
+  gesetzt sein.
+- **Windows:** eine frische Windows Sandbox auf einer Windows-Build-Maschine (Abschnitt 13); solange
+  sie läuft, wartet dort jeder Build.
+- **Minuten:** pro Person und Monat (Standard 300) oder pro Tarif (`device_minutes`). Eine Sitzung
+  dauert höchstens 30 Minuten und endet nach 5 Minuten ohne Aktion.
+
 Wer lieber selbst steuert, schaltet den Ablauf in `forge-web.toml` ab:
 
 ```toml

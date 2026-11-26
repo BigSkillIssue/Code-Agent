@@ -360,6 +360,24 @@ class StoreSettings(_Strict):
     forge_account: str = Field(default="", max_length=32)
 
 
+IMAGE = r"^$|^[a-z0-9][a-z0-9._/-]{0,199}(:[A-Za-z0-9._-]{1,128})?(@sha256:[0-9a-f]{64})?$"
+
+
+class DeviceSettings(_Strict):
+    """Forge's agent using the product's apps as a person would (W60): an Android emulator on the
+    app's host (it needs /dev/kvm there), a Windows Sandbox on a Windows build machine."""
+
+    android: bool = False
+    windows: bool = False
+    # The emulator's image (W61: Android SDK emulator and one x86_64 system image); "": none.
+    android_image: str = Field(default="", pattern=IMAGE)
+    minutes_per_month: float = Field(default=300, ge=0)  # device time per user; 0 = no limit
+    session_minutes: float = Field(default=30, gt=0, le=240)  # one session at most
+    idle_minutes: float = Field(default=5, gt=0, le=120)  # without an action, it ends
+    start_timeout_s: float = Field(default=900, gt=0, le=7200)  # build, boot and launch
+    action_timeout_s: float = Field(default=90, gt=0, le=600)
+
+
 class WebSettings(_Strict):
     """Every setting of one Forge Web server."""
 
@@ -379,6 +397,7 @@ class WebSettings(_Strict):
     hosting: HostingSettings = HostingSettings()
     billing: BillingSettings = BillingSettings()
     stores: StoreSettings = StoreSettings()
+    devices: DeviceSettings = DeviceSettings()
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

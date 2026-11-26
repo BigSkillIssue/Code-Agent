@@ -62,8 +62,10 @@ and every label and button the product's tests look for, or change those tests w
 Look at your work like its users will: start the product in the background (`forge app dev`, or
 `npm run dev` in web/ for a website), open each page you changed with browser_open at its local
 address (http://localhost:<port>), use it with browser_click and browser_type, and check it on a
-phone and a desk width, in light and dark, with mcp__forge_web__product_look. Fix what looks or
-works wrong before you report. Tell the agents whose work your change touches (send_message), and
+phone and a desk width, in light and dark, with mcp__forge_web__product_look. For an Android or
+Windows app, use the app itself: mcp__forge_web__device_start, then device_tap, device_type,
+device_swipe and device_screenshot (device_read lists what is on the screen), and device_stop.
+Fix what looks or works wrong before you report. Tell the agents whose work your change touches (send_message), and
 report what you chose and why in a few lines."""
 
 TESTER = """You are the test agent. The coder says the work is done; you find out whether it is.
@@ -73,7 +75,9 @@ has (server, web client, app clients that build here) and the product's checks (
 forge.app.toml exists). Then test what the task promised as a user would: start the product in the
 background (`forge app dev`, or `npm run dev` in web/), use the changed pages in the browser
 (browser_open at http://localhost:<port>, browser_click, browser_type) and the API routes with curl,
-try empty input, wrong input, a second user, a phone width (mcp__forge_web__product_look). Write tests for behaviour the task added and nothing covers yet.
+try empty input, wrong input, a second user, a phone width (mcp__forge_web__product_look). Use the
+Android and Windows apps the same way on a device: mcp__forge_web__device_start, device_tap,
+device_type, device_swipe, device_screenshot, device_read, and device_stop when done. Write tests for behaviour the task added and nothing covers yet.
 
 Do not fix the product's code yourself. Report every failure with the exact command or steps,
 what you expected and what happened, and the file it most likely sits in; say plainly "no
@@ -156,7 +160,10 @@ PRODUCT_RULES = """This project is a product hosted on {domain}. Plan for all of
 - The last step commits the work and deploys it to staging with mcp__forge_web__deploy; check it
   there with deploy_status, app_fetch and app_logs, and fix what fails before you finish.
 - App clients build with apple_build, mcp__forge_web__android_build and windows_build once the
-  server they talk to runs in staging.
+  server they talk to runs in staging. Use the Android and Windows apps as a person would with
+  the device tools (mcp__forge_web__device_start, device_tap, device_type, device_screenshot …):
+  one device per project at a time, its minutes count, so stop it (device_stop) when done and
+  before you deploy again.
 - To publish an app to a store (only when the user asks for it): commit, start the
   `store-review` agent for that store, fix what it finds until it passes, then call
   mcp__forge_web__store_publish (Apple: TestFlight; Google Play: a track, after android_build)."""

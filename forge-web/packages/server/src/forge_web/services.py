@@ -20,6 +20,7 @@ from forge_web.chats.runs import RunManager
 from forge_web.containers.driver import ContainerDriver
 from forge_web.db.engine import Database
 from forge_web.db.writer import EventWriter
+from forge_web.devices.sessions import DeviceSessions
 from forge_web.egress import Egress
 from forge_web.gateway.proxy import Gateway, PrivateServer
 from forge_web.hosting.alerts import Alerts
@@ -68,6 +69,7 @@ class Services:
     android: AndroidBuilds
     play: PlayReleases
     windows: WindowsBuilds
+    devices: DeviceSessions  # the agent on Android and Windows devices (W60)
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

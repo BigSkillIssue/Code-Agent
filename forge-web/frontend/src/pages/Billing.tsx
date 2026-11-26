@@ -24,13 +24,14 @@ const LIMIT_ROWS: [keyof Entitlements, TextKey][] = [
   ["hosted_apps", "limitHostedApps"],
   ["custom_domains", "limitDomains"],
   ["mac_minutes", "limitMacMinutes"],
+  ["device_minutes", "limitDeviceMinutes"],
   ["storage_mb", "limitStorage"],
 ];
 
 /** One limit for people: "no limit", or the number (storage in GB). */
 function shown(limits: Entitlements, key: keyof Entitlements): string {
   const value = limits[key];
-  if (value === null) return t("limitNone");
+  if (value === null || value === undefined) return t("limitNone");
   return key === "storage_mb" ? String(Number(value) / 1000) : String(value);
 }
 
