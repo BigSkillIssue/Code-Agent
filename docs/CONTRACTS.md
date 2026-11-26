@@ -281,6 +281,8 @@ class BrowserFactory(Protocol):        # a fresh context (no profile, no downloa
 
 `SessionState.preview_browsers` (S67b) is a second factory that may open local addresses: Forge uses it itself to photograph a product it runs on localhost (desktop and phone sizes) for the release review. It is never given to an agent.
 
+`SessionState.test_browsers` (S78) is the factory of agents that test the product (every agent except the `browser` role): `PlaywrightBrowsers(cfg, loopback=True)` lets through hosts written as this machine (`localhost`, `*.localhost`, loopback addresses) and checks every other request like `browser_factory`. Without it `browser_factory` is used.
+
 **Apple builds (added in S58a).** Apple projects (Swift, SwiftUI) are built, tested and shown on simulated devices through this port. `local/xcode_builder.py` implements it on a Mac with Xcode (running XcodeGen first when the project has a `project.yml`); a server may implement it with a remote Mac. `SessionState.apple` holds it; without one the `apple` tools are not offered. Expected failures (no Xcode, no such scheme or device, a timeout) raise `AppleBuildError`; a build that fails is a result with `ok=False` and the compiler's messages. Settings live in `[apple]` (`timeout_s`, `max_screenshots`, `devices`: the preferred simulator per platform).
 
 ```python

@@ -134,9 +134,11 @@ class WebConfig(_Strict):
 
 
 class BrowserConfig(_Strict):
-    """The browser the browser agent drives (Playwright)."""
+    """The browser the browser agent drives (Playwright), and the agents testing the product."""
 
     headless: bool = True
+    agents: bool = True  # S78: the lead, and agents it gives `browser`, test what they build
+    loopback: bool = True  # S78: those agents may open this machine's own servers (localhost)
     channel: str | None = None  # "chrome" or "msedge": an installed browser instead of Chromium
     executable: str | None = None
     viewport_width: int = 1280

@@ -6,6 +6,7 @@ here are what keeps a model from reaching localhost or cloud metadata services.
 
 import contextlib
 import hashlib
+import ipaddress
 import json
 import re
 import time
@@ -56,6 +57,23 @@ class Page:
     content: str
     redirect: str = ""  # set when the server redirected to another host
     cached: bool = False
+
+
+def is_loopback_host(host: str) -> bool:
+    """True for this machine's own names and addresses (localhost, 127.x, ::1), written as such;
+    a public name that happens to resolve there does not count."""
+    host = host.strip("[]").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    return is_ip(host) and ipaddress.ip_address(host).is_loopback
+
+
+def loopback_url(url: str) -> str | None:
+    """The URL when it is http(s) to this machine's own servers, else None."""
+    parts = urlsplit(url.strip())
+    if parts.scheme in ("http", "https") and is_loopback_host(parts.hostname or ""):
+        return url.strip()
+    return None
 
 
 async def checked_url(url: str, resolve: Resolver | None = None) -> str:

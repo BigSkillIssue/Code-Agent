@@ -110,6 +110,9 @@ class SessionState:
     # Forge's own screenshots of a product it runs locally (S67b): may open local addresses,
     # so it is never handed to an agent. Set by wiring; None: products are reviewed unseen.
     preview_browsers: BrowserFactory | None = None
+    # S78: agents testing the product: public pages and this machine's own servers (localhost),
+    # never other local or private addresses. Set by wiring; None: browser_factory is used.
+    test_browsers: BrowserFactory | None = None
     browsers: dict[str, Browser] = field(default_factory=dict)  # agent id -> its open browser
     screenshots: dict[str, int] = field(default_factory=dict)  # agent id -> screenshots taken
     monitors: Monitors = field(default_factory=Monitors)  # background commands being watched

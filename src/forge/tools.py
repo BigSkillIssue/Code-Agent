@@ -96,6 +96,7 @@ from forge.runtime.web import (
     checked_url,
     fetch_page,
     filter_results,
+    loopback_url,
     search_http,
     size_text,
 )
@@ -276,7 +277,7 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     if custom is not None and custom.tools is not None:
         tools = [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
     else:
-        tools = for_role(role, ctx.cfg)
+        tools = for_role(role, ctx.cfg) + testing_browser(ctx, role)
     if ctx.agent_id != "main":
         tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
     if not ctx.state.team_mode:
@@ -288,6 +289,16 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     if not (ctx.root / MANIFEST).is_file():  # not a full-stack product (S65)
         tools = [t for t in tools if t.group != "app"]
     return [*tools, *mcp_tools(ctx, role)] if ctx.state.mcp else drop_mcp(tools)
+
+
+def testing_browser(ctx: Ctx, role: str) -> list[ToolDef]:
+    """S78: the lead drives a browser to test what it builds (the browser group)."""
+    has_browser = ctx.state.test_browsers is not None or ctx.state.browser_factory is not None
+    if not (ctx.cfg.browser.agents and has_browser and ctx.agent_id == "main"):
+        return []
+    if role == "browser" or role in READ_ONLY_ROLES:
+        return []
+    return [t for t in REGISTRY.values() if t.group == "browser"]
 
 
 def drop_mcp(tools: list[ToolDef]) -> list[ToolDef]:
@@ -1367,6 +1378,8 @@ async def browser_of(ctx: Ctx) -> Browser:
     if browser is not None:
         return browser
     factory = ctx.state.browser_factory
+    if ctx.role != "browser" and ctx.state.test_browsers is not None:
+        factory = ctx.state.test_browsers  # S78: may also open this machine's own servers
     if factory is None:
         raise ToolError("unsupported", "no browser is available in this session")
     try:
@@ -1407,8 +1420,18 @@ async def browse(ctx: Ctx, action: Callable[[Browser], Awaitable[PageView]]) -> 
 @tool(group="browser", permission="ask", read_only=True, specifier_arg="url")
 async def browser_open(ctx: Ctx, url: Annotated[str, "Full http(s) URL."]) -> ToolResult:
     """Open a page in the browser and show it."""
-    target = await checked_url(url)
+    target = await browser_target(ctx, url)
     return await browse(ctx, lambda b: b.open(target))
+
+
+async def browser_target(ctx: Ctx, url: str) -> str:
+    """S78: an agent testing the product may open its servers on this machine; the browser
+    agent researching the web, and every agent for other local addresses, may not."""
+    if ctx.role != "browser" and ctx.cfg.browser.loopback:
+        local = loopback_url(url)
+        if local is not None:
+            return local
+    return await checked_url(url)
 
 
 @tool(group="browser", permission="auto", read_only=True)
