@@ -54,7 +54,12 @@ def test_missing_front_matter(tmp_path: Path) -> None:
 
 async def test_custom_role_runs_with_its_own_model_and_tools(agent_dirs: Path) -> None:
     spawn = FakeToolCall(
-        name="spawn_agent", arguments={"role": "api-tester", "task": "test /login"}
+        name="spawn_agent",
+        arguments={
+            "role": "api-tester",
+            "task": "test /login",
+            "tools": ["files", "search", "shell"],
+        },
     )
     fake = FakeProvider(
         roles={
@@ -70,14 +75,17 @@ async def test_custom_role_runs_with_its_own_model_and_tools(agent_dirs: Path) -
     assert report is not None and "agent a1 (api-tester) finished" in report.text
     assert "3 tests pass" in report.text
     request = next(r for r in fake.requests if r.model == "api-model")
-    assert {t.name for t in request.tools} == {"read_file", "grep", "bash"}
+    talk = {"send_message", "list_agents"}  # every sub-agent can reach the others (S79)
+    assert {t.name for t in request.tools} == {"read_file", "grep", "bash"} | talk
     assert "You write pytest tests for HTTP endpoints" in request.system
     assert "Your role: api-tester." in request.system
 
 
 async def test_bad_agent_file_is_reported_to_the_lead(tmp_project: Path) -> None:
     shutil.copytree(FIXTURES / "bad", tmp_project / ".forge" / "agents")
-    spawn = FakeToolCall(name="spawn_agent", arguments={"role": "broken", "task": "x"})
+    spawn = FakeToolCall(
+        name="spawn_agent", arguments={"role": "broken", "task": "x", "tools": ["files"]}
+    )
     fake = FakeProvider(roles={"coder": [FakeTurn(tool_calls=[spawn]), FakeTurn(text="ok")]})
     cfg = ForgeConfig(roles={"coder": ["fake/coder"]})
     register_provider(cfg, fake)

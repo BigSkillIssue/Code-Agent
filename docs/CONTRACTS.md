@@ -463,6 +463,7 @@ class Ctx:
     agent_id: str = "main"
     role: str = "coder"
     headless: bool = False
+    granted_tools: frozenset[str] | None = None  # S79: the tool names and groups the lead gave
 ```
 
 ```python
