@@ -884,6 +884,7 @@ async def spawn_agent(
     ctx: Ctx,
     role: Annotated[str, "Role name: explore, coder, tester, reviewer, researcher, or a custom agent."],
     task: Annotated[str, "Self-contained instructions: goal, relevant files, what to return."],
+    tools: Annotated[list[str], "The tools it may use, from your own: groups or tool names."],  # S79
     background: Annotated[bool, "Run in parallel and get a message when done."] = False,
     isolation: Annotated[Literal["none", "worktree"], "Run in its own git worktree."] = "none",
     max_turns: Annotated[int, "Turn limit for the sub-agent (1-200)."] = 30,
@@ -896,13 +897,14 @@ async def spawn_agent(
 |---|---|
 | `role` | known built-in or custom role |
 | `task` | 1–20,000 chars |
+| `tools` | required (S79); each entry a tool name or a group (`files`, `search`, `shell`, `web`, `browser`, `plan`, `memory`, `mcp`, `app`, `apple`) the lead has itself, else `invalid_args` |
 | `max_turns` | 1–200 |
 | `name` | `^[a-z0-9-]{1,32}$`, unique in the session |
 
 **Behaviour**
 
 1. Only `main` (the lead) may spawn; others → `unsupported`. Check `max_parallel_agents` (running agents) and the session cost budget → `limit_reached`.
-2. Build a child `Ctx`: new `agent_id`, `role`, same session, store, bus and renderer; tools = `for_role(role)` minus `ask_user`, `spawn_agent`, `submit_plan`; sandbox = the stricter of the parent's and the role's config; `cwd` = the parent's cwd.
+2. Build a child `Ctx`: new `agent_id`, `role`, same session, store, bus and renderer; tools = the lead's `tools` (`Ctx.granted_tools`, S79), within the role's agent-file list and, for a read-only role, read-only, minus the lead-only tools (`ask_user`, `spawn_agent`, `submit_plan`, `research`, `compact_context`), plus `send_message` and `list_agents`; internal spawns (`research`, team workers) pass no list and get the role's tools, team workers the lead's own; sandbox = the stricter of the parent's and the role's config; `cwd` = the parent's cwd.
 3. `isolation="worktree"`: `runtime/worktree.py` creates `.forge/worktrees/<agent_id>` on branch `forge/<session_id>/<agent_id>` from the current HEAD plus uncommitted changes; the child's `root` and `cwd` point there.
 4. Foreground: `await run_agent(child, task, role=role, max_turns=max_turns)`; run `subagent_stop` hooks; mark status. Background: start it as an asyncio task and return at once; on completion, put `[agent a3 (tester) finished: <status>]\n<final text>` into the parent's inbox and publish an event.
 5. The child's transcript is saved in the session store under its id; the parent receives only the final text.
@@ -934,7 +936,7 @@ async def send_message(
     """Send a message to another running agent."""
 ```
 
-**Behaviour:** resolve `to` by id or name; the target must be `running` (else `not_found` with `hint: agent a2 has finished`); put `[message from <id> (<role>)]: <text>` into its inbox. The agent loop drains the inbox at the start of every turn and appends each message as a user message. The lead's renderer shows every message with its summary.
+**Behaviour:** every agent has it (S79: also roles whose own list lacks it, and agents whose lead gave other tools), and may write to any running agent: the lead, a sibling or a child. Resolve `to` by id or name; the target must be `running` (else `not_found` with `hint: agent a2 has finished`); put `[message from <id> (<role>)]: <text>` into its inbox. The agent loop drains the inbox at the start of every turn and appends each message as a user message. The lead's renderer shows every message with its summary.
 
 **Output:** `delivered to a3 (tester)`.
 

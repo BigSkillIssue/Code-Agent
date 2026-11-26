@@ -53,6 +53,7 @@ class Team(Protocol):
         isolation: str,
         max_turns: int,
         name: str | None,
+        tools: list[str] | None = None,
     ) -> str: ...
     async def send(self, ctx: "Ctx", to: str, text: str, summary: str) -> str: ...
     def overview(self, ctx: "Ctx") -> str: ...
@@ -146,4 +147,5 @@ class Ctx:
     agent_id: str = "main"
     role: str = "coder"
     headless: bool = False
+    granted_tools: frozenset[str] | None = None  # S79: what the lead gave it; None: its role's
     state: SessionState = field(default_factory=SessionState)  # beyond the contract, see PROGRESS

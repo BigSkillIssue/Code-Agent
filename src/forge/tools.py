@@ -125,6 +125,7 @@ LEAD_ONLY_TOOLS = frozenset(
 )
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
+TALK_TOOLS = ("send_message", "list_agents")  # S79: every sub-agent may reach every other agent
 TOOL_GROUPS = frozenset(
     {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp"}
     | {"apple", "app"}
@@ -268,18 +269,18 @@ def hidden_mcp_tool(ctx: Ctx, tool_def: ToolDef) -> bool:
         tool_def.group == "mcp"
         and tool_def.name.startswith("mcp__")
         and (tool_def.read_only or ctx.role not in READ_ONLY_ROLES)
+        and (ctx.granted_tools is None or bool({tool_def.name, "mcp"} & ctx.granted_tools))
     )
 
 
 def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
-    """The role's tools (an agent file may list them); sub-agents never get lead-only tools."""
-    custom = ctx.state.custom_roles.get(role)
-    if custom is not None and custom.tools is not None:
-        tools = [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
-    else:
-        tools = for_role(role, ctx.cfg) + testing_browser(ctx, role)
+    """The role's tools (an agent file may list them) or those the lead gave the agent (S79);
+    sub-agents never get lead-only tools, and every agent of a team can talk to the others."""
+    tools = role_tools(ctx, role) if ctx.granted_tools is None else granted_tools(ctx, role)
     if ctx.agent_id != "main":
         tools = [t for t in tools if t.name not in LEAD_ONLY_TOOLS]
+        if ctx.state.team is not None:
+            tools += [REGISTRY[n] for n in TALK_TOOLS if REGISTRY[n] not in tools]
     if not ctx.state.team_mode:
         tools = [t for t in tools if t.name not in BOARD_TOOLS]
     if ctx.state.mode == "solo":
@@ -289,6 +290,44 @@ def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     if not (ctx.root / MANIFEST).is_file():  # not a full-stack product (S65)
         tools = [t for t in tools if t.group != "app"]
     return [*tools, *mcp_tools(ctx, role)] if ctx.state.mcp else drop_mcp(tools)
+
+
+def role_tools(ctx: Ctx, role: str) -> list[ToolDef]:
+    """What a role has by itself: its agent file's list, or the built-in role's tools."""
+    custom = ctx.state.custom_roles.get(role)
+    if custom is not None and custom.tools is not None:
+        return [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+    return for_role(role, ctx.cfg) + testing_browser(ctx, role)
+
+
+def granted_tools(ctx: Ctx, role: str) -> list[ToolDef]:
+    """S79: the tools the lead gave a sub-agent, within its agent file's list and, for a
+    read-only role, read-only."""
+    granted = ctx.granted_tools or frozenset()
+    tools = [t for t in REGISTRY.values() if t.name in granted or t.group in granted]
+    custom = ctx.state.custom_roles.get(role)
+    if custom is not None and custom.tools is not None:
+        tools = [t for t in tools if t.name in custom.tools or t.group in custom.tools]
+    if role in READ_ONLY_ROLES:
+        tools = [t for t in tools if t.read_only]
+    return tools
+
+
+def resolve_grant(ctx: Ctx, entries: list[str]) -> frozenset[str]:
+    """S79: the tool names a sub-agent gets from the lead's `tools` (names or groups); only
+    tools the lead has itself."""
+    own = agent_tools(ctx, ctx.role)
+    names: set[str] = set()
+    for entry in dict.fromkeys(e.strip() for e in entries if e.strip()):
+        found = {t.name for t in own if entry in (t.name, t.group)}
+        if not found:
+            exists = entry in REGISTRY or entry in TOOL_GROUPS or entry.startswith("mcp__")
+            problem = "you do not have it yourself" if exists else "no such tool or group"
+            groups = sorted({t.group for t in own})
+            raise ToolError("invalid_args", f"tools: '{entry}': {problem}",
+                            hint="give tool names or groups you have: " + ", ".join(groups))  # fmt: skip
+        names |= found | ({entry} & TOOL_GROUPS)  # a group also covers its deferred MCP tools
+    return frozenset(names)
 
 
 def testing_browser(ctx: Ctx, role: str) -> list[ToolDef]:
@@ -312,6 +351,8 @@ def mcp_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     if hub is None:
         return []
     tools = hub.visible_tools()
+    if ctx.granted_tools is not None:  # S79: only what the lead gave
+        tools = [t for t in tools if {t.name, "mcp"} & ctx.granted_tools]
     custom = ctx.state.custom_roles.get(role)
     if custom is not None and custom.tools is not None:
         return [t for t in tools if t.name in custom.tools or "mcp" in custom.tools]
@@ -1909,12 +1950,19 @@ async def spawn_agent(
         "Role name: explore, coder, tester, reviewer, researcher, browser, or a custom agent.",
     ],
     task: Annotated[str, "Self-contained instructions: goal, relevant files, what to return."],
+    tools: Annotated[
+        list[str],
+        "The tools it may use, from your own: groups (files, search, shell, web, browser to test "
+        "the running product, plan, memory, mcp, app, apple) or tool names (read_file). Give "
+        "what its task needs; it can always message the other agents.",
+    ],
     background: Annotated[bool, "Run in parallel and get a message when done."] = False,
     isolation: Annotated[Literal["none", "worktree"], "Run in its own git worktree."] = "none",
     max_turns: Annotated[int, "Turn limit for the sub-agent (1-200)."] = 30,
     name: Annotated[str | None, "Optional name for messaging, e.g. 'api-tests'."] = None,
 ) -> str:
-    """Start a sub-agent with its own context. It returns only its final report."""
+    """Start a sub-agent with its own context and the tools you give it. It returns only its
+    final report."""
     return await team_of(ctx).spawn(
         ctx,
         role,
@@ -1923,6 +1971,7 @@ async def spawn_agent(
         isolation=isolation,
         max_turns=max_turns,
         name=name,
+        tools=tools,
     )
 
 

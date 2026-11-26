@@ -30,7 +30,15 @@ def team_ctx(
 def spawn(role: str, task: str, **extra: Any) -> FakeTurn:
     return FakeTurn(
         tool_calls=[
-            FakeToolCall(name="spawn_agent", arguments={"role": role, "task": task, **extra})
+            FakeToolCall(
+                name="spawn_agent",
+                arguments={
+                    "role": role,
+                    "task": task,
+                    "tools": ["files", "search", "shell"],
+                    **extra,
+                },
+            )
         ]
     )
 
@@ -120,7 +128,9 @@ async def test_max_turns_gives_a_partial_report(tmp_project: Path) -> None:
 
 async def test_children_cannot_ask_the_user_or_spawn(tmp_project: Path) -> None:
     ask = FakeToolCall(name="ask_user", arguments={"questions": []})
-    nested = FakeToolCall(name="spawn_agent", arguments={"role": "explore", "task": "x"})
+    nested = FakeToolCall(
+        name="spawn_agent", arguments={"role": "explore", "task": "x", "tools": ["files"]}
+    )
     ctx, _ = team_ctx(
         tmp_project,
         {
@@ -136,6 +146,7 @@ async def test_children_cannot_ask_the_user_or_spawn(tmp_project: Path) -> None:
 
 
 async def run(ctx: Ctx, **arguments: Any) -> ToolResult:
+    arguments = {"tools": ["files", "search"], **arguments}  # the lead names the tools (S79)
     return await call_tool(ctx, ToolCall(id="c1", name="spawn_agent", arguments=arguments))
 
 

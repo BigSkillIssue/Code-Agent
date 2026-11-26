@@ -53,11 +53,17 @@ async def test_two_background_agents_exchange_a_message_and_both_finish(tmp_proj
                             "spawn_agent",
                             role="explore",
                             task="find",
+                            tools=["files", "search", "shell"],
                             background=True,
                             name="alpha",
                         ),
                         call(
-                            "spawn_agent", role="tester", task="test", background=True, name="beta"
+                            "spawn_agent",
+                            role="tester",
+                            task="test",
+                            tools=["files", "search", "shell"],
+                            background=True,
+                            name="beta",
                         ),
                     ]
                 ),
@@ -125,7 +131,12 @@ async def test_list_agents_shows_status_and_tokens(tmp_project: Path) -> None:
             "coder": [
                 FakeTurn(
                     tool_calls=[
-                        call("spawn_agent", role="explore", task="Find where tokens are validated")
+                        call(
+                            "spawn_agent",
+                            role="explore",
+                            task="Find where tokens are validated",
+                            tools=["files", "search", "shell"],
+                        )
                     ]
                 ),
                 FakeTurn(text="ok"),
@@ -181,7 +192,14 @@ async def test_stop_agent_cancels_it_and_its_jobs(tmp_project: Path) -> None:
         },
         executor=executor,
     )
-    started = await run(ctx, "spawn_agent", role="tester", task="run the server", background=True)
+    started = await run(
+        ctx,
+        "spawn_agent",
+        role="tester",
+        task="run the server",
+        tools=["files", "search", "shell"],
+        background=True,
+    )
     assert started.ok
     team = registry(ctx)
     for _ in range(100):

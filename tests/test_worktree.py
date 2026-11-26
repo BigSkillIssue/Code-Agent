@@ -86,7 +86,13 @@ async def test_worktree_agent_edits_are_merged_after_it_finishes(repo: Path) -> 
             "coder": [
                 FakeTurn(
                     tool_calls=[
-                        call("spawn_agent", role="tester", task="add tests", isolation="worktree")
+                        call(
+                            "spawn_agent",
+                            role="tester",
+                            task="add tests",
+                            tools=["files", "search", "shell"],
+                            isolation="worktree",
+                        )
                     ]
                 ),
                 FakeTurn(text="ok"),

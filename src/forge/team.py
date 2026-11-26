@@ -33,7 +33,7 @@ from forge.runtime.worktree import (
     publish_main,
     remove_worktree,
 )
-from forge.tools import close_browser
+from forge.tools import agent_tools, close_browser, resolve_grant
 
 BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher", "browser")
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
@@ -66,6 +66,7 @@ class AgentInfo:
     jobs: list[str] = field(default_factory=list)  # background jobs it started
     tree: Worktree | None = None  # isolation="worktree"
     keep_worktree: bool = False  # keep it at session end (conflicts, stop_agent)
+    tools: frozenset[str] | None = None  # S79: the tools the lead gave it; None: its role's
     started: float = field(default_factory=time.time)
 
 
@@ -107,11 +108,15 @@ class AgentRegistry:
         isolation: str,
         max_turns: int,
         name: str | None,
+        tools: list[str] | None = None,
     ) -> str:
-        """Start a sub-agent for `task`: wait for its report, or run it in the background."""
+        """Start a sub-agent for `task` with the `tools` the lead gives it (None: its role's):
+        wait for its report, or run it in the background."""
         await use_agent_file(ctx, role)
         self.check_spawn(ctx, role, task, max_turns, name)
+        granted = None if tools is None else resolve_grant(ctx, tools)
         info = self.add(role, task, name, ctx.agent_id)
+        info.tools = granted
         self.main_root = self.main_root or ctx.root
         child = child_ctx(ctx, info)
         if isolation == "worktree":
@@ -360,6 +365,7 @@ class AgentRegistry:
         isolation = "worktree" if await is_repo(ctx.root) else "none"
         limits = ctx.cfg.limits
         turns = min(200, limits.max_turns_per_step * len(plan.steps))
+        lead_tools = [t.name for t in agent_tools(ctx, ctx.role)]  # workers get what the lead has
         for name, task in self.worker_tasks(ctx, plan):
             await self.spawn(
                 ctx,
@@ -369,6 +375,7 @@ class AgentRegistry:
                 isolation=isolation,
                 max_turns=turns,
                 name=name,
+                tools=lead_tools,
             )
         handles = [a.task_handle for a in self.agents.values() if a.task_handle is not None]
         await asyncio.gather(*handles, return_exceptions=True)
@@ -473,8 +480,10 @@ def first_user_text(ctx: Ctx) -> str:
 
 
 def child_ctx(ctx: Ctx, info: AgentInfo) -> Ctx:
-    """The sub-agent's context: own id, role and read ledger; everything else shared."""
-    return replace(ctx, agent_id=info.id, role=info.role, ledger=ReadLedger())
+    """The sub-agent's context: own id, role, tools and read ledger; everything else shared."""
+    return replace(
+        ctx, agent_id=info.id, role=info.role, ledger=ReadLedger(), granted_tools=info.tools
+    )
 
 
 def report(info: AgentInfo, result: AgentResult) -> str:
