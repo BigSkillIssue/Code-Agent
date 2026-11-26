@@ -306,7 +306,8 @@ def role_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     """What a role has by itself: its agent file's list, or the built-in role's tools."""
     custom = ctx.state.custom_roles.get(role)
     if custom is not None and custom.tools is not None:
-        return [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+        listed = [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+        return [t for t in listed if t.read_only or role not in READ_ONLY_ROLES]
     return for_role(role, ctx.cfg) + testing_browser(ctx, role)
 
 

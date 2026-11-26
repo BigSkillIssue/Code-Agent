@@ -52,6 +52,10 @@ description: Writes and runs API tests.
 You write pytest tests for HTTP endpoints. Always run them before you report.
 ```
 
+A project's own `.forge/agents/` counts only after `forge trust`, and never replaces a built-in
+role (`coder`, `reviewer`, `explore` …); your files in `~/.forge/agents/` may. A read-only role
+(`reviewer`, `explore`, `planner` …) keeps only read-only tools, whatever its file lists.
+
 ## Skills
 
 `.forge/skills/<name>/SKILL.md` (or `~/.forge/skills/`): instructions for one kind of job.
