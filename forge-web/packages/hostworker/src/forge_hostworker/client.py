@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from forge_hostworker import __version__
 from forge_hostworker.android import bundle_path
 from forge_hostworker.backup import outgoing
+from forge_hostworker.device_client import DeviceClient
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
     WITH_SECRETS,
@@ -48,6 +49,7 @@ class HostClient:
         *,
         slots: int = 2,
         transport: httpx.AsyncBaseTransport | None = None,
+        devices: bool = False,
     ) -> None:
         headers = {"Authorization": f"Bearer {token}", "X-Forge-Host-Worker": __version__}
         self.http = httpx.AsyncClient(
@@ -62,11 +64,15 @@ class HostClient:
         self.tasks: set[asyncio.Task[None]] = set()
         self.running: set[str] = set()  # the ids of the jobs in `tasks`
         self.usage_every_s = USAGE_EVERY_S
+        self.devices = devices  # W61: this host runs Android emulators for the agent (KVM)
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down."""
         backoff = 1.0
         metering = asyncio.create_task(self.report_usage(stop))
+        side = [metering]
+        if self.devices:
+            side.append(asyncio.create_task(DeviceClient(self.http, self.runner).serve(stop)))
         try:
             while not stop.is_set():
                 if len(self.tasks) >= self.slots:
@@ -83,10 +89,9 @@ class HostClient:
                 if job is not None:
                     self.start(job)
         finally:
-            metering.cancel()
-            for task in list(self.tasks):
+            for task in [*side, *self.tasks]:
                 task.cancel()
-            await asyncio.gather(metering, *self.tasks, return_exceptions=True)
+            await asyncio.gather(*side, *self.tasks, return_exceptions=True)
             await self.http.aclose()
 
     async def report_usage(self, stop: asyncio.Event) -> None:

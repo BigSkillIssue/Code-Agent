@@ -851,6 +851,21 @@ Ohne `android_image` baut Forge Web keine Android-Apps. Ein Build braucht 6 GB A
 und 4 CPU-Kerne auf dem App-Server und darf eine Stunde dauern; jeder Build bekommt eine höhere
 Versionsnummer (`versionCode`), wie Google Play sie für jedes Hochladen verlangt.
 
+**Der Agent am Android-Gerät (optional):** Damit Forges Agent die Android-App beim Bauen bedienen
+kann wie ein Mensch, startet der App-Server einen Emulator. Er braucht KVM (`ls /dev/kvm`; auf einer
+VM verschachtelte Virtualisierung), ein Emulator-Image und den Schalter `--devices`:
+
+```sh
+docker build -t forge-android-emulator:34 -f docker/android-emulator.Dockerfile docker
+# in deploy/host/forge-host-worker.service an "forge-host-worker run" anhängen: --devices
+```
+
+Dann unter *Verwaltung → Einstellungen → Geräte des Agenten* „Android-Emulatoren“ einschalten und
+`forge-android-emulator:34` als Image eintragen. Der Agent baut eine Debug-APK (in gVisor, wie
+jeden Build), der Emulator läuft ohne gVisor (das reicht KVM nicht durch), aber ohne Rechte, mit
+schreibgeschütztem Image und nur im Build-Netz; die App selbst läuft in der Android-VM. Pro
+App-Server läuft ein Emulator zur Zeit (4 GB, 4 Kerne).
+
 **Google Play:** Jeder Kunde veröffentlicht seine Android-App mit seinem eigenen
 Google-Play-Entwicklerkonto. Am besten ist ein Organisationskonto (mit D-U-N-S-Nummer); ein
 persönliches Konto, das nach dem 13. November 2023 angelegt wurde, muss vor der ersten

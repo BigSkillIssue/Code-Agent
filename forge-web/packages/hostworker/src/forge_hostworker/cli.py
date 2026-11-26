@@ -56,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--data", type=Path, required=True, help="where releases and keys live")
     run.add_argument("--token-file", type=Path)
     run.add_argument("--slots", type=int, default=2)
+    run.add_argument(
+        "--devices",
+        action="store_true",
+        help="run Android emulators for Forge's agent (needs /dev/kvm)",
+    )
     run.add_argument("--docker", default="docker")
     run.add_argument("--apps-domain", help="apps answer at <app>.DOMAIN (Caddy is the edge)")
     run.add_argument("--legal-base", help="Forge Web's legal pages, https://forge.../legal")
@@ -142,7 +147,14 @@ async def serve(args: argparse.Namespace) -> int:
         print(f"error: {error}\nhint: {error.hint}", file=sys.stderr)
         return 2
     runner = HostRunner(docker, args.data, user=user, owner=owner)
-    client = HostClient(args.server, token, runner, load_key(args.data / KEY), slots=args.slots)
+    client = HostClient(
+        args.server,
+        token,
+        runner,
+        load_key(args.data / KEY),
+        slots=args.slots,
+        devices=args.devices,
+    )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
