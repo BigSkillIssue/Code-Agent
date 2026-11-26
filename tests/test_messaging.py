@@ -92,13 +92,13 @@ async def test_two_background_agents_exchange_a_message_and_both_finish(tmp_proj
     assert team.agents["a1"].status == "done" and team.agents["a2"].status == "done"
     tester_requests = [r for r in fake.requests if r.model == "tester"]
     assert any(
-        "[message from a1 (explore)]: hi beta" in m.text()
+        "[message from a1 (explore)]\n> hi beta" in m.text()
         for r in tester_requests
         for m in r.messages
     )
     inbox = [m.text() for m in result.messages if m.role == "user"]
-    assert any(t.startswith("[agent a1 (explore) finished: done]\nalpha done") for t in inbox)
-    assert any(t.startswith("[agent a2 (tester) finished: done]\nbeta done") for t in inbox)
+    assert any(t.startswith("[agent a1 (explore) finished: done]\n> alpha done") for t in inbox)
+    assert any(t.startswith("[agent a2 (tester) finished: done]\n> beta done") for t in inbox)
     assert result.text == "all done"
     finished = [e for e in await drain(events) if isinstance(e, AgentFinished)]
     assert {e.agent_id for e in finished} == {"a1", "a2"}
@@ -113,8 +113,8 @@ async def test_send_message_rules(tmp_project: Path) -> None:
     ).text == "delivered to a1 (tester)"
     assert (await run(ctx, "send_message", to="a1", text="again")).ok
     assert team.take_messages("a1") == [
-        "[message from main (coder)]: hello",
-        "[message from main (coder)]: again",
+        "[message from main (coder)]\n> hello",
+        "[message from main (coder)]\n> again",
     ]
     assert (await run(ctx, "send_message", to="main", text="me")).code == "invalid_args"
     assert (await run(ctx, "send_message", to="a1", text=" ")).code == "invalid_args"

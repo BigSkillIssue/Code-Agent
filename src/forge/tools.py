@@ -126,6 +126,7 @@ LEAD_ONLY_TOOLS = frozenset(
 BOARD_TOOLS = frozenset({"read_board", "claim_task", "update_task"})
 AGENT_TOOLS = frozenset({"spawn_agent", "send_message", "list_agents", "stop_agent"})
 TALK_TOOLS = ("send_message", "list_agents")  # S79: every sub-agent may reach every other agent
+REPORTS_ONLY_TO_LEAD = frozenset({"browser"})  # reads any web page: it may message only `main`
 TOOL_GROUPS = frozenset(
     {"files", "search", "shell", "web", "browser", "plan", "agents", "memory", "mcp"}
     | {"apple", "app"}
@@ -270,7 +271,16 @@ def hidden_mcp_tool(ctx: Ctx, tool_def: ToolDef) -> bool:
         and tool_def.name.startswith("mcp__")
         and (tool_def.read_only or ctx.role not in READ_ONLY_ROLES)
         and (ctx.granted_tools is None or bool({tool_def.name, "mcp"} & ctx.granted_tools))
+        and listed_for_role(ctx, tool_def)
     )
+
+
+def listed_for_role(ctx: Ctx, tool_def: ToolDef) -> bool:
+    """True unless the role's agent file lists its tools and this one is not among them."""
+    custom = ctx.state.custom_roles.get(ctx.role)
+    if custom is None or custom.tools is None:
+        return True
+    return tool_def.name in custom.tools or tool_def.group in custom.tools
 
 
 def agent_tools(ctx: Ctx, role: str) -> list[ToolDef]:
@@ -296,7 +306,8 @@ def role_tools(ctx: Ctx, role: str) -> list[ToolDef]:
     """What a role has by itself: its agent file's list, or the built-in role's tools."""
     custom = ctx.state.custom_roles.get(role)
     if custom is not None and custom.tools is not None:
-        return [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+        listed = [t for t in REGISTRY.values() if t.name in custom.tools or t.group in custom.tools]
+        return [t for t in listed if t.read_only or role not in READ_ONLY_ROLES]
     return for_role(role, ctx.cfg) + testing_browser(ctx, role)
 
 
@@ -326,8 +337,22 @@ def resolve_grant(ctx: Ctx, entries: list[str]) -> frozenset[str]:
             groups = sorted({t.group for t in own})
             raise ToolError("invalid_args", f"tools: '{entry}': {problem}",
                             hint="give tool names or groups you have: " + ", ".join(groups))  # fmt: skip
-        names |= found | ({entry} & TOOL_GROUPS)  # a group also covers its deferred MCP tools
+        names |= found
+        if entry == "mcp" and has_every_mcp_tool(ctx):
+            names.add("mcp")  # also the MCP tools not loaded yet, which the lead may call too
     return frozenset(names)
+
+
+def has_every_mcp_tool(ctx: Ctx) -> bool:
+    """True if this agent may call each of the session's MCP tools, loaded or not."""
+    hub = ctx.state.mcp
+    if hub is None:
+        return False
+    own = agent_tools(ctx, ctx.role)
+    built_in = [t for t in REGISTRY.values() if t.group == "mcp"]
+    deferred = [hub.tool(line.split(":", 1)[0]) for line in hub.deferred_listing()]
+    every = [*built_in, *hub.visible_tools(), *(t for t in deferred if t is not None)]
+    return all(t in own or hidden_mcp_tool(ctx, t) for t in every)
 
 
 def testing_browser(ctx: Ctx, role: str) -> list[ToolDef]:
@@ -1419,7 +1444,7 @@ async def browser_of(ctx: Ctx) -> Browser:
     if browser is not None:
         return browser
     factory = ctx.state.browser_factory
-    if ctx.role != "browser" and ctx.state.test_browsers is not None:
+    if tests_products(ctx) and ctx.state.test_browsers is not None:
         factory = ctx.state.test_browsers  # S78: may also open this machine's own servers
     if factory is None:
         raise ToolError("unsupported", "no browser is available in this session")
@@ -1465,10 +1490,16 @@ async def browser_open(ctx: Ctx, url: Annotated[str, "Full http(s) URL."]) -> To
     return await browse(ctx, lambda b: b.open(target))
 
 
+def tests_products(ctx: Ctx) -> bool:
+    """S78: agents that build may open this machine's servers in their browser; the browser
+    agent researching the web and read-only roles (even with the tools granted) may not."""
+    return ctx.role != "browser" and ctx.role not in READ_ONLY_ROLES
+
+
 async def browser_target(ctx: Ctx, url: str) -> str:
     """S78: an agent testing the product may open its servers on this machine; the browser
     agent researching the web, and every agent for other local addresses, may not."""
-    if ctx.role != "browser" and ctx.cfg.browser.loopback:
+    if tests_products(ctx) and ctx.cfg.browser.loopback:
         local = loopback_url(url)
         if local is not None:
             return local

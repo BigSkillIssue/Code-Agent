@@ -24,6 +24,7 @@ from forge.runtime.sandbox import (
     scratch_dir,
     seatbelt_profile,
 )
+from forge.runtime.shell import find_shell
 from forge.tools import call_tool
 from support import ScriptedRenderer, make_ctx
 
@@ -31,7 +32,9 @@ NO_SANDBOX = launch_for(SandboxPolicy(mode="workspace-write")).mechanism == "non
 needs_sandbox = pytest.mark.skipif(
     NO_SANDBOX, reason="no OS sandbox here (Windows has none yet; Linux needs Landlock or bwrap)"
 )
-needs_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+# The bash Forge would use: on Windows `which("bash")` finds WSL's launcher, and CI's
+# PowerShell jobs turn bash off with FORGE_BASH=none.
+needs_bash = pytest.mark.skipif(find_shell("bash") is None, reason="needs bash")
 
 
 @pytest.fixture
@@ -243,7 +246,12 @@ async def test_commands_do_not_see_forges_model_keys(
     show = 'echo "${FORGE_TEST_MODEL_KEY:-none} $FORGE_TEST_OTHER"'
     try:
         shell = await executor.run(script(tmp_project, show), SandboxPolicy(mode="full-access"))
-        argv = Command(argv=["bash", "-c", show], cwd=str(tmp_project), timeout_s=30)
+        # Python, not `bash`: on Windows that name finds WSL's launcher, not Git Bash
+        env = (
+            "import os; "
+            "print(os.environ.get('FORGE_TEST_MODEL_KEY', 'none'), os.environ['FORGE_TEST_OTHER'])"
+        )
+        argv = Command(argv=[sys.executable, "-c", env], cwd=str(tmp_project), timeout_s=30)
         once = await executor.run(argv, SandboxPolicy(mode="full-access"))
     finally:
         await executor.close()

@@ -33,10 +33,19 @@ from forge.runtime.worktree import (
     publish_main,
     remove_worktree,
 )
-from forge.tools import agent_tools, close_browser, resolve_grant
+from forge.tools import REPORTS_ONLY_TO_LEAD, agent_tools, close_browser, resolve_grant
 
 BUILTIN_ROLES = ("explore", "coder", "tester", "reviewer", "researcher", "browser")
 NAME = re.compile(r"^[a-z0-9-]{1,32}$")
+ID_LIKE = re.compile(r"^(a\d+|main)$")  # a name like an id would catch messages for that id
+
+
+def quoted(head: str, text: str) -> str:
+    """`head` and an agent's text below it, each line quoted (`> `): a line inside the text
+    cannot pass for the head of another message or report."""
+    return "\n".join([head, *(f"> {line}" for line in text.splitlines() or [""])])
+
+
 AgentStatus = Literal["running", "done", "stopped", "failed", "cancelled"]
 STATUS_OF: dict[str, AgentStatus] = {
     "done": "done",
@@ -154,7 +163,7 @@ class AgentRegistry:
         await close_browser(ctx, info.id)
         await ctx.state.monitors.stop_agent(ctx, info.id)
         head = f"[agent {info.id} ({info.role}) finished: {info.status}]"
-        self.post(info.parent_id or "main", f"{head}\n{text or '(no report)'}")
+        self.post(info.parent_id or "main", quoted(head, text or "(no report)"))
         await ctx.bus.publish(
             AgentFinished(
                 session_id=ctx.session.id,
@@ -178,9 +187,11 @@ class AgentRegistry:
             raise ToolError("invalid_args", "task must be 1-20,000 characters")
         if not 1 <= max_turns <= 200:
             raise ToolError("invalid_args", "max_turns must be between 1 and 200")
-        if name is not None and (not NAME.match(name) or self.find(name) is not None):
+        taken = name is not None and (self.find(name) is not None or ID_LIKE.match(name))
+        if name is not None and (not NAME.match(name) or taken):
             raise ToolError(
-                "invalid_args", f"name '{name}' must match [a-z0-9-]{{1,32}} and be unique"
+                "invalid_args",
+                f"name '{name}' must match [a-z0-9-]{{1,32}}, be unique and not look like an id",
             )
         limits = ctx.cfg.limits
         if self.running() >= limits.max_parallel_agents:
@@ -218,13 +229,15 @@ class AgentRegistry:
             )
         if target.id == ctx.agent_id:
             raise ToolError("invalid_args", "you cannot send a message to yourself")
+        if ctx.role in REPORTS_ONLY_TO_LEAD and target.id != "main":
+            raise ToolError("unsupported", f"the {ctx.role} agent reports only to the lead (main)")
         if target.status != "running":
             raise ToolError(
                 "not_found",
                 f"agent {target.id} is not running",
                 hint=f"agent {target.id} has finished",
             )
-        self.post(target.id, f"[message from {ctx.agent_id} ({ctx.role})]: {text}")
+        self.post(target.id, quoted(f"[message from {ctx.agent_id} ({ctx.role})]", text))
         await ctx.bus.publish(
             AgentMessage(
                 session_id=ctx.session.id,
