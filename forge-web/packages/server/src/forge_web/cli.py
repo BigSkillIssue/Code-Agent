@@ -36,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     user_cli.add_arguments(commands.add_parser("user", help="manage accounts"))
     commands.add_parser("doctor", help="check what the server needs and how to fix it")
+    mesh = commands.add_parser("mesh", help="Forge's WireGuard network between the servers")
+    mesh.add_subparsers(dest="action", required=True).add_parser(
+        "config", help="print this host's forge0.conf (it holds the private key)"
+    )
     return parser
 
 
@@ -65,6 +69,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from forge_web.doctor import doctor
 
         return doctor(settings)
+    if args.command == "mesh":
+        from forge_web.hosting.mesh import config_command
+
+        return config_command(settings)
     if args.command == "dev-chat":
         from forge_web.dev_chat import dev_chat
 

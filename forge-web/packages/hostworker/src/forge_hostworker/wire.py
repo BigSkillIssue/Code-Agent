@@ -239,6 +239,7 @@ class PollAnswer(BaseModel):
 
     job: HostJob | None = None
     roles: list[Role] = Field(default_factory=lambda: list[Role](["apps"]), max_length=len(ROLES))
+    mesh_revision: int = Field(default=0, ge=0)  # W65: changed -> fetch `GET /api/host/mesh`
 
     @field_validator("roles", mode="before")
     @classmethod
@@ -257,6 +258,8 @@ def key32(value: str) -> bool:
 
 def endpoint_ok(value: str) -> bool:
     """Whether this is `IPv4:PORT`, `[IPv6]:PORT` or `name.domain:PORT`."""
+    if not value.isascii() or not value.isprintable() or " " in value:
+        return False  # `$` in DOMAIN would let a final line break through
     host, colon, port = value.rpartition(":")
     if not colon or not port.isdigit() or not 0 < int(port) < 65536:
         return False

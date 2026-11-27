@@ -110,6 +110,13 @@ install_docker() {
   run systemctl enable --now docker
 }
 
+open_wireguard() {  # Forge's WireGuard network to the nodes (forge-web mesh config, W65)
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    say "Opening UDP 51820 for Forge's WireGuard network in ufw"
+    run ufw allow 51820/udp comment "Forge WireGuard"
+  fi
+}
+
 docker_gid() {  # the group id compose gives Forge Web for the Docker socket
   local gid
   gid="$(getent group docker | cut -d: -f3 || true)"
@@ -192,6 +199,7 @@ main() {
   cd "$web"
   [ "$dry_run" = 0 ] || say "Dry run: nothing is changed, every command is printed"
   install_docker
+  open_wireguard
   if [ -f .env ]; then
     say "forge-web/.env exists and is kept"
     domain="$(env_value FORGE_DOMAIN)"
@@ -205,6 +213,7 @@ main() {
   run docker compose exec -T forge-web forge-web doctor || warn "forge-web doctor found problems (above)"
   first_admin_link
   say "Forge Web runs at https://$domain - DNS and the next steps: docs/EINRICHTUNG.md section 3."
+  say "Servers with roles talk over WireGuard: docs/EINRICHTUNG.md, \"Forges WireGuard-Netz\"."
 }
 
 main "$@"

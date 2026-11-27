@@ -1,8 +1,9 @@
 """The routes of hosting (W26).
 
 - `/api/host/...`: the hosts' API, with their own tokens instead of a sign-in: a host asks for a
-  job (long poll, the answer names its roles), fetches its packed source and, once, its sealed
-  secrets, and reports. A new server gets its token once for a join code (`/api/host/join`).
+  job (long poll, the answer names its roles and the revision of its part of Forge's WireGuard
+  network, `/api/host/mesh`, W65), fetches its packed source and, once, its sealed secrets, and
+  reports. A new server gets its token once for a join code (`/api/host/join`).
 - `/api/projects/{id}/deploys`: a project's deploys. Staging takes a commit the user approved with
   "Ready to go live"; production takes the same commit once it is live in staging, and starting
   it is the creator's "Live schalten". `/api/projects/{id}/hosting/secrets`: the app's secrets
@@ -23,6 +24,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import func, select
 
+from forge_hostworker.mesh_wire import MeshView
 from forge_hostworker.wire import (
     ENV_NAME,
     RESERVED_ENV,
@@ -53,6 +55,7 @@ from forge_web.hosting.deploy import ACTIVE, view
 from forge_web.hosting.hosts import JobGone, host_of, pick_host, roles_of
 from forge_web.hosting.join import JoinRefused, redeem
 from forge_web.hosting.legal_pages import operator_ready, operator_view
+from forge_web.hosting.mesh import node_view
 from forge_web.hosting.plan import HOSTING_SETS
 from forge_web.services import Services, services_of
 
@@ -101,9 +104,15 @@ def host_router() -> APIRouter:
 
     @router.post("/poll")
     async def poll(body: PollRequest, host: Host, request: Request) -> PollAnswer:
-        hosts = services_of(request).hosts
-        job = await hosts.claim(host.id, POLL_WAIT_S, body.running)
-        return PollAnswer(job=job, roles=roles_of(host))
+        services = services_of(request)
+        job = await services.hosts.claim(host.id, POLL_WAIT_S, body.running)
+        view = await node_view(services.db, services.vault, services.settings, host)
+        return PollAnswer(job=job, roles=roles_of(host), mesh_revision=view.revision)
+
+    @router.get("/mesh")
+    async def mesh(host: Host, request: Request) -> MeshView:
+        services = services_of(request)  # only the caller's own view, never a private key
+        return await node_view(services.db, services.vault, services.settings, host)
 
     join_route(router)
 

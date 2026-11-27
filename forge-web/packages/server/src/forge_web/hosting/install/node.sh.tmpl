@@ -139,6 +139,17 @@ apt_install() {  # the packages of "$@" that are missing
   run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q "${missing[@]}"
 }
 
+open_wireguard() {  # Forge's WireGuard network (forge0): the worker writes its file and filters it
+  run install -d -m 0700 /etc/wireguard
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    say "Opening UDP 51820 for WireGuard in ufw (the worker's own rules filter forge0)"
+    run ufw allow 51820/udp comment "Forge WireGuard"
+    run ufw allow in on forge0 comment "Forge WireGuard, filtered by FORGE-MESH"
+  else
+    say "No active ufw: keep UDP 51820 open in your provider's firewall for WireGuard"
+  fi
+}
+
 install_docker() {
   if command -v docker >/dev/null; then
     say "Docker is installed"
@@ -283,8 +294,9 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-# Caddy's storage too: a deleted app's certificate and key are removed from it.
-ReadWritePaths=/var/lib/forge-host /run -/var/lib/caddy
+# Caddy's storage too: a deleted app's certificate and key are removed from it. And
+# /etc/wireguard: the worker writes forge0.conf, Forge's WireGuard network (W65).
+ReadWritePaths=/var/lib/forge-host /run -/var/lib/caddy -/etc/wireguard
 PrivateTmp=true
 LockPersonality=true
 
@@ -323,6 +335,7 @@ main() {
   [ "$dry_run" = 0 ] || say "Dry run: nothing is changed, every command is printed"
   say "Roles: $roles"
   apt_install ca-certificates curl wireguard-tools
+  open_wireguard
   install_docker
   if has_role apps; then
     install_gvisor
