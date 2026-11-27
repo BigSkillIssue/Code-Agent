@@ -421,3 +421,83 @@ Asked for after the screenshots of 2026-10-17: no native select fields, a plan p
     - Build: the preview opens as a resizable split next to the chat (a "Vorschau" button in the header, and by itself when a dev server starts listening while the agent works), with back, forward, reload, the address, the port, a new tab, device sizes (desktop, tablet, phone), a console with the dev server's output, and a reload after each turn; without a server it offers to start one. No server change: it uses the preview tickets of W12.
     - Tests: ports that appeared are found; the preview goes to an address, back and forward; phone and tablet sizes; a reload after the agent's turn; a dev server to start when nothing listens, and the console; it opens by itself on a new port and keeps a sensible width.
     - Verify: `cd frontend && npx vitest run src/components/browserPreview.test.tsx`
+
+## Phase J · Servers with roles, a snapshot after every run, hosting in one command
+
+Asked for on 2026-11-26 (plan: German, approved in the session): after every finished agent run the project's state is kept on one of the admin's own servers; hosting must be easier to set up; servers get roles (apps, databases, AI models, storage) and talk to each other over a WireGuard network that Forge Web manages. Storage is a role of `forge-host-worker` that keeps encrypted blobs on its own disk (cheapest per TB, no request or egress fees, no new packages, outbound only). Snapshots are incremental git bundles made inside the sandbox; the server never runs git. Migrations are numbered in advance: 0043 roles, 0044 snapshots, 0045 database placement, 0046 AI models, 0047 uptime, 0048 analytics, 0049 coupons and referrals, 0050 support, 0051 trial.
+
+- [ ] **W63 — Server roles and join codes**
+    - Files: `forge_web/db/hosting_models.py`, `forge_web/db/migrations/versions/0043_host_roles.py`, `forge_web/hosting/{join,hosts,admin,deploy_api}.py`, `forge_hostworker/{wire,cli,runner}.py`, `tests/test_host_join.py`
+    - Build: `HostServer.roles` (`apps`, `db`, `ai`, `storage`; existing hosts become `["apps"]`), `mesh_ip`, `wg_public_key`, `endpoint`, reported `gpu` and `models`; one-time join codes `fjn_…` (24 h, hash stored, audited) made by the admin with a name and roles; `POST /api/host/join` takes the code, the X25519 key and the WireGuard key and answers the `fhw_…` token once; `forge-host-worker join --server URL --code …` makes both keys (`keygen`, `wg genkey`), trades the code and writes the token (0600); `pick_host` places apps only on `apps` hosts; the poll answer names the roles and the worker runs only their loops.
+    - Tests: a code works once, expires, cannot be guessed; roles are validated; old hosts stay `apps`; apps are placed only on `apps` hosts; the worker's join against the real router.
+    - Verify: `uv run pytest tests/test_host_join.py -q`
+- [ ] **W64 — Hosting in one command**
+    - Files: `forge_web/hosting/install/{__init__.py,node.sh.tmpl}`, `forge_web/hosting/install_api.py`, `docker/server.Dockerfile`, `deploy/install.sh`, `docs/EINRICHTUNG.md`, `tests/test_install_scripts.py`
+    - Build: `GET /install/node.sh` renders the node installer with Forge Web's address (shell-quoted); `GET /install/forge_hostworker.whl` serves the wheel built into the server image; the admin page shows `curl -fsSL https://…/install/node.sh | sudo bash -s -- --code fjn_…`; the script (Ubuntu 24.04, Debian 12; idempotent; `--dry-run`) installs Docker and wireguard-tools, gVisor and Caddy for `apps`, checks the NVIDIA toolkit for `ai`, makes the venv, joins, installs the systemd unit with its drop-in, applies the firewall and runs `doctor`. `deploy/install.sh` sets up Forge Web itself: Docker, domain and mail questions, a `.env` with random secrets, images, `docker compose up -d`, `doctor`, the link for the first admin. EINRICHTUNG gets "In drei Befehlen" before §2 and §11 shrinks to one command (the manual steps move to an appendix).
+    - Tests: the rendered script carries the address and rejects one that would break quoting; `bash -n` on both scripts; the wheel route; (`docker` marker) `node.sh --dry-run` in `ubuntu:24.04`.
+    - Verify: `uv run pytest tests/test_install_scripts.py -q`
+- [ ] **W65 — Forge's WireGuard network**
+    - Files: `forge_web/hosting/mesh.py`, `forge_web/hosting/deploy_api.py`, `forge_web/cli.py`, `forge_hostworker/{mesh,firewall,runner,wire}.py`, `tests/test_mesh.py`
+    - Build: addresses from `10.89.0.0/24` (Forge Web is `.1`), freed when a node goes; `mesh_policy()` as a fixed table (apps → db only on the app's Postgres port from the app's subnet, Forge Web → ai on the model port, storage accepts nothing); a `mesh_revision` in the poll answer and `GET /api/host/mesh` for peers; the worker writes `/etc/wireguard/forge0.conf`, runs `wg syncconf` and drops everything on `forge0` the policy does not allow; `forge-web mesh config` prints the configuration for Forge Web's own host.
+    - Tests: allocation without duplicates and reuse after removal; the policy table; the rendered configuration (keys never logged); firewall rules as data.
+    - Verify: `uv run pytest tests/test_mesh.py -q`
+- [ ] **W66 — The project's state after every run, on a storage node**
+    - Files: `forge_sandbox/{gitops,methods}.py`, `forge_web/snapshots/{__init__,queue,store,api}.py`, `forge_web/db/{snapshot_models.py,migrations/versions/0044_snapshots.py}`, `forge_web/chats/runs.py`, `forge_web/settings.py`, `forge_hostworker/{blobs,runner,wire}.py`, `frontend/src/panels/Snapshots.tsx`, `tests/test_snapshots.py`
+    - Build: `git.snapshot` in the sandbox records the working tree with untracked (not ignored) files through a temporary index, without touching the user's branch, HEAD or index, as `refs/forge-web/snapshots/<n>`, and packs an incremental bundle (a full one every 20); an unchanged tree answers `unchanged`. When a run ends (`turn`, `worker_exited`) the run manager asks the snapshot queue, which joins runs within `debounce_s` and never makes the run wait, reads the bundle (size limit), seals it with the project's key from the vault and gives it to the storage node with the most room (`blob_put`; `blob_get`, `blob_delete`, quota and free space on the node). Without a storage node it stays on Forge Web's disk and the page says so. Retention: everything for 48 h, then one a day for 30 days, one a week for 26 weeks, never breaking a kept chain. "Sicherungen" in the project lists them and restores one as a new branch `restore/<date>` (`git.snapshot_restore`), owners and editors only, audited.
+    - Tests: one snapshot per run and one for three runs within the debounce; an unchanged tree makes none; untracked files are in, ignored ones are not; the user's branch and index stay; too big or broken bundles are refused; retention and chains; restore makes the branch with the same content; no storage node falls back and moves later; another person's project is refused; the storage worker against the real router.
+    - Verify: `uv run pytest tests/test_snapshots.py -q && cd frontend && npx vitest run src/panels/snapshots.test.tsx`
+- [ ] **W67 — App backups and Forge Web itself on the storage node**
+    - Files: `forge_web/hosting/ops.py`, `forge_web/selfbackup.py`, `forge_web/cli.py`, `deploy/install.sh`, `docs/EINRICHTUNG.md`, `tests/test_offsite_backups.py`
+    - Build: app backups (already sealed on the host) go to a storage node instead of `<data_dir>/hosting/backups` (that stays the fallback) and the drill reads them from there; `forge-web backup-self` (nightly) packs the database and the data folder without the vault key, sealed with a recovery key that `install.sh` shows once, and sends it to storage; `forge-web restore --from-node` brings it back.
+    - Tests: a backup lands on the node; the fallback; the drill from the node; the self-backup holds no vault key; the restore round trip.
+    - Verify: `uv run pytest tests/test_offsite_backups.py -q`
+- [ ] **W68 — The database role**
+    - Files: `forge_web/hosting/{plan,deploy,hosts}.py`, `forge_web/db/migrations/versions/0045_db_placement.py`, `forge_hostworker/{postgres,firewall,runner,agent_sql,backup,wire}.py`, `tests/test_db_nodes.py`
+    - Build: with `hosting.database_placement = "db_nodes"` and a `db` node, a new app's Postgres runs there (`db_ensure`, bound to the mesh address on its own port); the deploy plan names it; the app host lets only the app's subnet reach it and the db node only the app host's mesh address; the password is sealed per host key; dumps before migrations, backups and the agent's SQL run on the db node. Existing apps stay local (moving them is an open issue).
+    - Tests: placement; the rendered plan; firewall rules on both sides; `db_ensure` with the docker stand-in; a backup from the db node.
+    - Verify: `uv run pytest tests/test_db_nodes.py -q`
+- [ ] **W69 — The AI role (own models)**
+    - Files: `forge_hostworker/{ai,runner,wire,doctor}.py`, `forge_web/hosting/ai_nodes.py`, `forge_web/gateway/{upstreams,meter}.py`, `forge_web/db/migrations/versions/0046_ai_models.py`, `frontend/src/pages/AdminAi.tsx`, `tests/test_ai_nodes.py`
+    - Build: an AI node runs Ollama (pinned image, `--gpus all`, bound to its mesh address; vLLM as the alternative in `[hosting.ai]`), with jobs `model_pull` and `model_remove`, and reports GPU, VRAM and models; every AI node becomes an `openai_compat` gateway upstream at its mesh address while it is online, its models appear in the model picker, priced per 1,000 tokens by the admin (default 0) and metered; an admin page adds and removes models.
+    - Tests: the upstream comes and goes with the node; metering; the jobs with a stand-in.
+    - Verify: `uv run pytest tests/test_ai_nodes.py -q`
+- [ ] **W70 — The servers at a glance**
+    - Files: `frontend/src/pages/AdminNodes.tsx`, `forge_web/hosting/{admin,alerts}.py`, `frontend/src/pages/adminNodes.test.tsx`, `tests/test_node_admin.py`
+    - Build: Verwaltung → Server lists every node with roles, online state, last WireGuard handshake, disk, GPU and storage use, with the install command and removal (frees the mesh address, revokes the token); alerts when a node goes offline, storage passes 85 % or a snapshot fails.
+    - Tests: the list, the command, removal; the alerts.
+    - Verify: `uv run pytest tests/test_node_admin.py -q && cd frontend && npx vitest run src/pages/adminNodes.test.tsx`
+
+## Phase K · A complete commercial product
+
+Asked for on 2026-11-27: Forge Web's own design "Glut & Schmiede" with a new logo (the name stays Forge), built by a UI design subagent with Claude's `frontend-design` skill; a landing page with a trial and onboarding; a status page and monitoring; analytics for the customers' apps; referrals and coupons; support in the product.
+
+- [ ] **W71 — Forge's own design and logo**
+    - Files: `frontend/src/styles.css`, `frontend/src/fonts/`, `frontend/public/` (logo, favicons, PWA icon), `frontend/src/components/Logo.tsx`, `forge_web/hosting/legal_pages.py` and the mail templates (colours only), `frontend/src/lib/contrast.test.ts`
+    - Build: tokens on the existing variables (dark: `#14110F` background, `#1F1A17` surfaces, `#FF6B2C` ember accent, `#C8875A` copper, `#4CC38A` success; light: `#FBF6EF` cream, `#E2531B` accent), WCAG AA pairs; a self-hosted display face for headings; one scale for spacing, radius and shadow; a quiet ember glow for headers and empty states that respects `prefers-reduced-motion`; an anvil-and-spark SVG logo with the word mark, favicons, the PWA icon and the mail header.
+    - Tests: every text/background token pair meets AA in both themes; the logo renders; the existing vitest and e2e suites stay green; screenshots of the main pages in light and dark.
+    - Verify: `cd frontend && npx vitest run src/lib/contrast.test.ts && npm run build`
+- [ ] **W72 — Landing page, trial and guided start**
+    - Files: `frontend/src/pages/{Landing,Onboarding}.tsx`, `forge_web/trial.py`, `forge_web/db/migrations/versions/0051_trial.py`, `forge_web/billing/*` (plans for the landing page), `tests/test_trial.py`, `frontend/src/pages/landing.test.tsx`
+    - Build: a public start page for visitors (benefit, examples, prices from the plans, FAQ, legal links; no tracking cookies); a trial of N days with a credit limit (admin settings) that ends with a mail and "choose a plan", hosted apps kept 14 days; an onboarding wizard (goal, a demo project from a template, the first chat, the preview) with progress, in German and English.
+    - Tests: the trial starts, limits and ends; the landing page shows the plans; the wizard's steps.
+    - Verify: `uv run pytest tests/test_trial.py -q && cd frontend && npx vitest run src/pages/landing.test.tsx`
+- [ ] **W73 — Status page and monitoring**
+    - Files: `forge_web/uptime/{__init__,checks,api}.py`, `forge_web/db/migrations/versions/0047_uptime.py`, `forge_web/hosting/{alerts,legal_pages}.py`, `forge_hostworker/edge.py`, `frontend/src/pages/{Status,AdminIncidents}.tsx`, `tests/test_uptime.py`
+    - Build: every live app is checked over HTTPS (`/healthz`) every 60 s, availability and response time are kept; when one is down its maker and the admin get a mail; a public status page for Forge Web and its node roles with incidents the admin writes; an optional `/status` per app served by Caddy like the legal pages; an SLA level as a plan feature with a monthly report (credits by hand).
+    - Tests: down and up again send one mail each; the uptime figure; the status page; incidents.
+    - Verify: `uv run pytest tests/test_uptime.py -q`
+- [ ] **W74 — Analytics for the customers' apps**
+    - Files: `forge_hostworker/{analytics,edge,runner,wire}.py`, `forge_web/analytics/{__init__,store,api}.py`, `forge_web/db/migrations/versions/0048_analytics.py`, `frontend/src/pages/AppAnalytics.tsx`, `tests/test_analytics.py`
+    - Build: Caddy logs per app on the host; the worker counts each hour page views, visitors (a daily salted hash, no cookies, no stored address), referrers, status codes and response times and sends only the counts; logs stay 14 days as W28a promises; the dashboard adds revenue from the payment relay, errors and uptime.
+    - Tests: log lines become counts without addresses; the salt changes daily; the dashboard's numbers.
+    - Verify: `uv run pytest tests/test_analytics.py -q`
+- [ ] **W75 — Referrals and coupons**
+    - Files: `forge_web/billing/{coupons,referrals}.py`, `forge_web/db/migrations/versions/0049_coupons_referrals.py`, `frontend/src/pages/{AdminCoupons,Referrals}.tsx`, `tests/test_coupons_referrals.py`
+    - Build: coupons by the admin (percent or amount, duration, maximum uses) redeemed as Stripe coupons and promotion codes; a referral link per customer, credit for both once the referred customer's payment is past the withdrawal period, protection against referring oneself (same payment method or mail domain), a report for the admin.
+    - Tests: against the Stripe stand-in; credit only after the period; self-referral refused.
+    - Verify: `uv run pytest tests/test_coupons_referrals.py -q`
+- [ ] **W76 — Support in the product**
+    - Files: `forge_web/support/{__init__,chat,tickets,kb,api}.py`, `forge_sandbox/prompts.py` (the support assistant's instructions), `forge_web/db/migrations/versions/0050_support.py`, `frontend/src/pages/{Help,AdminSupport}.tsx`, `tests/test_support.py`
+    - Build: a help chat answered first by a model through the gateway that knows the knowledge base and the account's state but no project code; "Mensch bitte" or an unsure answer turns it into a ticket; an admin inbox with replies, status and mail; a public, searchable knowledge base of Markdown articles the admin edits.
+    - Tests: with FakeProvider an answer from the knowledge base, a handover becomes a ticket, the assistant sees no project files; tickets and mails; search.
+    - Verify: `uv run pytest tests/test_support.py -q`
