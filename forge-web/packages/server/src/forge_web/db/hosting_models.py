@@ -21,6 +21,29 @@ class HostServer(Base):
     last_seen: Mapped[float] = mapped_column(Float, default=0.0)
     version: Mapped[str] = mapped_column(String(40), default="")
     disk_free_gb: Mapped[float] = mapped_column(Float, default=0.0)  # its last report
+    roles: Mapped[str] = mapped_column(Text, default='["apps"]')  # JSON, see wire.ROLES (W63)
+    mesh_ip: Mapped[str | None] = mapped_column(String(45), default=None)  # in Forge's WireGuard
+    wg_public_key: Mapped[str | None] = mapped_column(String(64), default=None)  # base64
+    endpoint: Mapped[str | None] = mapped_column(String(300), default=None)  # IP:PORT for peers
+    gpu: Mapped[str | None] = mapped_column(Text, default=None)  # JSON, as an ai host reports it
+    models: Mapped[str | None] = mapped_column(Text, default=None)  # JSON, the models it serves
+
+
+class HostJoinCode(Base):
+    """A one-time code `fjn_<id>_<secret>` an admin makes for a new server, with its name and
+    roles; the server trades it once, within its time, for its token (W63)."""
+
+    __tablename__ = "host_join_codes"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    roles: Mapped[str] = mapped_column(Text)  # JSON
+    code_hash: Mapped[str] = mapped_column(String(64))  # SHA-256 of the secret part
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[float] = mapped_column(Float, default=0.0)  # 0: not yet
+    host_id: Mapped[str | None] = mapped_column(String(16), default=None)  # the host it made
 
 
 class HostedApp(Base):
