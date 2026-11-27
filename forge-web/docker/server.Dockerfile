@@ -20,6 +20,13 @@ RUN npm run build
 
 FROM ${DOCKER_CLI_IMAGE} AS docker-cli
 
+# The host worker's wheel, which new nodes download from /install/forge_hostworker.whl (W64).
+FROM ${PYTHON_IMAGE} AS hostworker-wheel
+COPY forge-web/packages/hostworker /build/forge-hostworker
+RUN --mount=type=secret,id=ca,required=false \
+    if [ -f /run/secrets/ca ]; then export PIP_CERT=/run/secrets/ca; fi \
+ && pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /build/forge-hostworker
+
 FROM ${PYTHON_IMAGE}
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
@@ -35,6 +42,7 @@ COPY forge-web/packages/macworker /src/forge-macworker
 COPY forge-web/packages/hostworker /src/forge-hostworker
 COPY forge-web/packages/server /src/forge-web
 COPY --from=ui /build/forge-web/packages/server/src/forge_web/static /src/forge-web/src/forge_web/static
+COPY --from=hostworker-wheel /wheels /opt/forge-web/wheels
 # The server uses only the Mac and host workers' wire formats; the workers run elsewhere.
 RUN --mount=type=secret,id=ca,required=false \
     if [ -f /run/secrets/ca ]; then export PIP_CERT=/run/secrets/ca; fi \

@@ -45,6 +45,8 @@ PUBLIC = {
     "POST /kuendigen/zuruecknehmen/{token}",
     # The legal texts are public: customers read them before they accept them.
     "GET /rechtstexte/{kind}",
+    # What a new node downloads while it installs itself (W64): no secret, the code is the proof.
+    "GET /install/node.sh", "GET /install/forge_hostworker.whl",
     # Apple's App Store Server Notifications: Apple's signature is the proof, not a session.
     "POST /api/apple/notifications/{app}",
 }  # fmt: skip
