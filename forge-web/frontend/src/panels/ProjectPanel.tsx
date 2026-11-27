@@ -1,5 +1,6 @@
 // The panel next to a chat: the project's files, its changes, (for editors) its terminals, the
-// live preview and (for Apple apps) the pictures of its devices.
+// live preview, (for editors) its backups after every run and (for Apple apps) the pictures of its
+// devices.
 
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -12,9 +13,10 @@ import { ProductPanel } from "./Product";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { PreviewPanel } from "./Preview";
+import { SnapshotsPanel } from "./Snapshots";
 import { TerminalPanel } from "./Terminal";
 
-type Tab = "product" | "files" | "changes" | "terminal" | "preview" | "devices";
+type Tab = "product" | "files" | "changes" | "terminal" | "preview" | "snapshots" | "devices";
 
 interface Props {
   projectId: string;
@@ -42,6 +44,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, codeAccess = t
     ...code([["files", t("files")], ["changes", t("changes")]]),
     ...code(canEdit ? [["terminal", t("terminal")]] : []),
     ["preview", t("preview")],
+    ...code(canEdit ? [["snapshots", t("snapshotsTab")]] : []), // W66: owners and editors
     ...(apple ? [["devices", t("devices")] as [Tab, string]] : []),
   ];
   const choose = (next: Tab) => {
@@ -81,6 +84,7 @@ export function ProjectPanel({ projectId, canEdit, apple = false, codeAccess = t
             <TerminalPanel api={client} active={tab === "terminal"} onError={onError} />
           </div>
         )}
+        {tab === "snapshots" && <SnapshotsPanel api={client} refreshKey={refreshKey} onError={onError} />}
         {tab === "devices" && (
           <AppleScreens api={client} refreshKey={refreshKey} onError={onError} approvalPage={`/p/${projectId}/apple`} />
         )}

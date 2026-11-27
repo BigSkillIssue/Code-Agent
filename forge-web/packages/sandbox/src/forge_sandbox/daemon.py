@@ -47,6 +47,7 @@ from forge_sandbox.netinfo import listening_ports
 from forge_sandbox.procs import Procs
 from forge_sandbox.pty import Ptys
 from forge_sandbox.rpc import Handler, Rpc, RpcError
+from forge_sandbox.snapshots import Snapshots
 from forge_sandbox.streams import stdio_streams
 from forge_sandbox.unzip import UnzipLimits, unzip
 from forge_sandbox.usage import disk_usage
@@ -75,6 +76,7 @@ class Daemon:
         self.ptys = Ptys(self.workspace, self.env)
         self.git = GitInfo(self.workspace, self.env)
         self.gitops = GitOps(self.workspace, self.env)
+        self.snapshots = Snapshots(self.workspace, self.env)  # W66
         self.forwards = Forwards(self.open_to_server)
         self.chats = Chats(self.workspace, self.env)
         self.connection: Connection | None = None
@@ -98,6 +100,7 @@ class Daemon:
             **self.ptys.handlers(),
             **self.git.handlers(),
             **self.gitops.handlers(),
+            **self.snapshots.handlers(),
             **self.forwards.handlers(),
             **self.chats.handlers(),
             "ports.list": method(PortsParams, self.ports),

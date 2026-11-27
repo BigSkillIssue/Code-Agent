@@ -1,13 +1,13 @@
 """Forge's WireGuard network (W65): no two nodes share an address (nodes without one may be many).
 
 Revision ID: 0052
-Revises: 0043
+Revises: 0044
 """
 
 from alembic import op
 
 revision = "0052"
-down_revision = "0043"
+down_revision = "0044"
 
 
 def upgrade() -> None:

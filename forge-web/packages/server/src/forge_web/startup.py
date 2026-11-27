@@ -47,6 +47,8 @@ from forge_web.quotas import enforce_disk
 from forge_web.sandbox_client import ForwardTarget, SandboxClient
 from forge_web.services import Services
 from forge_web.settings import WebSettings
+from forge_web.snapshots.queue import SnapshotQueue
+from forge_web.snapshots.store import SnapshotStore
 from forge_web.stores.agent_store_api import store_routes
 from forge_web.stores.android import AndroidBuilds
 from forge_web.stores.play_release import PlayReleases
@@ -179,6 +181,10 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     windows = WindowsBuilds(db, settings, runs.call, deploys.packing)
     devices = DeviceSessions(db, settings, runs.call)
     backups = Backups(db, vault, settings, hosts)
+    snapshots = SnapshotQueue(db, settings, SnapshotStore(db, vault, settings, hosts), runs.call,
+                              lambda pid: (link := runs.links.get(pid)) is not None
+                              and not link.closed)  # fmt: skip
+    runs.on_run_end = snapshots.request
     alerts = Alerts(db, settings)
     removals = Removals(db, settings, hosts)
     billing = Billing(db, vault, settings)
@@ -192,7 +198,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
-        android=android, play=play, windows=windows, devices=devices,
+        android=android, play=play, windows=windows, devices=devices, snapshots=snapshots,
     )  # fmt: skip
     later["services"] = services
     await after_start(services, docker)
@@ -203,6 +209,8 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     await play.start()
     await windows.start()
     devices.start_expiry()
+    if settings.snapshots.enabled:
+        snapshots.start()  # retention, and moving snapshots to a storage node
     await removals.start()  # and so do deletions of apps
     if settings.billing.enabled:
         billing.events.start()  # Stripe's events that wait
@@ -302,6 +310,7 @@ async def stop_services(services: Services) -> None:
     await services.removals.close()
     await services.alerts.close()
     await services.backups.close()
+    await services.snapshots.close()
     await services.windows.close()
     await services.devices.close()
     await services.play.close()

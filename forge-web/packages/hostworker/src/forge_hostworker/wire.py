@@ -40,6 +40,8 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from forge_hostworker.blob_wire import BLOB_KINDS, BlobRef
+
 TOKEN_PREFIX = "fhw"
 JOIN_PREFIX = "fjn"  # a one-time join code, traded for the token (W63)
 ROLES: tuple[str, ...] = ("apps", "db", "ai", "storage")  # what a host does, in this order
@@ -61,6 +63,7 @@ DOMAIN = re.compile(
 JobKind = Literal[
     "check", "backup", "migrate", "release", "rollback", "stop", "start", "logs", "archive",
     "restore_drill", "delete", "domains", "android", "sql",
+    "blob_put", "blob_get", "blob_delete",  # a storage node's (W66, blob_wire)
 ]  # fmt: skip
 PLANNED: tuple[str, ...] = ("check", "migrate", "release")  # the jobs that carry a plan
 WITH_SOURCE: tuple[str, ...] = ("check", "migrate", "release", "restore_drill", "android")
@@ -195,6 +198,7 @@ class HostJob(BaseModel):
     domains: list[str] = Field(default_factory=list, max_length=20)  # a domains job: all of them
     android: AndroidBuild | None = None  # an android job
     sql: SqlQuery | None = None  # a sql job
+    blob: BlobRef | None = None  # a blob job
     timeout_s: float = Field(default=1800, gt=0, le=6 * 3600)
 
     _app = field_validator("app")(app_name)
@@ -216,6 +220,8 @@ class HostJob(BaseModel):
                              else f"a {self.kind} job carries no plan")  # fmt: skip
         if (self.kind == "android") != (self.android is not None):
             raise ValueError("an android job, and only one, says what to build with")
+        if (self.kind in BLOB_KINDS) != (self.blob is not None):
+            raise ValueError("a blob job, and only one, names its blob")
         if self.plan is not None and (self.plan.app, self.plan.environment) != (
             self.app,
             self.environment,

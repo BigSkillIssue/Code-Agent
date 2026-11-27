@@ -47,6 +47,7 @@ ChatOptionsFor = Callable[[Chat, dict[str, Any]], dict[str, Any] | Awaitable[dic
 ChatEnvFor = Callable[[Chat], dict[str, str]]
 TargetsFor = Callable[[str], dict[str, ForwardTarget]]
 OnLink = Callable[[str, SandboxClient], Awaitable[dict[str, Any]]]
+OnRunEnd = Callable[[str, str], None]  # project id, chat id: must not block or raise
 
 
 async def _no_setup(_project_id: str, _client: SandboxClient) -> dict[str, Any]:
@@ -134,6 +135,7 @@ class RunManager:
         self._warming: set[asyncio.Task[None]] = set()
         self._project_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._chat_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self.on_run_end: OnRunEnd | None = None  # the snapshot queue (W66)
 
     # sandboxes ------------------------------------------------------------------------------
 
@@ -390,6 +392,7 @@ class RunManager:
         elif kind in ("turn", "worker_exited"):
             live.streaming.clear()
             live.outputs.clear()
+            self._run_ended(live)
         changes: dict[str, Any] = {}
         state = next_state(live, item)
         if state == "idle":
@@ -408,6 +411,14 @@ class RunManager:
             }
             self.hub.to_chat(live.chat_id, message)  # every member who has the chat open
             self.hub.to_users({live.user_id}, message)
+
+    def _run_ended(self, live: LiveChat) -> None:
+        """Tell whoever wants to know that a run ended (a snapshot follows); never fails."""
+        if self.on_run_end is not None:
+            try:
+                self.on_run_end(live.project_id, live.chat_id)
+            except Exception:
+                log.exception("after the run of chat %s", live.chat_id)
 
     async def _save(self, chat_id: str, **values: Any) -> None:
         async with self.db.session() as session, session.begin():

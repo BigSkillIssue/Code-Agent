@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
 from forge_hostworker import __version__, firewall
+from forge_hostworker.blobs import BlobStore
 from forge_hostworker.client import HostClient
 from forge_hostworker.docker import DockerCli, HostError, container_owner, require_runsc
 from forge_hostworker.doctor import TEST_IMAGE, doctor, is_root, report
@@ -79,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         help="run Android emulators for Forge's agent (needs /dev/kvm)",
     )
     run.add_argument("--docker", default="docker")
+    run.add_argument(
+        "--blob-quota-gb",
+        type=float,
+        default=0,
+        help="storage role: blobs take at most this much (0: keep 10%% disk free)",
+    )
     run.add_argument("--apps-domain", help="apps answer at <app>.DOMAIN (Caddy is the edge)")
     run.add_argument("--legal-base", help="Forge Web's legal pages, https://forge.../legal")
     run.add_argument("--caddy-data", type=Path, default=CADDY_DATA,
@@ -281,6 +288,7 @@ async def serve(args: argparse.Namespace) -> int:
         slots=args.slots,
         devices=args.devices,
         mesh=MeshNode(args.data, config=args.wg_config),
+        blobs=BlobStore(args.data / "blobs", max_bytes=int(args.blob_quota_gb * 1e9)),
     )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

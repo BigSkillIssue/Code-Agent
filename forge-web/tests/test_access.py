@@ -88,6 +88,8 @@ OWNER_READS = {
     "GET /api/projects/{project_id}/android/builds/{build_id}/signed",
     "GET /api/projects/{project_id}/windows/builds/{build_id}/package",
 }
+# Reads that need the editor role (W66: the project's snapshots, which only editors restore).
+EDITOR_READS = {"GET /api/projects/{project_id}/snapshots"}
 # A valid body for every request model, so a refusal is about access, not validation.
 BODIES: dict[str, dict[str, Any]] = {
     "UserPatch": {"status": "disabled"},
@@ -301,6 +303,7 @@ def filled(path: str, world: World) -> str:
         "item_id": "pro", "coupon_id": "launch", "kind": "terms", "checkout_id": "cs_1",
         "subscription_id": "sub_1", "build_id": "0" * 32, "worker_id": "0" * 16,
         "action": "hold", "change": "lock", "cancellation_id": "0" * 16,
+        "snapshot_id": "0" * 32, "blob_id": "0" * 32,
     }  # fmt: skip
     return re.sub(r"\{(\w+)\}", lambda m: values[m.group(1)], path)
 
@@ -350,8 +353,9 @@ async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
     # poll, source, secrets, backup, bundle, metrics, result, downloads; devices (W60): poll,
-    # source, next, answer, ended; the WireGuard network (W65): mesh
-    assert len(routes) == 15
+    # source, next, answer, ended; the WireGuard network (W65): mesh; a storage node's blobs
+    # (W66): fetch and send back
+    assert len(routes) == 17
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"
@@ -403,7 +407,7 @@ async def test_viewers_only_read(shared: World) -> None:
             assert status == 403, f"{method} {path} answered {status}"
         elif f"{method} {path}" in VIEWER_ACTIONS:
             assert status == 200, f"{method} {path} answered {status}"
-        elif f"{method} {path}" in OWNER_READS:
+        elif f"{method} {path}" in OWNER_READS | EDITOR_READS:
             assert status == 403, f"{method} {path} answered {status}"
         elif kind == "project" and method in UNSAFE:
             assert status in (403, 404), f"{method} {path} answered {status}"
