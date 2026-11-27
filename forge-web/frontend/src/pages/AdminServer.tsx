@@ -183,6 +183,14 @@ function SettingsForm({ saved, onSaved }: { saved: ServerSettings; onSaved: () =
         />
         {number("monthly_limit_usd", t("defaultMonthlyLimit"))}
       </Section>
+      {edited.trial_days !== undefined && (
+        <Section title={t("adminTrialTitle")} hint={t("adminTrialHint")}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextInput label={t("adminTrialDays")} value={String(edited.trial_days)} onChange={(v) => set("trial_days", Number(v))} />
+            <TextInput label={t("adminTrialCredit")} value={String(edited.trial_credit_usd ?? 0)} onChange={(v) => set("trial_credit_usd", Number(v))} />
+          </div>
+        </Section>
+      )}
       <Button type="submit" kind="primary">
         {t("save")}
       </Button>

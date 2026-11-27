@@ -1,6 +1,6 @@
 import { Eraser, Globe, Loader2, MonitorPlay, PanelRight } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { Chat, ChatEffort, ChatMode, StoredItem } from "../api/types";
 import { BUILTIN_COMMANDS, type SlashCommand } from "../lib/completion";
 import { t } from "../lib/i18n";
@@ -9,6 +9,7 @@ import { buildTranscript } from "../state/transcript";
 import { ProjectPanel } from "../panels/ProjectPanel";
 import { BrowserPreview, SplitHandle, usePreviewPane } from "./BrowserPreview";
 import { Composer } from "./Composer";
+import { GuideBar } from "./Guide";
 import { LogoMark } from "./Logo";
 import { Select } from "./Select";
 import { TodoPanel } from "./TodoPanel";
@@ -74,6 +75,19 @@ function storedPanel(): boolean {
   }
 }
 
+/** The guided start's steps 3 and 4 (W72), when the onboarding page sent the chat a first task;
+ * the router's state is cleared at once, so a reload does not show them again. */
+function useGuide() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [prompt] = useState<string>(() => (location.state as { guide?: { prompt?: string } } | null)?.guide?.prompt ?? "");
+  const [step, setStep] = useState<0 | 3 | 4>(prompt ? 3 : 0);
+  useEffect(() => {
+    if (prompt) navigate(location.pathname, { replace: true, state: null });
+  }, [prompt, navigate, location.pathname]);
+  return { prompt, step, setStep };
+}
+
 /** A number that grows each time a turn ends (the agent may have changed files). */
 function useTurnCounter(state: Chat["state"]): number {
   const [count, setCount] = useState(0);
@@ -107,6 +121,7 @@ export function ChatView({ chat }: { chat: Chat }) {
   // Forge Web's product flow (W55): the agent plans and steers; people answer, stop and undo.
   const agentSteers = useStore((s) => s.user?.product_flow === true);
   const [panel, setPanel] = useState(storedPanel);
+  const guide = useGuide();
   const turns = useTurnCounter(chat.state);
   const preview = usePreviewPane(chat.project_id, running, turns);
   const showPreview = preview.open && !panel; // one pane next to the chat at a time
@@ -173,7 +188,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             title={t("preview")}
             aria-label={t("preview")}
             aria-pressed={showPreview}
-            className={`rounded-md p-1.5 ${showPreview ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel hover:text-fg"}`}
+            className={`rounded-md p-1.5 ${showPreview ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel hover:text-fg"} ${guide.step === 4 ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`}
             onClick={() => {
               if (!showPreview) togglePanel(false);
               preview.setOpen(!showPreview);
@@ -222,6 +237,7 @@ export function ChatView({ chat }: { chat: Chat }) {
           )}
         </main>
         <TodoPanel todos={transcript.todos} />
+        {guide.step > 0 && <GuideBar step={guide.step === 3 ? 3 : 4} onNext={() => guide.setStep(4)} onClose={() => guide.setStep(0)} />}
         {chat.can_write && (
           <Composer
             running={running}
@@ -229,6 +245,7 @@ export function ChatView({ chat }: { chat: Chat }) {
             searchFiles={findFiles}
             onSend={(text, files) => guard(() => send(chat.id, text, files)).then(() => undefined)}
             upload={(file) => upload(chat.id, file)}
+            initialText={guide.prompt}
             onStop={() => guard(() => cancel(chat.id)).then(() => undefined)}
           />
         )}

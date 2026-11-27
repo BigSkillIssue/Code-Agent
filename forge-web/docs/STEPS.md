@@ -476,7 +476,7 @@ Asked for on 2026-11-27: Forge Web's own design "Glut & Schmiede" with a new log
     - Build: tokens on the existing variables (dark: `#14110F` background, `#1F1A17` surfaces, `#FF6B2C` ember accent, `#C8875A` copper, `#4CC38A` success; light: `#FBF6EF` cream, `#E2531B` accent), WCAG AA pairs; a self-hosted display face for headings; one scale for spacing, radius and shadow; a quiet ember glow for headers and empty states that respects `prefers-reduced-motion`; an anvil-and-spark SVG logo with the word mark, favicons, the PWA icon and the mail header.
     - Tests: every text/background token pair meets AA in both themes; the logo renders; the existing vitest and e2e suites stay green; screenshots of the main pages in light and dark.
     - Verify: `cd frontend && npx vitest run src/lib/contrast.test.ts && npm run build`
-- [ ] **W72 — Landing page, trial and guided start**
+- [x] **W72 — Landing page, trial and guided start**
     - Files: `frontend/src/pages/{Landing,Onboarding}.tsx`, `forge_web/trial.py`, `forge_web/db/migrations/versions/0051_trial.py`, `forge_web/billing/*` (plans for the landing page), `tests/test_trial.py`, `frontend/src/pages/landing.test.tsx`
     - Build: a public start page for visitors (benefit, examples, prices from the plans, FAQ, legal links; no tracking cookies); a trial of N days with a credit limit (admin settings) that ends with a mail and "choose a plan", hosted apps kept 14 days; an onboarding wizard (goal, a demo project from a template, the first chat, the preview) with progress, in German and English.
     - Tests: the trial starts, limits and ends; the landing page shows the plans; the wizard's steps.

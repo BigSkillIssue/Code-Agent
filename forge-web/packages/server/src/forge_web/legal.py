@@ -133,6 +133,19 @@ def legal_texts_router() -> APIRouter:
         return page(text.title, f'<p class="note">Version {text.version} vom {day}</p>'
                                 f"<p>{esc(text.body)}</p>")  # fmt: skip
 
+    @router.get("/impressum", response_class=HTMLResponse)
+    async def imprint(request: Request) -> HTMLResponse:
+        """Who runs this Forge Web (DDG § 5), from the hosting provider's settings (W72)."""
+        hosting = services_of(request).settings.hosting
+        if not hosting.provider_name:
+            return page("Impressum", '<p class="note">Die Angaben zum Anbieter fehlen noch.</p>')
+        mail = esc(hosting.contact_email)
+        contact = (
+            f'<h2>Kontakt</h2><p>E-Mail: <a href="mailto:{mail}">{mail}</a></p>' if mail else ""
+        )
+        who = f"<p>{esc(hosting.provider_name)}</p><p>{esc(hosting.provider_address)}</p>"
+        return page("Impressum", f"<h2>Angaben gemäß § 5 DDG</h2>{who}{contact}")
+
     @router.get("/api/legal/me")
     async def mine(request: Request, user: CurrentUser) -> dict[str, Any]:
         services = services_of(request)

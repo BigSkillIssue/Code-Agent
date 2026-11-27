@@ -18,6 +18,7 @@ interface Props {
   commands: SlashCommand[];
   searchFiles?: (query: string) => Promise<string[]>;
   upload?: (file: File) => Promise<Attachment>; // files for the message (W45); none without it
+  initialText?: string; // written in, not sent (the guided start, W72)
 }
 
 interface Pending {
@@ -91,8 +92,8 @@ function usePendingFiles(upload: Props["upload"]) {
   return { files, add, remove, clear: () => setFiles([]) };
 }
 
-export function Composer({ running, onSend, onStop, commands, searchFiles, upload }: Props) {
-  const [text, setText] = useState("");
+export function Composer({ running, onSend, onStop, commands, searchFiles, upload, initialText = "" }: Props) {
+  const [text, setText] = useState(initialText);
   const [caret, setCaret] = useState(0);
   const [sending, setSending] = useState(false);
   const [active, setActive] = useState(0);

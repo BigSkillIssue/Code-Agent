@@ -61,6 +61,7 @@ interface Store {
   handle: (message: ServerMessage) => void;
   setError: (error: string) => void;
   setUserName: (name: string) => void;
+  finishOnboarding: () => Promise<void>; // the guided start is done or skipped (W72)
 }
 
 /** A chat's live state after one live-only item (streaming text, command output). */
@@ -238,6 +239,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setUserName(name) {
     set((s) => ({ user: s.user ? { ...s.user, name } : s.user }));
+  },
+  async finishOnboarding() {
+    await api.post("/api/me/onboarding", {});
+    set((s) => ({ user: s.user ? { ...s.user, onboarding: false } : s.user }));
   },
   setError(error) {
     set({ error });

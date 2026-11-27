@@ -224,9 +224,11 @@ def checkout_router() -> APIRouter:
             rows = list(await session.scalars(select(Subscription).where(
                 Subscription.user_id == user.id).order_by(newest_first)))  # fmt: skip
         limits = await services.entitlements.of(user)
+        trial = await services.trials.state(user)
         return {"enabled": services.settings.billing.enabled, "entitlements": asdict(limits),
                 "subscriptions": [subscription_view(r) for r in rows],
-                "apps": await apps_of(services.db, user.id)}  # fmt: skip
+                "apps": await apps_of(services.db, user.id),
+                "trial": trial.view() if trial else None}  # fmt: skip
 
     @router.post("/checkout")
     async def order(body: CheckoutIn, request: Request, user: CurrentUser) -> dict[str, str]:

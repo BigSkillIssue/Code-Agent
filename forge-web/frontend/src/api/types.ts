@@ -25,6 +25,7 @@ export interface User {
   project_sources?: string[]; // where new projects may come from (empty, app, git, zip, folder)
   model_choice?: boolean; // the admin lets people pick a chat's model
   product_flow?: boolean; // the agent plans and steers every task (W55)
+  onboarding?: boolean; // the guided start is still due (W72)
 }
 
 export interface Project {

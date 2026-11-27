@@ -50,6 +50,8 @@ PUBLIC = {
     # Apple's App Store Server Notifications: Apple's signature is the proof, not a session.
     "POST /api/apple/notifications/{app}",
     "POST /api/host/join",  # a new server trades a one-time join code (W63, test_host_join.py)
+    # The landing page's plans and the operator's Impressum, for visitors (W72, test_trial.py).
+    "GET /api/public/plans", "GET /impressum",
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -67,7 +69,7 @@ OWN = {
     "GET /api/legal/me", "POST /api/legal/accept", "POST /api/legal/vat",
     "GET /api/billing/connect", "POST /api/billing/connect", "POST /api/billing/connect/dashboard",
     "GET /api/me/play-key", "PUT /api/me/play-key", "POST /api/me/play-key/check",
-    "DELETE /api/me/play-key", "GET /api/invitations",
+    "DELETE /api/me/play-key", "GET /api/invitations", "POST /api/me/onboarding",
 }  # fmt: skip
 # Project files and git live in the project's sandbox, which the access tests do not start:
 # once access is granted, these routes answer 503 here.

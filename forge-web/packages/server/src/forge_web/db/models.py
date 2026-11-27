@@ -29,6 +29,7 @@ class User(Base):
     recovery_codes: Mapped[str] = mapped_column(Text, default="")  # SHA-256 hashes, one per line
     apple_allowed: Mapped[bool] = mapped_column(Boolean, default=False)  # Mac builds granted
     hosting_trusted: Mapped[bool] = mapped_column(Boolean, default=False)  # no admin approval
+    onboarding_due: Mapped[bool] = mapped_column(Boolean, default=False)  # the guided start (W72)
 
 
 class Project(Base):

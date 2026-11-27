@@ -160,6 +160,8 @@ export interface ServerSettings {
   apple_allowed: "admins" | "granted" | "everyone";
   apple_minutes_per_month: number;
   apple_reviewer_model: string;
+  trial_days?: number; // a new account's trial (W72)
+  trial_credit_usd?: number;
 }
 
 const id = encodeURIComponent;
