@@ -58,6 +58,7 @@ const exact: Record<string, string> = {
   "no account waiting for approval": "Kein Konto wartet auf Freischaltung.",
   "no such project": "Dieses Projekt gibt es nicht.",
   "no such chat": "Diesen Chat gibt es nicht.",
+  "the trial is over; please choose a plan": "Testphase vorbei – bitte Plan wählen.",
   "no such user": "Diese Person gibt es nicht.",
   "no such account": "Dieses Konto gibt es nicht.",
   "no such member": "Dieses Mitglied gibt es nicht.",

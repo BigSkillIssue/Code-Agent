@@ -267,8 +267,13 @@ async def create_user(
         role=role, status=status, created_at=time.time(), email_verified=verified,
         password_hash=await hash_password(password) if password else None,
     )  # fmt: skip
+    user.onboarding_due = True  # the guided start, once (W72)
+    trial = services.trials.new(user, user.created_at)
     async with services.db.session() as session, session.begin():
         session.add(user)
+        if trial is not None:
+            await session.flush()
+            session.add(trial)
     return user
 
 

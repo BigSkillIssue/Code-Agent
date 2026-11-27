@@ -101,7 +101,7 @@ export interface Offer {
 
 /** Every limit of the signed-in user (null: no limit), and where it comes from. */
 export interface Entitlements {
-  source: string; // "server", "admin" or "plan:<offer>"
+  source: string; // "server", "admin", "trial" (W72) or "plan:<offer>"
   projects: number | null;
   ai_month_usd: number | null;
   ai_product_usd: number | null;
@@ -114,8 +114,18 @@ export interface Entitlements {
   store_publishing: boolean;
 }
 
+/** A new account's trial (W72). */
+export interface TrialView {
+  started_at: number;
+  ends_at: number;
+  credit_usd: number;
+  used_usd: number;
+  status: "active" | "expired" | "used_up" | "paid";
+}
+
 export interface MyBilling {
   enabled: boolean;
+  trial?: TrialView | null;
   entitlements: Entitlements;
   subscriptions: { item_id: string; status: string; interval: string; quantity: number; current_period_end: number }[];
   apps: { project_id: string; name: string; unlocked: boolean }[]; // own apps; paid for once (W40b)

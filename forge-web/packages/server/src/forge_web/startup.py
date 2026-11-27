@@ -51,6 +51,7 @@ from forge_web.stores.agent_store_api import store_routes
 from forge_web.stores.android import AndroidBuilds
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
+from forge_web.trial import Trials
 from forge_web.vault import Vault, load_master_key
 
 log = logging.getLogger(__name__)
@@ -185,6 +186,8 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     StripeEvents(db, settings).register(billing.events)
     dunning = Dunning(db, settings, hosts, backups, removals)
     dunning.register(billing.events)
+    trials = Trials(db, settings, entitlements, dunning)
+    entitlements.trials = trials
     services = Services(
         settings=settings, db=db, writer=writer, driver=chosen, hub=hub, runs=runs, vault=vault,
         gateway=gateway, gateway_server=gateway_server, egress=egress,
@@ -192,6 +195,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
         previews=PreviewAccess(vault.derive("preview")), apple=apple, releases=releases,
         submissions=submissions, hosts=hosts, deploys=deploys, backups=backups, alerts=alerts,
         removals=removals, billing=billing, entitlements=entitlements, dunning=dunning,
+        trials=trials,
         android=android, play=play, windows=windows, devices=devices,
     )  # fmt: skip
     later["services"] = services
@@ -207,6 +211,7 @@ async def start_services(settings: WebSettings, driver: ContainerDriver | None) 
     if settings.billing.enabled:
         billing.events.start()  # Stripe's events that wait
         dunning.start()
+        trials.start()
     if settings.hosting.enabled:
         backups.start()
         alerts.start()
@@ -297,6 +302,7 @@ async def stop_services(services: Services) -> None:
     """Close everything in reverse order (containers keep running)."""
     for task in services.tasks:
         task.cancel()
+    await services.trials.close()
     await services.dunning.close()
     await services.billing.events.close()
     await services.removals.close()

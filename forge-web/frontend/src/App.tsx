@@ -1,11 +1,12 @@
 import { Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { api } from "./api/client";
 import type { Chat } from "./api/types";
 import { ChatView } from "./components/ChatView";
 import { Logo, LogoMark } from "./components/Logo";
 import { Sidebar } from "./components/Sidebar";
+import { TrialNotice } from "./components/TrialNotice";
 import { t } from "./lib/i18n";
 import { AdminPage } from "./pages/Admin";
 import { AppleListingPage } from "./pages/AppleListing";
@@ -16,6 +17,10 @@ import { AuthPages, type AuthConfig } from "./pages/Auth";
 import { BillingPage } from "./pages/Billing";
 import { SettingsPage } from "./pages/Settings";
 import { useStore } from "./state/store";
+
+// Loaded only when shown: visitors never load the app, people in the app never the start page.
+const LandingPage = lazy(() => import("./pages/Landing"));
+const OnboardingPage = lazy(() => import("./pages/Onboarding"));
 
 function ErrorBar() {
   const { error, setError } = useStore();
@@ -88,11 +93,32 @@ function Shell() {
           </button>
           <Logo size={30} />
         </div>
+        <TrialNotice />
         <div className="flex min-h-0 flex-1">
           <Outlet />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Signed out: the start page at /, signing in everywhere else (and where a sign-in came back). */
+export function SignedOut({ config }: { config: AuthConfig }) {
+  const location = useLocation();
+  const returned = new URLSearchParams(location.search).has("auth_error");
+  if (config.setup_needed || (location.pathname === "/" && returned)) return <AuthPages config={config} />;
+  return (
+    <Routes>
+      <Route
+        index
+        element={
+          <Suspense fallback={null}>
+            <LandingPage config={config} />
+          </Suspense>
+        }
+      />
+      <Route path="*" element={<AuthPages config={config} />} />
+    </Routes>
   );
 }
 
@@ -108,7 +134,7 @@ export function App() {
   if (signedOut) {
     return config ? (
       <BrowserRouter>
-        <AuthPages config={config} />
+        <SignedOut config={config} />
       </BrowserRouter>
     ) : null;
   }
@@ -116,8 +142,17 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+          path="willkommen"
+          element={
+            <Suspense fallback={null}>
+              <OnboardingPage />
+            </Suspense>
+          }
+        />
+        <Route path="anmelden" element={<Navigate replace to="/" />} />
         <Route element={<Shell />}>
-          <Route index element={<Empty />} />
+          <Route index element={user.onboarding ? <Navigate replace to="/willkommen" /> : <Empty />} />
           <Route path="p/:projectId" element={<ProjectPage />} />
           <Route path="p/:projectId/apple" element={<AppleReviewPage />} />
           <Route path="p/:projectId/apple/release" element={<AppleReleasePage />} />

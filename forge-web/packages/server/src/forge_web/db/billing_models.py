@@ -209,6 +209,23 @@ class DunningCase(Base):
     held_at: Mapped[float] = mapped_column(Float, default=0.0)  # an admin holds it here (W40c)
 
 
+class Trial(Base):
+    """A new account's trial (W72): its dates and credit, fixed when it starts, and its mails."""
+
+    __tablename__ = "trials"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    started_at: Mapped[float] = mapped_column(Float)
+    ends_at: Mapped[float] = mapped_column(Float)
+    credit_usd: Mapped[float] = mapped_column(Float)  # on the server's AI keys
+    reminded_at: Mapped[float] = mapped_column(Float, default=0.0)  # the mail before the end
+    ended_at: Mapped[float] = mapped_column(Float, default=0.0)
+    ended_reason: Mapped[str] = mapped_column(String(16), default="")  # expired, used_up, paid
+    apps_handed_at: Mapped[float] = mapped_column(Float, default=0.0)  # to dunning's suspension
+
+
 class LegalText(Base):
     """One version of a legal text the admin published (W34): terms, privacy, DPA or AUP."""
 

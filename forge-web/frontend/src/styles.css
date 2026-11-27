@@ -240,6 +240,36 @@ body {
     radial-gradient(120% 60% at 70% 114%, rgb(200 135 90 / 0.22), rgb(200 135 90 / 0) 100%);
 }
 
+/* The start page (W72): the headline is the loudest thing Forge says, set like the word mark;
+   the steps' numerals are cast in copper, hollow, so they read as a sequence and not as prices. */
+.landing-headline {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variation-settings: "opsz" 72;
+  font-size: clamp(54px, 13vw, 136px);
+  line-height: 0.9;
+  letter-spacing: 0.005em;
+}
+/* What Forge does, under the call: half the size, so the sentence reads in one breath. */
+.landing-headline-rest {
+  display: block;
+  margin-top: 0.18em;
+  max-width: 18ch;
+  font-size: 0.46em;
+  font-weight: 700;
+  line-height: 1;
+  color: rgb(243 234 225 / 0.84);
+}
+.landing-numeral {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 88px;
+  line-height: 0.8;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--copper);
+}
+
 /* The mark's spark is always ember; the anvil follows the text colour. */
 .logo-spark {
   fill: var(--spark);

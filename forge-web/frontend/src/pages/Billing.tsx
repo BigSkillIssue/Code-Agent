@@ -44,7 +44,7 @@ export function BillingPage() {
   const [query] = useSearchParams();
   const current = mine?.entitlements.source.startsWith("plan:") ? mine.entitlements.source.slice(5) : "";
   const named = (id: string) => offers?.find((o) => o.id === id)?.name ?? id;
-  const plan = current ? named(current) : t("myPlanServer");
+  const plan = current ? named(current) : t(mine?.entitlements.source === "trial" ? "myPlanTrial" : "myPlanServer");
   const plans = (offers ?? []).filter((o) => o.kind === "plan");
   const extras = (offers ?? []).filter((o) => o.kind !== "plan");
   return (

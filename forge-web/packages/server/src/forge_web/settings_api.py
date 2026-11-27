@@ -45,7 +45,7 @@ class PasswordIn(BaseModel):
 
 
 def settings_router() -> APIRouter:
-    """`PATCH /api/me` and `POST /api/me/password`."""
+    """`PATCH /api/me`, `POST /api/me/password` and `POST /api/me/onboarding`."""
     router = APIRouter(prefix="/api/me")
 
     @router.patch("")
@@ -86,6 +86,15 @@ def settings_router() -> APIRouter:
         await end_sessions(services, user.id, keep=request.state.session_id)
         await onetime.revoke(services.db, "reset", user.id)
         await audit(services.db, "password_changed", user_id=user.id, ip=client_ip(request))
+        return {"ok": True}
+
+    @router.post("/onboarding")
+    async def onboarded(request: Request, user: CurrentUser) -> dict[str, bool]:
+        """The guided start is done or skipped (W72): it is not shown again."""
+        async with services_of(request).db.session() as session, session.begin():
+            row = await session.get(User, user.id)
+            assert row is not None
+            row.onboarding_due = False
         return {"ok": True}
 
     return router

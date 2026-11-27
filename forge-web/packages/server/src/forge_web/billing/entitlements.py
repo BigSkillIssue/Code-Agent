@@ -14,6 +14,7 @@ policy (its grants and default budget), never unlimited: they are the admin's mo
 import json
 import time
 from dataclasses import dataclass, fields, replace
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
@@ -23,6 +24,9 @@ from forge_web.db.engine import Database
 from forge_web.db.models import Project, User
 from forge_web.gateway.keys import server_key_limit
 from forge_web.settings import WebSettings
+
+if TYPE_CHECKING:  # the trials ask the engine for plans, the engine asks them for the trial
+    from forge_web.trial import Trials
 
 PAID = ("active", "trialing", "past_due")  # past due: dunning (W33b) decides what follows
 
@@ -50,6 +54,7 @@ class EntitlementEngine:
 
     def __init__(self, db: Database, settings: WebSettings) -> None:
         self.db, self.settings = db, settings
+        self.trials: Trials | None = None  # a new account's trial (W72), set at startup
 
     async def of(self, user: User) -> Entitlements:
         """The user's limits."""
@@ -60,8 +65,9 @@ class EntitlementEngine:
             paid = await self.plan_of(user)
             if paid is not None:
                 return paid
-            unpaid = await self.server_defaults(user)
-            return replace(unpaid, hosted_apps=0, custom_domains=0, store_publishing=False)
+            unpaid = replace(await self.server_defaults(user), hosted_apps=0, custom_domains=0,
+                             store_publishing=False)  # fmt: skip
+            return await self.trials.limits(user, unpaid) if self.trials else unpaid
         return await self.server_defaults(user)
 
     async def of_project(self, project_id: str) -> Entitlements:

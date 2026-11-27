@@ -261,7 +261,7 @@ function SignupPage({ config }: { config: AuthConfig }) {
         <ErrorText error={error} />
         <Submit busy={busy} label={t("signUp")} />
       </form>
-      <Link className="block text-sm text-accent" to="/">
+      <Link className="block text-sm text-accent" to="/anmelden">
         {t("haveAccount")}
       </Link>
     </Card>

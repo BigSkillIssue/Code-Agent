@@ -22,6 +22,7 @@ from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.hosting.golive import note_go_live
 from forge_web.quotas import check_disk
 from forge_web.services import Services, services_of
+from forge_web.trial import check_trial
 
 MAX_PAGE = 500
 
@@ -206,6 +207,7 @@ def chats_router() -> APIRouter:
             chat, _ = await require_chat(session, user, chat_id, write=True)
             chat.started_by = user.id  # stopped with this member's access (members.stop_chats)
         await check_disk(services, chat.project_id)
+        await check_trial(services, chat.project_id)
         try:
             await services.runs.send(chat, body.text, body.attachments)
         except (RpcError, ChannelClosed, SandboxError, OSError, TimeoutError) as err:

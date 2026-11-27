@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 DAY = 86400.0
 TICK_S = 3600.0
 UNPAID = "Die Rechnung ist nicht bezahlt."  # the suspension's reason; only these are lifted
+TRIAL_OVER = "Die Testphase ist vorbei."  # a trial ended without a plan (W72)
 
 
 class Dunning:
@@ -164,8 +165,31 @@ class Dunning:
     async def lift(self, user_id: str) -> None:
         """Let the apps run again that dunning suspended (not those an admin suspended)."""
         for hosted in await self.apps_of(user_id):
-            if hosted.suspended and hosted.suspended_reason == UNPAID:
+            if hosted.suspended and hosted.suspended_reason in (UNPAID, TRIAL_OVER):
                 await set_suspended(self.db, self.queue, hosted.project_id, "", False)
+
+    async def trial_over(self, user_id: str, now: float) -> bool:
+        """A trial ended without a plan and its apps' 14 days are over (W72): suspend them as for
+        an unpaid bill; the case goes on from there (notice, export, deletion) and the first
+        paid invoice ends it. Whether a case was opened."""
+        apps = await self.apps_of(user_id)
+        if not apps:
+            return False
+        async with self.lock, self.db.session() as session, session.begin():
+            if await session.scalar(select(DunningCase.id).where(
+                    DunningCase.user_id == user_id, DunningCase.closed_at == 0)):  # fmt: skip
+                return False
+            session.add(DunningCase(id=secrets.token_hex(8), user_id=user_id, opened_at=now,
+                                    stage="suspended", stage_at=now, invoices="[]"))  # fmt: skip
+        for hosted in apps:
+            await set_suspended(self.db, self.queue, hosted.project_id, TRIAL_OVER, True)
+        await self.mail(
+            user_id,
+            "Deine Apps sind angehalten",
+            "Deine Testphase ist seit 14 Tagen vorbei, deshalb sind deine gehosteten "
+            "Apps angehalten. Sobald du einen Tarif gewählt hast, laufen sie wieder.",
+        )
+        return True
 
     async def tick(self, now: float) -> list[tuple[str, str]]:
         """Move every open case on whose date has come; (case, new stage) for each."""

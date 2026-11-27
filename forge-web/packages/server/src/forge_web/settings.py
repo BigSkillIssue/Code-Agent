@@ -335,6 +335,9 @@ class BillingSettings(_Strict):
     vies_url: str = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number"
     # Payments in the apps (W35): the admin's share of every charge, in percent.
     connect_fee_percent: float = Field(default=0, ge=0, le=50)
+    # A new account's trial (W72): days (0: none) and credit on the server's AI keys.
+    trial_days: float = Field(default=14, ge=0, le=365)
+    trial_credit_usd: float = Field(default=5, ge=0, le=10_000)
 
 
 class StoreSettings(_Strict):

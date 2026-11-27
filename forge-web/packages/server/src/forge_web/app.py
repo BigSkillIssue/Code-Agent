@@ -29,6 +29,7 @@ from forge_web.billing.cancel import cancel_router
 from forge_web.billing.checkout import checkout_router
 from forge_web.billing.connect import connect_router
 from forge_web.billing.customers import customers_router
+from forge_web.billing.public import public_router
 from forge_web.billing.relay import payments_router
 from forge_web.billing.webhooks import webhook_router
 from forge_web.chats.api import chats_router
@@ -99,7 +100,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         checkout_router(), cancel_router(), legal_texts_router(), connect_router(),
         payments_router(), iap_router(), android_router(), play_router(), play_key_routes(),
         windows_router(), windows_downloads_router(), device_worker_router(), customers_router(),
-        install_router(),
+        install_router(), public_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

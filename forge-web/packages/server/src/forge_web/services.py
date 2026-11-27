@@ -35,6 +35,7 @@ from forge_web.settings import WebSettings
 from forge_web.stores.android import AndroidBuilds
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
+from forge_web.trial import Trials
 from forge_web.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class Services:
     billing: Billing
     entitlements: EntitlementEngine  # every limit of a user
     dunning: Dunning
+    trials: Trials  # a new account's trial (W72)
     android: AndroidBuilds
     play: PlayReleases
     windows: WindowsBuilds
