@@ -1,7 +1,27 @@
 @import "tailwindcss";
 
-/* Archivo (SIL Open Font License, src/fonts/OFL.txt), served from this site: the CSP allows no
-   other font host. One variable family; its width axis carries the headings. */
+/* Two faces, both under the SIL Open Font License and served from this site (the CSP allows no
+   other font host). Big Shoulders (src/fonts/OFL-big-shoulders.txt), condensed like the lettering
+   cast into an anvil's side, sets the word mark and the headings; its optical-size axis keeps small
+   headings open. Archivo (src/fonts/OFL.txt) sets everything people read. */
+@font-face {
+  font-family: "Big Shoulders";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/big-shoulders-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Big Shoulders";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/big-shoulders-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 @font-face {
   font-family: "Archivo";
   font-style: normal;
@@ -23,52 +43,88 @@
     U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Colours are tokens: light by default, dark when the system asks for it. The palette is tempered
-   steel: a cool steel ground, graphite text, and the oxide colours steel takes on as it is tempered
-   (straw, bronze, violet, blue). Temper blue is the one colour that acts; the full temper band
-   appears only where Forge introduces itself (sign-in, the sidebar's edge). */
+/* Glut & Schmiede. Colours are tokens: light by default, dark when the system asks for it. Ember
+   is the one colour that acts; copper is the cooled metal beside it, used only in the glow. Every
+   text colour meets WCAG AA on every surface it sits on (src/lib/contrast.test.ts reads these
+   blocks); --border-strong meets 3:1 for the edges of fields. The light accent is the brief's
+   #E2531B taken down to #B93D0C, because #E2531B gives only 3.6:1 on cream and 3.8:1 under white
+   text; #E2531B stays the spark of the logo. */
 :root {
-  --bg: #f3f4f6;
-  --panel: #e8eaee;
-  --card: #ffffff;
-  --border: #d3d8df;
-  --text: #1b1f24;
-  --muted: #59626e;
-  --accent: #2c51b0;
+  --bg: #fbf6ef;
+  --panel: #f3eadf;
+  --card: #fffcf8;
+  --border: #e4d6c6;
+  --border-strong: #927d6c;
+  --text: #241c16;
+  --muted: #6b5d52;
+  --accent: #b93d0c;
   --accent-text: #ffffff;
-  --accent-soft: #e3e9f8;
-  --ok: #23774a;
-  --warn: #9a5f0c;
-  --bad: #b02e2e;
-  --code: #eceef2;
-  --temper-straw: #d6ae55;
-  --temper-bronze: #b06f36;
-  --temper-violet: #6e4a8c;
-  --temper-blue: #2c51b0;
-  --focus: #2c51b0;
+  --accent-soft: #fbe3d5;
+  --ok: #19734a;
+  --warn: #8f5a06;
+  --bad: #b3261e;
+  --code: #f1e7da;
+  --copper: #8e5530;
+  --spark: #e2531b;
+  --glow: 226 83 27; /* the spark as RGB channels, for the glow's alpha steps */
+  --glow-strength: 0.16;
+  --shade: 74 38 14; /* shadows are warm, the colour of soot on brass */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15181c;
-    --panel: #1b1f24;
-    --card: #21262c;
-    --border: #333a43;
-    --text: #e4e8ed;
-    --muted: #97a1ad;
-    --accent: #87a3f2;
-    --accent-text: #10151c;
-    --accent-soft: #1f2a44;
-    --ok: #63c08a;
-    --warn: #e0ad52;
-    --bad: #f07f76;
-    --code: #262c33;
-    --temper-straw: #e2c06c;
-    --temper-bronze: #c98549;
-    --temper-violet: #9a74b8;
-    --temper-blue: #87a3f2;
-    --focus: #87a3f2;
+    --bg: #14110f;
+    --panel: #1f1a17;
+    --card: #28211d;
+    --border: #3a302a;
+    --border-strong: #7d6a5d;
+    --text: #f3eae1;
+    --muted: #ad9e91;
+    --accent: #ff6b2c;
+    --accent-text: #14110f;
+    --accent-soft: #3b2217;
+    --ok: #4cc38a;
+    --warn: #e9b048;
+    --bad: #ff8370;
+    --code: #2e2622;
+    --copper: #c8875a;
+    --spark: #ff6b2c;
+    --glow: 255 107 44;
+    --glow-strength: 0.22;
+    --shade: 0 0 0;
   }
+}
+
+/* The forge itself: the sign-in page's dark side, the same in both themes. Its text stays
+   --forge-text even where the fire behind it is hottest (measured #96522c, 5.3:1). */
+:root {
+  --forge-bg: #14110f;
+  --forge-text: #f3eae1;
+  --forge-spark: #ff6b2c;
+}
+
+/* One scale for space, radius and shadow. Space is Tailwind's own unit (every p-*, gap-* and m-*
+   is a multiple of it); the named steps are for the CSS below. Radii grow with what they hold:
+   controls are crisp, cards softer, floating layers softest. */
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+  --radius-4: 14px;
+  --radius-5: 20px;
+  --shadow-1: 0 1px 2px rgb(var(--shade) / 0.08);
+  --shadow-2: 0 2px 6px -1px rgb(var(--shade) / 0.12), 0 1px 2px rgb(var(--shade) / 0.08);
+  --shadow-3: 0 12px 28px -8px rgb(var(--shade) / 0.24), 0 4px 10px -4px rgb(var(--shade) / 0.14);
+  --shadow-4: 0 24px 48px -12px rgb(var(--shade) / 0.32), 0 8px 16px -8px rgb(var(--shade) / 0.18);
+  --focus: var(--accent);
 }
 
 @theme {
@@ -76,6 +132,7 @@
   --color-panel: var(--panel);
   --color-card: var(--card);
   --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
   --color-fg: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
@@ -85,8 +142,21 @@
   --color-warn: var(--warn);
   --color-bad: var(--bad);
   --color-code: var(--code);
+  --color-copper: var(--copper);
+  --color-spark: var(--spark);
   --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Big Shoulders", "Archivo Narrow", "Arial Narrow", ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --spacing: 0.25rem;
+  --radius-sm: var(--radius-1);
+  --radius-md: var(--radius-2);
+  --radius-lg: var(--radius-3);
+  --radius-xl: var(--radius-4);
+  --radius-2xl: var(--radius-5);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --shadow-xl: var(--shadow-4);
 }
 
 html,
@@ -101,23 +171,32 @@ body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.5;
-  font-feature-settings: "ss01";
   -webkit-font-smoothing: antialiased;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::selection {
+  background: rgb(var(--glow) / 0.28);
 }
 
 /* Base rules sit in the base layer, so that utility classes (outline-none, a heading's own
-   width or weight) still win over them. */
+   size or weight) still win over them. */
 @layer base {
-  /* Headings are set wide: Archivo's expanded width is Forge's voice; body text stays normal. */
+  /* Page and section headings in the display face; small panel labels (h3) stay in Archivo. */
   h1,
-  h2,
-  h3 {
-    font-stretch: 118%;
-    letter-spacing: -0.01em;
+  h2 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+    line-height: 1.1;
     text-wrap-style: balance; /* not text-wrap: that would undo `truncate` */
   }
   h1 {
-    font-weight: 700;
+    font-weight: 800;
+  }
+  h3 {
+    text-wrap-style: balance;
   }
 
   :focus-visible {
@@ -126,48 +205,93 @@ body {
   }
 }
 
-/* The temper band: steel's oxide colours from straw to blue, Forge's one ornament. */
-.temper-band {
-  background: linear-gradient(
-    90deg,
-    var(--temper-straw) 0%,
-    var(--temper-bronze) 34%,
-    var(--temper-violet) 66%,
-    var(--temper-blue) 100%
+/* The word mark: Forge in Big Shoulders at its most condensed. */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variation-settings: "opsz" 72;
+  letter-spacing: 0.01em;
+  line-height: 0.9;
+}
+
+/* The ember glow: heat rising from below a surface's edge. Quiet everywhere but sign-in. */
+.ember-glow-top {
+  background-image: radial-gradient(
+    120% 7rem at 18% -2.5rem,
+    rgb(var(--glow) / var(--glow-strength)),
+    rgb(var(--glow) / 0) 70%
   );
 }
-.temper-band-vertical {
-  background: linear-gradient(
-    180deg,
-    var(--temper-straw) 0%,
-    var(--temper-bronze) 34%,
-    var(--temper-violet) 66%,
-    var(--temper-blue) 100%
+.ember-glow-center {
+  background-image: radial-gradient(
+    closest-side,
+    rgb(var(--glow) / calc(var(--glow-strength) * 0.8)),
+    rgb(var(--glow) / 0)
   );
 }
 
+/* Sign-in: the forge's dark side, its fire low and hot, in both themes. */
+.forge-side {
+  background-color: var(--forge-bg);
+  color: var(--forge-text);
+  background-image:
+    radial-gradient(30% 16% at 80% 101%, rgb(255 176 92 / 0.55), rgb(255 176 92 / 0) 100%),
+    radial-gradient(64% 40% at 80% 104%, rgb(255 107 44 / 0.62), rgb(255 107 44 / 0) 100%),
+    radial-gradient(120% 60% at 70% 114%, rgb(200 135 90 / 0.22), rgb(200 135 90 / 0) 100%);
+}
+
+/* The mark's spark is always ember; the anvil follows the text colour. */
+.logo-spark {
+  fill: var(--spark);
+}
+.forge-side .logo-spark {
+  fill: var(--forge-spark);
+}
+
+/* One orchestrated moment: on the sign-in page the fire comes up and the spark is struck. */
 @media (prefers-reduced-motion: no-preference) {
-  .temper-reveal {
-    animation: temper-reveal 900ms cubic-bezier(0.2, 0.7, 0.1, 1) both;
-    transform-origin: left center;
+  .forge-side {
+    animation: forge-heat 1400ms cubic-bezier(0.2, 0.7, 0.1, 1) both;
   }
-  @keyframes temper-reveal {
+  .forge-side .logo-spark {
+    animation: spark-strike 700ms 350ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes forge-heat {
     from {
-      transform: scaleX(0);
+      background-position: 0 8rem, 0 6rem, 0 4rem;
     }
     to {
-      transform: scaleX(1);
+      background-position: 0 0, 0 0, 0 0;
     }
+  }
+  @keyframes spark-strike {
+    from {
+      opacity: 0;
+      transform: scale(0.2) rotate(-30deg);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
   }
 }
 
 .prose-forge p {
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
 }
 .prose-forge pre {
   background: var(--code);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
+  border-radius: var(--radius-3);
+  padding: var(--space-3);
   overflow-x: auto;
   font-size: 0.85rem;
 }
@@ -177,7 +301,7 @@ body {
 }
 .prose-forge :not(pre) > code {
   background: var(--code);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-1);
   padding: 0.1rem 0.3rem;
 }
 .prose-forge ul {
@@ -188,9 +312,13 @@ body {
   list-style: decimal;
   padding-left: 1.25rem;
 }
+.prose-forge li::marker {
+  color: var(--copper);
+}
 .prose-forge a {
   color: var(--accent);
   text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 .prose-forge table {
   border-collapse: collapse;
@@ -198,5 +326,5 @@ body {
 .prose-forge th,
 .prose-forge td {
   border: 1px solid var(--border);
-  padding: 0.25rem 0.5rem;
+  padding: var(--space-1) var(--space-2);
 }

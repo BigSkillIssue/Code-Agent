@@ -26,7 +26,7 @@ export function TextInput(props: {
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium">{props.label}</span>
       <input
-        className="h-9 w-full rounded-md border border-line bg-card px-2.5 focus:border-accent focus:outline-none"
+        className="h-9 w-full rounded-md border border-line-strong bg-card px-2.5 focus:border-accent focus:outline-none"
         type={props.type ?? "text"}
         value={props.value}
         placeholder={props.placeholder}
@@ -48,7 +48,7 @@ export function Button(props: {
   const look = {
     primary: "bg-accent font-medium text-on-accent hover:opacity-90",
     plain: "border border-line bg-card hover:bg-panel",
-    danger: "border border-bad text-bad hover:bg-bad hover:text-white",
+    danger: "border border-bad text-bad hover:bg-bad hover:text-bg",
   }[props.kind ?? "plain"];
   return (
     <button

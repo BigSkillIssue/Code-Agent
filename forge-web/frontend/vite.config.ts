@@ -20,5 +20,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
+    // The contrast test reads the colour tokens from styles.css itself (as `?raw`).
+    css: { include: [/styles\.css/] },
   },
 });

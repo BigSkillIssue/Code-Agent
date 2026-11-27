@@ -85,7 +85,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, sources, create, 
         </div>
         <label className="block space-y-1 text-sm">
           <span className="text-muted">{t("projectName")}</span>
-          <input autoFocus className="w-full rounded-md border border-line bg-bg px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} />
+          <input autoFocus className="w-full rounded-md border border-line-strong bg-bg px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <fieldset className="space-y-1 text-sm">
           <legend className="text-muted">{t("source")}</legend>
@@ -101,7 +101,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, sources, create, 
         {source === "git" && (
           <label className="block space-y-1 text-sm">
             <span className="text-muted">{t("gitUrl")}</span>
-            <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="https://github.com/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <input className="w-full rounded-md border border-line-strong bg-bg px-3 py-2 font-mono text-xs" placeholder="https://github.com/…" value={url} onChange={(e) => setUrl(e.target.value)} />
             <span className="block text-xs text-muted">{t("privateRepoHint")}</span>
           </label>
         )}
@@ -114,7 +114,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, sources, create, 
         {source === "folder" && (
           <label className="block space-y-1 text-sm">
             <span className="text-muted">{t("folderPath")}</span>
-            <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="/srv/projects/…" value={folder} onChange={(e) => setFolder(e.target.value)} />
+            <input className="w-full rounded-md border border-line-strong bg-bg px-3 py-2 font-mono text-xs" placeholder="/srv/projects/…" value={folder} onChange={(e) => setFolder(e.target.value)} />
           </label>
         )}
         {source === "app" && <p className="text-xs text-muted">{t("appAppHint")}</p>}
@@ -123,7 +123,7 @@ export function NewProjectDialog({ isAdmin, appleApps = false, sources, create, 
             <p className="text-xs text-muted">{t("appleAppHint")}</p>
             <label className="block space-y-1">
               <span className="text-muted">{t("bundleId")}</span>
-              <input className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-xs" placeholder="com.example.app" value={bundleId} onChange={(e) => setBundleId(e.target.value)} />
+              <input className="w-full rounded-md border border-line-strong bg-bg px-3 py-2 font-mono text-xs" placeholder="com.example.app" value={bundleId} onChange={(e) => setBundleId(e.target.value)} />
             </label>
           </div>
         )}

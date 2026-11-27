@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from "react
 import { api } from "./api/client";
 import type { Chat } from "./api/types";
 import { ChatView } from "./components/ChatView";
+import { Logo, LogoMark } from "./components/Logo";
 import { Sidebar } from "./components/Sidebar";
 import { t } from "./lib/i18n";
 import { AdminPage } from "./pages/Admin";
@@ -32,7 +33,10 @@ function ErrorBar() {
 function Empty() {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
-      <p className="max-w-[28ch] text-2xl leading-snug font-semibold text-muted [font-stretch:112%]">{t("pickProject")}</p>
+      <div className="ember-glow-center flex flex-col items-center gap-5 px-16 py-12 text-center">
+        <LogoMark size={72} className="text-line-strong" />
+        <p className="max-w-[26ch] font-display text-[28px] leading-tight font-bold text-muted">{t("pickProject")}</p>
+      </div>
     </div>
   );
 }
@@ -78,11 +82,11 @@ function Shell() {
         <Sidebar activeProject={projectId} onNavigate={() => setMenu(false)} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-line px-3 py-2 md:hidden">
+        <div className="ember-glow-top flex items-center gap-3 border-b border-line px-3 py-2 md:hidden">
           <button type="button" aria-label={t("menu")} onClick={() => setMenu(true)}>
             <Menu className="size-5" />
           </button>
-          <span className="text-lg font-extrabold tracking-[-0.02em] [font-stretch:125%]">{t("appName")}</span>
+          <Logo size={30} />
         </div>
         <div className="flex min-h-0 flex-1">
           <Outlet />

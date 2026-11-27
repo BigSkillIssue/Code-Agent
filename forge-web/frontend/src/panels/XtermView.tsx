@@ -21,7 +21,7 @@ function theme() {
     background: token("--card"),
     foreground: token("--text"),
     cursor: token("--accent"),
-    selectionBackground: "rgba(194, 98, 45, 0.3)",
+    selectionBackground: "rgba(255, 107, 44, 0.3)", // the ember accent, see styles.css
   };
 }
 

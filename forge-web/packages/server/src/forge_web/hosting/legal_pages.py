@@ -32,12 +32,18 @@ PAGE_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "public, max-age=300",
 }
+# Colours are Forge's design tokens (frontend/src/styles.css): cream and ember, near-black at night.
 STYLE = (
     "body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;"
-    "color:#1d1d1f}h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.6rem}"
+    "color:#241c16;background:#fbf6ef}h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.6rem}"
     "label{display:block;margin-top:.8rem}input,textarea,select{width:100%;font:inherit;"
-    "padding:.4rem}button{margin-top:1rem;font:inherit;padding:.5rem 1rem}"
-    ".note{color:#555}.bad{color:#b00020}"
+    "padding:.4rem;color:inherit;background:#fffcf8;border:1px solid #927d6c}"
+    "button{margin-top:1rem;font:inherit;padding:.5rem 1rem;color:#fff;background:#b93d0c;"
+    "border:0}a{color:#b93d0c}.note{color:#6b5d52}.bad{color:#b3261e}"
+    "@media(prefers-color-scheme:dark){body{color:#f3eae1;background:#14110f}"
+    "input,textarea,select{background:#28211d;border-color:#7d6a5d}"
+    "button{color:#14110f;background:#ff6b2c}a{color:#ff6b2c}.note{color:#ad9e91}"
+    ".bad{color:#ff8370}}"
 )
 
 

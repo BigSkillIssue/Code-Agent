@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Chat, Project } from "../api/types";
 import { t } from "../lib/i18n";
 import { useStore } from "../state/store";
+import { Logo } from "./Logo";
 import { NewProjectDialog } from "./NewProjectDialog";
 
 function StateDot({ chat }: { chat: Chat | undefined }) {
@@ -26,10 +27,11 @@ export function Sidebar({ activeProject, onNavigate }: { activeProject?: string;
   const shown = searchSidebar(projects, query);
   const navigate = useNavigate();
   return (
-    <aside className="relative flex h-full w-72 max-w-[85vw] shrink-0 flex-col border-r border-line bg-panel">
-      <div className="temper-band absolute inset-x-0 top-0 h-[3px]" aria-hidden="true" />
+    <aside className="ember-glow-top relative flex h-full w-72 max-w-[85vw] shrink-0 flex-col border-r border-line bg-panel">
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
-        <span className="text-xl leading-none font-extrabold tracking-[-0.02em] [font-stretch:125%]">{t("appName")}</span>
+        <Link to="/" onClick={onNavigate} className="rounded-md">
+          <Logo size={36} />
+        </Link>
         <button type="button" title={t("newProject")} className="rounded-md p-1.5 hover:bg-card" onClick={() => setCreating(true)}>
           <FolderPlus className="size-5" />
         </button>
@@ -49,7 +51,7 @@ export function Sidebar({ activeProject, onNavigate }: { activeProject?: string;
           }}
         />
       )}
-      <label className="mx-3 mb-3 flex h-9 items-center gap-2 rounded-md border border-line bg-card px-2.5 focus-within:border-accent">
+      <label className="mx-3 mb-3 flex h-9 items-center gap-2 rounded-md border border-line-strong bg-card px-2.5 focus-within:border-accent">
         <Search className="size-4 shrink-0 text-muted" />
         <input
           type="search"
