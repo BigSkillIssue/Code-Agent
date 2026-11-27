@@ -138,7 +138,7 @@ class WindowsDevice:
         """Wait for the script's answer to `seq`."""
         path = self.control / f"res-{seq}.json"
         deadline = time.monotonic() + seconds
-        while not path.exists():
+        while not (path.exists() or path.is_symlink()):  # a link, even a dangling one, is refused
             launched = self.launched
             if launched is not None and launched.returncode not in (None, 0):
                 raise DeviceProblem("Windows Sandbox stopped (is the Windows Sandbox feature on?)")
