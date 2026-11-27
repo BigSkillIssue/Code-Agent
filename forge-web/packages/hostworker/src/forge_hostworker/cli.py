@@ -7,6 +7,7 @@
     forge-host-worker firewall [--apply] [--allow ADDR ...]   print or (root) load the rules
     forge-host-worker run --server URL --data DIR [--token-file FILE] [--slots N] [--docker PATH]
                           [--apps-domain DOMAIN --legal-base URL]   (with Caddy as the edge)
+                          [--wg-config /etc/wireguard/forge0.conf]  (Forge's WireGuard network)
 
 The token comes from --token-file (default DIR/token, where `join` writes it) or
 FORGE_HOST_TOKEN; without `join`, the admin makes it in Forge Web and registers the public key.
@@ -32,6 +33,7 @@ from forge_hostworker.docker import DockerCli, HostError, container_owner, requi
 from forge_hostworker.doctor import TEST_IMAGE, doctor, is_root, report
 from forge_hostworker.downloads import DOWNLOADS, Downloads
 from forge_hostworker.edge import CADDY_DATA, Edge
+from forge_hostworker.mesh import CONFIG, WG_KEY, MeshNode
 from forge_hostworker.runner import HostRunner, default_user
 from forge_hostworker.wire import (
     JOIN_PREFIX,
@@ -43,7 +45,6 @@ from forge_hostworker.wire import (
 )
 
 KEY = "host.key"
-WG_KEY = "wg.key"  # the host's WireGuard private key (W63)
 TOKEN = "token"
 Capture = Callable[[list[str], str], str]  # argv, stdin -> what it printed; OSError on failure
 
@@ -84,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Caddy's storage, to remove deleted apps' certificates")  # fmt: skip
     run.add_argument("--downloads", type=Path, default=DOWNLOADS,
                      help="where the Windows apps' downloads go (Caddy must read it)")  # fmt: skip
+    run.add_argument("--wg-config", type=Path, default=CONFIG,
+                     help="the wg-quick file of Forge's network (forge0.conf)")  # fmt: skip
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "join":
@@ -277,6 +280,7 @@ async def serve(args: argparse.Namespace) -> int:
         load_key(args.data / KEY),
         slots=args.slots,
         devices=args.devices,
+        mesh=MeshNode(args.data, config=args.wg_config),
     )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

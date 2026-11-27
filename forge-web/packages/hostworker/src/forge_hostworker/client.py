@@ -20,6 +20,7 @@ from forge_hostworker import __version__
 from forge_hostworker.android import bundle_path
 from forge_hostworker.backup import outgoing
 from forge_hostworker.device_client import DeviceClient
+from forge_hostworker.mesh import MeshNode
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
     WITH_SECRETS,
@@ -51,6 +52,7 @@ class HostClient:
         slots: int = 2,
         transport: httpx.AsyncBaseTransport | None = None,
         devices: bool = False,
+        mesh: MeshNode | None = None,
     ) -> None:
         headers = {"Authorization": f"Bearer {token}", "X-Forge-Host-Worker": __version__}
         self.http = httpx.AsyncClient(
@@ -67,6 +69,8 @@ class HostClient:
         self.usage_every_s = USAGE_EVERY_S
         self.devices = devices  # W61: this host runs Android emulators for the agent (KVM)
         self.roles: list[str] = []  # the host's roles, as the server's last answer names them
+        self.mesh = mesh  # W65: keeps forge0 as the server's view says (None: not here)
+        self.mesh_revision = 0  # the network's revision in the server's last answer
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down. The loops of
@@ -88,6 +92,8 @@ class HostClient:
                 backoff = 1.0
                 if side is None and self.roles:
                     side = self.role_loops(stop)
+                if self.mesh is not None:  # every role is in the network
+                    await self.mesh.sync(self.http, self.mesh_revision)
                 if job is not None:
                     self.start(job)
         finally:
@@ -153,6 +159,7 @@ class HostClient:
         reply.raise_for_status()
         answer = PollAnswer.model_validate_json(reply.content)
         self.roles = list(answer.roles)
+        self.mesh_revision = answer.mesh_revision
         return answer.job
 
     def start(self, job: HostJob) -> None:

@@ -350,8 +350,8 @@ async def test_people_are_no_hosts(shared: World) -> None:
     world = shared
     routes = [route for route in api_routes(world.server.app) if rule(*route[:2]) == "host"]
     # poll, source, secrets, backup, bundle, metrics, result, downloads; devices (W60): poll,
-    # source, next, answer, ended
-    assert len(routes) == 14
+    # source, next, answer, ended; the WireGuard network (W65): mesh
+    assert len(routes) == 15
     for method, path, model in routes:
         status = await call(world.admin, method, filled(path, world), model)
         assert status == 401, f"{method} {path} answered {status} to an admin's session"

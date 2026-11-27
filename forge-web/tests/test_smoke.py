@@ -81,7 +81,8 @@ def test_forge_mac_worker_version_command() -> None:
 def test_the_host_worker_stands_apart() -> None:
     # AGENTS.md rule 2: the host worker runs foreign apps on a server of its own; it takes nothing
     # from Forge, the server or the sandbox, and the server takes only its wire formats (`wire` for
-    # jobs, and one `*_wire` module per further protocol: device sessions since W60, more in Phase J).
+    # jobs, and one `*_wire` module per further protocol: device sessions since W60, the WireGuard
+    # network since W65).
     packages = Path(__file__).parents[1] / "packages"
     server = re.compile(r"^(?:from|import) forge_hostworker\.(\w+)", re.MULTILINE)
     used = {n for f in (packages / "server").rglob("*.py") for n in server.findall(text(f))}

@@ -11,6 +11,7 @@ class HostServer(Base):
     shown once, and secrets are sealed to its public key."""
 
     __tablename__ = "host_servers"
+    __table_args__ = (Index("host_mesh_ip", "mesh_ip", unique=True),)  # W65: no address twice
 
     id: Mapped[str] = mapped_column(String(16), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))

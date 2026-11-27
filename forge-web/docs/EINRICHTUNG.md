@@ -694,6 +694,36 @@ Adresse, unter der andere Server diesen über WireGuard erreichen.
 Wer jeden Schritt selbst machen will (oder ein anderes Linux hat), findet ihn im **Anhang: App-Server
 von Hand einrichten** am Ende dieser Anleitung.
 
+#### Forges WireGuard-Netz
+
+Die Server sprechen untereinander nur über ein eigenes WireGuard-Netz, `10.90.0.0/24` auf der
+Schnittstelle `forge0`. Forge Web selbst hat `10.90.0.1`, jeder Server bekommt beim ersten Kontakt
+automatisch eine Adresse (sie wird wieder frei, wenn der Server entfernt wird). Der App-Dienst
+schreibt `/etc/wireguard/forge0.conf` selbst und lässt auf `forge0` nur durch, was Forges feste
+Regeln erlauben: App-Server → Datenbank-Server (Postgres), Forge Web → KI-Server (Modelle);
+Speicher-Server nehmen nichts an, alles andere wird verworfen.
+
+Auf dem **Rechner von Forge Web** richtest du das Netz einmal ein (und nach jedem neuen Server
+noch einmal, damit er ihn kennt):
+
+```bash
+sudo apt install wireguard-tools
+sudo sh -c 'cd /pfad/zu/Code-Agent/forge-web && docker compose exec -T forge-web forge-web mesh config > /etc/wireguard/forge0.conf'
+sudo chmod 600 /etc/wireguard/forge0.conf
+sudo wg-quick up forge0          # beim ersten Mal; danach: sudo wg syncconf forge0 <(wg-quick strip forge0)
+sudo systemctl enable wg-quick@forge0
+```
+
+Ohne Docker heißt der Befehl einfach `forge-web mesh config > /etc/wireguard/forge0.conf`. Die Datei
+enthält Forge Webs **privaten WireGuard-Schlüssel** (er wird aus `secret.key` abgeleitet, nirgends
+gespeichert und nie protokolliert): nur für root lesbar lassen und nicht weitergeben.
+
+Auf **allen Servern** (Forge Web und jeder Knoten) muss **UDP 51820** von den anderen Servern
+erreichbar sein. Ist `ufw` aktiv, öffnen `deploy/install.sh` und das Knoten-Skript den Port selbst;
+sonst gibst du ihn in der Firewall deines Anbieters frei. Läuft Forge Webs Domain über einen
+Proxy wie Cloudflare, erreicht UDP ihn so nicht: Dann sollte jeder Knoten mit `--endpoint IP:51820`
+angeschlossen sein, damit Forge Web die Verbindung aufbaut.
+
 ### 11.3 DNS und die Apps-Domain
 
 Nimm für die Apps eine **eigene Domain**, z. B. `meine-apps.de` – nicht die von Forge und nicht die
