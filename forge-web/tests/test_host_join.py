@@ -106,6 +106,8 @@ async def test_a_code_works_once_and_its_token_is_answered_once(
     code = made.json()["code"]
     assert code.startswith("fjn_") and made.json()["roles"] == ["apps", "storage"]
     assert made.json()["expires_at"] - time.time() == pytest.approx(JOIN_TTL_S, abs=60)
+    command = made.json()["command"]  # the test server's address is not https: no command
+    assert command is None or (f"--code {code}" in command and "--roles apps,storage" in command)
     body = keys(code, "203.0.113.7:51820")
     joined = await joining(server, body)
     assert joined.status_code == 200, joined.text

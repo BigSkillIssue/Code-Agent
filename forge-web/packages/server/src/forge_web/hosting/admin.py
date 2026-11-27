@@ -34,6 +34,7 @@ from forge_web.hosting.alerts import incident_view, totals
 from forge_web.hosting.deploy import view
 from forge_web.hosting.gdpr import start_deleting
 from forge_web.hosting.hosts import ONLINE_S, create_host, roles_of
+from forge_web.hosting.install import install_command
 from forge_web.hosting.join import create_join_code
 from forge_web.hosting.ops import said
 from forge_web.hosting.suspension import live_in, set_suspended
@@ -149,12 +150,18 @@ def host_routes(router: APIRouter) -> None:
             raise HTTPException(422, str(err)) from None
         await audit(services.db, "hosting.join_code_made", user_id=admin.id, target=row.id,
                     ip=client_ip(request), name=row.name, roles=row.roles)  # fmt: skip
+        roles = json.loads(row.roles)
+        try:  # the one line to run on the new node; none while Forge Web has no https address
+            command: str | None = install_command(services.settings.base_url(), code, roles)
+        except ValueError:
+            command = None
         return {
             "id": row.id,
             "name": row.name,
-            "roles": json.loads(row.roles),
+            "roles": roles,
             "expires_at": row.expires_at,
             "code": code,
+            "command": command,
         }  # the code is shown this once
 
     @router.patch("/hosts/{host_id}")

@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+# Makes this Linux server a node of a Forge Web server: Docker, WireGuard, the host worker and,
+# by its roles, gVisor and Caddy (apps) or a check of the NVIDIA toolkit (ai). Forge Web serves
+# this script with its own address filled in; the admin page shows the command:
+#
+#   curl -fsSL https://forge.example.com/install/node.sh | sudo bash -s -- --code fjn_... --roles apps
+#
+# Ubuntu 24.04 and Debian 12, as root. Running it again is safe: what is there stays, the worker
+# is updated and restarted. --dry-run prints every command instead of running it.
+# Guide: forge-web/docs/EINRICHTUNG.md, section 11.
+set -euo pipefail
+
+FORGE_SERVER=@@FORGE_SERVER@@
+APPS_DOMAIN_DEFAULT=@@APPS_DOMAIN@@
+
+DATA=/var/lib/forge-host
+VENV=/opt/forge-host
+TOOLS=/opt/forge-host-tools        # uv and its Python 3.12 where the system has none (Debian 12)
+UNIT=/etc/systemd/system/forge-host-worker.service
+DROPIN=/etc/systemd/system/forge-host-worker.service.d/forge.conf
+GVISOR=https://storage.googleapis.com/gvisor/releases/release/latest
+CADDY_REPO=https://dl.cloudsmith.io/public/caddy/stable
+NVIDIA_GUIDE=https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+
+code=""
+roles="apps"
+apps_domain="$APPS_DOMAIN_DEFAULT"
+endpoint=""
+dry_run=0
+apt_updated=0
+
+usage() {
+  cat <<'EOF'
+Usage: node.sh --code fjn_... [--roles apps,db,ai,storage] [--apps-domain DOMAIN]
+               [--endpoint IP:PORT] [--dry-run]
+
+  --code CODE          the join code from Forge Web (Verwaltung -> Server); not needed again
+                       once this server has its token
+  --roles LIST         what this server does, comma-separated (default: apps)
+  --apps-domain NAME   apps answer at <app>.NAME (role apps; default: Forge Web's setting)
+  --endpoint IP:PORT   where other nodes reach this one over WireGuard (default: none)
+  --dry-run            print each command instead of running it
+EOF
+}
+
+die() { echo "forge node: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+warn() { echo "WARNING: $*" >&2; }
+
+run() {  # a command, or with --dry-run the command as it would run
+  if [ "$dry_run" = 1 ]; then
+    printf '+'; printf ' %q' "$@"; printf '\n'
+  else
+    "$@"
+  fi
+}
+
+run_sh() {  # a fixed pipeline (never with user input), or with --dry-run its text
+  if [ "$dry_run" = 1 ]; then echo "+ $1"; else bash -c "$1"; fi
+}
+
+put_file() {  # put_file SOURCE TARGET MODE: install SOURCE's content as TARGET
+  if [ "$dry_run" = 1 ]; then
+    echo "+ write $2 (mode $3):"
+    sed 's/^/    /' "$1"
+  else
+    install -D -m "$3" "$1" "$2"
+  fi
+}
+
+value() {  # the value of option $1, which must have one
+  [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 needs a value (see --help)"
+  printf '%s' "$2"
+}
+
+parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --code) code="$(value "$@")"; shift 2 ;;
+      --roles) roles="$(value "$@")"; shift 2 ;;
+      --apps-domain) apps_domain="$(value "$@")"; shift 2 ;;
+      --endpoint) endpoint="$(value "$@")"; shift 2 ;;
+      --dry-run) dry_run=1; shift ;;
+      -h | --help) usage; exit 0 ;;
+      *) die "unknown option: $1 (see --help)" ;;
+    esac
+  done
+}
+
+check_args() {
+  [[ "$FORGE_SERVER" =~ ^https://[A-Za-z0-9.:/_~-]+$ ]] || die "this script has no Forge Web address"
+  [ -z "$code" ] || [[ "$code" =~ ^fjn_[A-Za-z0-9_-]{1,200}$ ]] || die "not a join code: $code"
+  [[ "$roles" =~ ^[a-z]+(,[a-z]+)*$ ]] || die "roles are a comma-separated list: $roles"
+  local role
+  for role in ${roles//,/ }; do
+    case "$role" in
+      apps | db | ai | storage) ;;
+      *) die "unknown role: $role (apps, db, ai, storage)" ;;
+    esac
+  done
+  [ -z "$apps_domain" ] || [[ "$apps_domain" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)+$ ]] \
+    || die "not a domain: $apps_domain"
+  local host_port='^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'  # IPv6 in brackets
+  [ -z "$endpoint" ] || [[ "$endpoint" =~ $host_port ]] \
+    || die "the endpoint is IP:PORT, e.g. 198.51.100.7:51820: $endpoint"
+  if has_role apps && [ -z "$apps_domain" ]; then
+    die "role apps needs --apps-domain (e.g. meine-apps.de), or set it in Forge Web"
+  fi
+}
+
+has_role() { [[ ",$roles," == *",$1,"* ]]; }
+
+check_system() {
+  [ "$(id -u)" = 0 ] || [ "$dry_run" = 1 ] || die "run this as root (sudo bash -s -- ...)"
+  [ -r /etc/os-release ] || die "no /etc/os-release: only Ubuntu 24.04 and Debian 12 are supported"
+  os="$(. /etc/os-release && echo "${ID:-}:${VERSION_ID:-}")"
+  case "$os" in
+    ubuntu:24.04 | debian:12) ;;
+    *) die "only Ubuntu 24.04 and Debian 12 are supported, this is ${os}" ;;
+  esac
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64 | aarch64) ;;
+    *) die "only x86-64 and ARM64 are supported, this is $arch" ;;
+  esac
+  command -v systemctl >/dev/null || [ "$dry_run" = 1 ] || die "this server has no systemd"
+}
+
+apt_install() {  # the packages of "$@" that are missing
+  local missing=() package
+  for package in "$@"; do
+    dpkg -s "$package" >/dev/null 2>&1 || missing+=("$package")
+  done
+  [ "${#missing[@]}" -gt 0 ] || return 0
+  if [ "$apt_updated" = 0 ]; then
+    run apt-get update -q
+    apt_updated=1
+  fi
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q "${missing[@]}"
+}
+
+install_docker() {
+  if command -v docker >/dev/null; then
+    say "Docker is installed"
+  else
+    say "Installing Docker"
+    run_sh "curl -fsSL https://get.docker.com | sh"
+  fi
+  run systemctl enable --now docker
+}
+
+install_gvisor() {
+  if [ -x /usr/local/bin/runsc ]; then
+    say "gVisor (runsc) is installed"
+    return
+  fi
+  say "Installing gVisor (runsc), checked against its sha512"
+  run curl -fsSL -o "$work/runsc" "$GVISOR/$arch/runsc"
+  run curl -fsSL -o "$work/runsc.sha512" "$GVISOR/$arch/runsc.sha512"
+  (cd "$work" && run sha512sum -c runsc.sha512)
+  run install -m 0755 "$work/runsc" /usr/local/bin/runsc
+}
+
+configure_docker() {  # gVisor, user namespaces and the apps' address range (deploy/host/daemon.json)
+  cat >"$work/daemon.json" <<'DAEMON'
+{
+  "runtimes": {
+    "runsc": { "path": "/usr/local/bin/runsc" }
+  },
+  "userns-remap": "default",
+  "default-address-pools": [{ "base": "10.88.0.0/16", "size": 24 }],
+  "bip": "10.87.0.1/24",
+  "no-new-privileges": true,
+  "live-restore": true,
+  "log-driver": "local",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+DAEMON
+  if cmp -s "$work/daemon.json" /etc/docker/daemon.json; then
+    say "Docker's settings are in place"
+    return
+  fi
+  if [ -f /etc/docker/daemon.json ] && [ ! -e /etc/docker/daemon.json.before-forge ]; then
+    warn "replacing /etc/docker/daemon.json (the old one is kept as daemon.json.before-forge)"
+    run cp /etc/docker/daemon.json /etc/docker/daemon.json.before-forge
+  fi
+  put_file "$work/daemon.json" /etc/docker/daemon.json 0644
+  run systemctl restart docker
+}
+
+install_caddy() {  # Caddy without a Caddyfile: the worker configures it over 127.0.0.1:2019
+  if dpkg -s caddy >/dev/null 2>&1; then
+    say "Caddy is installed"
+  else
+    say "Installing Caddy"
+    apt_install debian-keyring debian-archive-keyring apt-transport-https gnupg
+    run_sh "curl -1sLf '$CADDY_REPO/gpg.key' | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg"
+    run_sh "curl -1sLf '$CADDY_REPO/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list"
+    apt_updated=0
+    apt_install caddy
+  fi
+  run systemctl disable --now caddy
+  run systemctl enable --now caddy-api
+}
+
+check_gpu() {
+  if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
+    say "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | head -n 1)"
+  else
+    warn "role ai: no working NVIDIA driver (nvidia-smi). Install the driver, then run this again."
+  fi
+  if command -v nvidia-ctk >/dev/null; then
+    say "The NVIDIA Container Toolkit is installed"
+  else
+    warn "role ai: the NVIDIA Container Toolkit is missing, models cannot use the GPU: $NVIDIA_GUIDE"
+  fi
+}
+
+make_venv() {  # Python 3.12 for the worker: the system's on Ubuntu, uv's on Debian 12
+  if [ -x "$VENV/bin/python" ]; then
+    return
+  fi
+  if [ "${os%%:*}" = ubuntu ]; then
+    apt_install python3-venv
+    run python3 -m venv "$VENV"
+  else
+    run_sh "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=$TOOLS UV_NO_MODIFY_PATH=1 sh"
+    run env UV_PYTHON_INSTALL_DIR="$TOOLS/python" "$TOOLS/uv" venv --seed --python 3.12 "$VENV"
+  fi
+}
+
+install_worker() {
+  say "Installing the host worker from $FORGE_SERVER"
+  make_venv
+  mkdir -p "$work/wheel"
+  # -J keeps the wheel's real name (pip needs it); it never writes outside the folder.
+  (cd "$work/wheel" && run curl -fsSL --proto '=https' -O -J "$FORGE_SERVER/install/forge_hostworker.whl")
+  local wheel="$work/wheel/forge_hostworker-VERSION-py3-none-any.whl"
+  if [ "$dry_run" = 0 ]; then
+    wheel="$(find "$work/wheel" -maxdepth 1 -name 'forge_hostworker-*.whl' | head -n 1)"
+    [ -n "$wheel" ] || die "Forge Web sent no host worker wheel"
+  fi
+  run "$VENV/bin/pip" install -q "$wheel"
+  # The same version number can bring new code: put this build in place either way.
+  run "$VENV/bin/pip" install -q --no-deps --force-reinstall "$wheel"
+  run install -d -m 0700 "$DATA"
+}
+
+join() {
+  if [ -s "$DATA/token" ]; then
+    say "This server already has its token, it does not join again"
+    return
+  fi
+  [ -n "$code" ] || die "--code fjn_... is needed to join (Forge Web: Verwaltung -> Server)"
+  local args=(join --server "$FORGE_SERVER" --code "$code" --data "$DATA")
+  [ -z "$endpoint" ] || args+=(--endpoint "$endpoint")
+  say "Joining Forge Web"
+  run "$VENV/bin/forge-host-worker" "${args[@]}"
+}
+
+install_unit() {  # deploy/host/forge-host-worker.service, with this node's addresses as a drop-in
+  cat >"$work/unit" <<'UNIT'
+[Unit]
+Description=Forge host worker (runs the hosted apps)
+Documentation=https://github.com/BigSkillIssue/Code-Agent/tree/main/forge-web/docs/EINRICHTUNG.md
+After=network-online.target docker.service caddy-api.service
+Wants=network-online.target caddy-api.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=FORGE_SERVER=https://forge.example.com
+Environment=APPS_DOMAIN=meine-apps.de
+Environment=LEGAL_BASE=https://forge.example.com/legal
+StateDirectory=forge-host
+StateDirectoryMode=0700
+# The rules for app containers go in before the first app starts, after every reboot.
+ExecStartPre=/opt/forge-host/bin/forge-host-worker firewall --apply
+ExecStart=/opt/forge-host/bin/forge-host-worker run --server ${FORGE_SERVER} \
+    --data /var/lib/forge-host --apps-domain ${APPS_DOMAIN} --legal-base ${LEGAL_BASE}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# Caddy's storage too: a deleted app's certificate and key are removed from it.
+ReadWritePaths=/var/lib/forge-host /run -/var/lib/caddy
+PrivateTmp=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  {
+    echo "# Written by Forge Web's node installer; run it again to change these."
+    echo "[Service]"
+    echo "Environment=FORGE_SERVER=$FORGE_SERVER"
+    [ -z "$apps_domain" ] || echo "Environment=APPS_DOMAIN=$apps_domain"
+    echo "Environment=LEGAL_BASE=$FORGE_SERVER/legal"
+  } >"$work/dropin"
+  put_file "$work/unit" "$UNIT" 0644
+  put_file "$work/dropin" "$DROPIN" 0644
+  run systemctl daemon-reload
+}
+
+start_worker() {
+  if has_role apps; then
+    say "Loading the firewall for app containers"
+    run "$VENV/bin/forge-host-worker" firewall --apply
+  fi
+  run systemctl enable forge-host-worker
+  run systemctl restart forge-host-worker
+  say "Checking this server"
+  run "$VENV/bin/forge-host-worker" doctor --data "$DATA" || warn "doctor found problems (above)"
+}
+
+main() {
+  parse_args "$@"
+  check_args
+  check_system
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' EXIT
+  [ "$dry_run" = 0 ] || say "Dry run: nothing is changed, every command is printed"
+  say "Roles: $roles"
+  apt_install ca-certificates curl wireguard-tools
+  install_docker
+  if has_role apps; then
+    install_gvisor
+    configure_docker
+    install_caddy
+  fi
+  if has_role ai; then
+    check_gpu
+  fi
+  install_worker
+  join
+  install_unit
+  start_worker
+  say "Done. The server shows up in Forge Web under Verwaltung -> Server."
+  say "Its log: journalctl -u forge-host-worker -f"
+}
+
+main "$@"
