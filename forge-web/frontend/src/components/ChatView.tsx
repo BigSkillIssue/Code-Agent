@@ -9,6 +9,7 @@ import { buildTranscript } from "../state/transcript";
 import { ProjectPanel } from "../panels/ProjectPanel";
 import { BrowserPreview, SplitHandle, usePreviewPane } from "./BrowserPreview";
 import { Composer } from "./Composer";
+import { LogoMark } from "./Logo";
 import { Select } from "./Select";
 import { TodoPanel } from "./TodoPanel";
 import { Transcript } from "./Transcript";
@@ -130,7 +131,7 @@ export function ChatView({ chat }: { chat: Chat }) {
     <div className="flex h-full min-w-0 flex-1">
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-5">
-          <h1 className="min-w-[8rem] flex-1 truncate text-[17px] font-bold" data-testid="chat-title">
+          <h1 className="min-w-[8rem] flex-1 truncate text-[23px] leading-tight font-bold" data-testid="chat-title">
             {chat.title === "New chat" ? (project?.name ?? chat.title) : chat.title}
           </h1>
           {running && (
@@ -204,12 +205,21 @@ export function ChatView({ chat }: { chat: Chat }) {
           )}
         </header>
         <main className="flex-1 overflow-y-auto">
-          <Transcript
-            entries={transcript.entries}
-            onAnswer={chat.can_write ? (id, value) => answer(chat.id, id, value) : undefined}
-            approvalPage={project?.kind === "apple" ? `/p/${chat.project_id}/apple` : undefined}
-            projectId={chat.project_id}
-          />
+          {transcript.entries.length === 0 ? (
+            <div className="flex min-h-full flex-col items-center justify-center p-8">
+              <div className="ember-glow-center flex flex-col items-center gap-4 px-16 py-12 text-center">
+                <LogoMark size={56} className="text-line-strong" />
+                <p className="max-w-[34ch] text-muted">{t("authTagline")}</p>
+              </div>
+            </div>
+          ) : (
+            <Transcript
+              entries={transcript.entries}
+              onAnswer={chat.can_write ? (id, value) => answer(chat.id, id, value) : undefined}
+              approvalPage={project?.kind === "apple" ? `/p/${chat.project_id}/apple` : undefined}
+              projectId={chat.project_id}
+            />
+          )}
         </main>
         <TodoPanel todos={transcript.todos} />
         {chat.can_write && (

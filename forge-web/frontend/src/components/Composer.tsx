@@ -152,7 +152,7 @@ export function Composer({ running, onSend, onStop, commands, searchFiles, uploa
     <div className="mx-auto w-full max-w-3xl px-3 pb-3 sm:px-4 sm:pb-4">
       <div
         data-testid="composer"
-        className={`relative flex flex-wrap items-end gap-2 rounded-xl border bg-card p-2 ${dragging ? "border-accent ring-2 ring-accent/30" : "border-line focus-within:border-accent"}`}
+        className={`relative flex flex-wrap items-end gap-2 rounded-xl border bg-card p-2 ${dragging ? "border-accent ring-2 ring-accent/30" : "border-line-strong focus-within:border-accent"}`}
         onDragOver={(e) => {
           if (!upload || !Array.from(e.dataTransfer.types).includes("Files")) return;
           e.preventDefault();

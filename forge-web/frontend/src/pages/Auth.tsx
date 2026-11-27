@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import { LogoMark } from "../components/Logo";
 import { ProviderButton } from "../components/ProviderButton";
 import { localError } from "../lib/errors";
 import { t } from "../lib/i18n";
@@ -20,15 +21,17 @@ function hashToken(): string {
   return new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
 }
 
-/** Every sign-in page: Forge's name set wide beside the temper band, the form on its own. */
+/** Every sign-in page: the anvil and Forge's name over the forge's fire, the form on its own. */
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col md:flex-row">
-      <aside className="relative flex shrink-0 flex-col justify-end gap-3 overflow-hidden bg-panel px-6 pt-8 pb-6 md:w-[44%] md:px-12 md:pb-14">
-        <div className="temper-band temper-reveal absolute inset-x-0 top-0 h-1.5 md:hidden" aria-hidden="true" />
-        <div className="temper-band-vertical absolute inset-y-0 left-0 hidden w-2 md:block" aria-hidden="true" />
-        <p className="text-[56px] leading-none font-extrabold tracking-[-0.03em] [font-stretch:125%] md:text-[112px]">Forge</p>
-        <p className="max-w-[34ch] text-base text-muted md:text-lg">{t("authTagline")}</p>
+      <aside className="forge-side relative flex shrink-0 flex-col justify-end gap-4 overflow-hidden px-6 pt-10 pb-7 md:w-[44%] md:px-12 md:pb-16">
+        <LogoMark size={88} className="hidden md:block" />
+        <div className="flex items-end gap-3">
+          <LogoMark size={44} className="md:hidden" />
+          <p className="wordmark pb-[0.12em] text-[64px] md:text-[150px]">Forge</p>
+        </div>
+        <p className="max-w-[34ch] text-base md:text-lg">{t("authTagline")}</p>
       </aside>
       <main className="flex flex-1 items-start justify-center px-6 py-8 md:items-center md:py-12">
         <div className="w-full max-w-[380px] space-y-5">
@@ -45,7 +48,7 @@ function Field(props: { label: string; type?: string; value: string; onChange: (
     <label className="block space-y-1.5 text-sm">
       <span className="font-medium">{props.label}</span>
       <input
-        className="h-11 w-full rounded-md border border-line bg-card px-3 text-[15px] focus:border-accent focus:outline-none"
+        className="h-11 w-full rounded-md border border-line-strong bg-card px-3 text-[15px] focus:border-accent focus:outline-none"
         type={props.type ?? "text"}
         autoComplete={props.auto}
         value={props.value}

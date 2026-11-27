@@ -471,7 +471,7 @@ Asked for on 2026-11-26 (plan: German, approved in the session): after every fin
 
 Asked for on 2026-11-27: Forge Web's own design "Glut & Schmiede" with a new logo (the name stays Forge), built by a UI design subagent with Claude's `frontend-design` skill; a landing page with a trial and onboarding; a status page and monitoring; analytics for the customers' apps; referrals and coupons; support in the product.
 
-- [ ] **W71 — Forge's own design and logo**
+- [x] **W71 — Forge's own design and logo**
     - Files: `frontend/src/styles.css`, `frontend/src/fonts/`, `frontend/public/` (logo, favicons, PWA icon), `frontend/src/components/Logo.tsx`, `forge_web/hosting/legal_pages.py` and the mail templates (colours only), `frontend/src/lib/contrast.test.ts`
     - Build: tokens on the existing variables (dark: `#14110F` background, `#1F1A17` surfaces, `#FF6B2C` ember accent, `#C8875A` copper, `#4CC38A` success; light: `#FBF6EF` cream, `#E2531B` accent), WCAG AA pairs; a self-hosted display face for headings; one scale for spacing, radius and shadow; a quiet ember glow for headers and empty states that respects `prefers-reduced-motion`; an anvil-and-spark SVG logo with the word mark, favicons, the PWA icon and the mail header.
     - Tests: every text/background token pair meets AA in both themes; the logo renders; the existing vitest and e2e suites stay green; screenshots of the main pages in light and dark.
