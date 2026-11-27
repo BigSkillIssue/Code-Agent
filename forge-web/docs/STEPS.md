@@ -438,7 +438,7 @@ Asked for on 2026-11-26 (plan: German, approved in the session): after every fin
     - Verify: `uv run pytest tests/test_install_scripts.py -q`
 - [ ] **W65 — Forge's WireGuard network**
     - Files: `forge_web/hosting/mesh.py`, `forge_web/hosting/deploy_api.py`, `forge_web/cli.py`, `forge_hostworker/{mesh,firewall,runner,wire}.py`, `tests/test_mesh.py`
-    - Build: addresses from `10.89.0.0/24` (Forge Web is `.1`), freed when a node goes; `mesh_policy()` as a fixed table (apps → db only on the app's Postgres port from the app's subnet, Forge Web → ai on the model port, storage accepts nothing); a `mesh_revision` in the poll answer and `GET /api/host/mesh` for peers; the worker writes `/etc/wireguard/forge0.conf`, runs `wg syncconf` and drops everything on `forge0` the policy does not allow; `forge-web mesh config` prints the configuration for Forge Web's own host.
+    - Build: addresses from `10.90.0.0/24` (Forge Web is `.1`; `10.89.0.0/24` is the build network), freed when a node goes; `mesh_policy()` as a fixed table (apps → db only on the app's Postgres port from the app's subnet, Forge Web → ai on the model port, storage accepts nothing); a `mesh_revision` in the poll answer and `GET /api/host/mesh` for peers; the worker writes `/etc/wireguard/forge0.conf`, runs `wg syncconf` and drops everything on `forge0` the policy does not allow; `forge-web mesh config` prints the configuration for Forge Web's own host.
     - Tests: allocation without duplicates and reuse after removal; the policy table; the rendered configuration (keys never logged); firewall rules as data.
     - Verify: `uv run pytest tests/test_mesh.py -q`
 - [ ] **W66 — The project's state after every run, on a storage node**
