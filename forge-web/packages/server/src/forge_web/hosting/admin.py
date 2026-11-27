@@ -1,4 +1,5 @@
-"""Hosting administration (W27), `/api/admin/hosting/...`: the hosts and their one-time tokens;
+"""Hosting administration (W27), `/api/admin/hosting/...`: the hosts, their roles and their
+one-time tokens, or the one-time join codes new servers trade for them (W63);
 the production deploys waiting for an admin, each with exactly the commit the host checked and
 its checks; the hosted apps (suspend, resume, read their logs); and who is trusted (their
 production deploys need no admin). Every change is in the audit log.
@@ -32,7 +33,8 @@ from forge_web.gateway.meter import month_start
 from forge_web.hosting.alerts import incident_view, totals
 from forge_web.hosting.deploy import view
 from forge_web.hosting.gdpr import start_deleting
-from forge_web.hosting.hosts import ONLINE_S, create_host
+from forge_web.hosting.hosts import ONLINE_S, create_host, roles_of
+from forge_web.hosting.join import create_join_code
 from forge_web.hosting.ops import said
 from forge_web.hosting.suspension import live_in, set_suspended
 from forge_web.services import Services, services_of
@@ -48,6 +50,15 @@ class NewHost(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
     public_key: str = Field(min_length=40, max_length=100)
+    roles: list[str] = Field(default_factory=lambda: ["apps"], max_length=8)
+
+
+class NewJoinCode(BaseModel):
+    """A new server's name and roles; it joins with the one-time code (W63)."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    roles: list[str] = Field(min_length=1, max_length=8)
 
 
 class HostChange(BaseModel):
@@ -90,7 +101,8 @@ def host_view(row: HostServer, apps: int) -> dict[str, Any]:
     """A host as the panel shows it."""
     return {"id": row.id, "name": row.name, "enabled": row.enabled, "created_at": row.created_at,
             "last_seen": row.last_seen, "online": time.time() - row.last_seen < ONLINE_S,
-            "version": row.version, "apps": apps}  # fmt: skip
+            "version": row.version, "apps": apps, "roles": roles_of(row),
+            "endpoint": row.endpoint, "mesh_ip": row.mesh_ip}  # fmt: skip
 
 
 def hosting_admin_router() -> APIRouter:
@@ -117,12 +129,33 @@ def host_routes(router: APIRouter) -> None:
     async def add_host(body: NewHost, request: Request, admin: AdminUser) -> dict[str, Any]:
         services = services_of(request)
         try:
-            row, token = await create_host(services.db, body.name.strip(), body.public_key.strip())
+            row, token = await create_host(services.db, body.name.strip(),
+                                           body.public_key.strip(), body.roles)  # fmt: skip
         except ValueError as err:
             raise HTTPException(422, str(err)) from None
         await audit(services.db, "hosting.host_added", user_id=admin.id, target=row.id,
-                    ip=client_ip(request), name=row.name)  # fmt: skip
+                    ip=client_ip(request), name=row.name, roles=row.roles)  # fmt: skip
         return {**host_view(row, 0), "token": token}  # the token is shown this once
+
+    @router.post("/join-codes")
+    async def add_join_code(
+        body: NewJoinCode, request: Request, admin: AdminUser
+    ) -> dict[str, Any]:
+        services = services_of(request)
+        try:
+            row, code = await create_join_code(services.db, body.name.strip(), body.roles,
+                                               created_by=admin.id)  # fmt: skip
+        except ValueError as err:
+            raise HTTPException(422, str(err)) from None
+        await audit(services.db, "hosting.join_code_made", user_id=admin.id, target=row.id,
+                    ip=client_ip(request), name=row.name, roles=row.roles)  # fmt: skip
+        return {
+            "id": row.id,
+            "name": row.name,
+            "roles": json.loads(row.roles),
+            "expires_at": row.expires_at,
+            "code": code,
+        }  # the code is shown this once
 
     @router.patch("/hosts/{host_id}")
     async def change_host(

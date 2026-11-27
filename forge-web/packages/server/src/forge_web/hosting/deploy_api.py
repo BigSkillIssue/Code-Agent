@@ -1,7 +1,8 @@
 """The routes of hosting (W26).
 
 - `/api/host/...`: the hosts' API, with their own tokens instead of a sign-in: a host asks for a
-  job (long poll), fetches its packed source and, once, its sealed secrets, and reports.
+  job (long poll, the answer names its roles), fetches its packed source and, once, its sealed
+  secrets, and reports. A new server gets its token once for a join code (`/api/host/join`).
 - `/api/projects/{id}/deploys`: a project's deploys. Staging takes a commit the user approved with
   "Ready to go live"; production takes the same commit once it is live in staging, and starting
   it is the creator's "Live schalten". `/api/projects/{id}/hosting/secrets`: the app's secrets
@@ -27,6 +28,8 @@ from forge_hostworker.wire import (
     RESERVED_ENV,
     HostUsage,
     JobResult,
+    JoinAnswer,
+    JoinRequest,
     PollAnswer,
     PollRequest,
 )
@@ -47,7 +50,8 @@ from forge_web.db.models import Chat, ChatEvent, Project, User
 from forge_web.files_api import allowed
 from forge_web.hosting.alerts import store_usage
 from forge_web.hosting.deploy import ACTIVE, view
-from forge_web.hosting.hosts import JobGone, host_of, pick_host
+from forge_web.hosting.hosts import JobGone, host_of, pick_host, roles_of
+from forge_web.hosting.join import JoinRefused, redeem
 from forge_web.hosting.legal_pages import operator_ready, operator_view
 from forge_web.hosting.plan import HOSTING_SETS
 from forge_web.services import Services, services_of
@@ -98,7 +102,10 @@ def host_router() -> APIRouter:
     @router.post("/poll")
     async def poll(body: PollRequest, host: Host, request: Request) -> PollAnswer:
         hosts = services_of(request).hosts
-        return PollAnswer(job=await hosts.claim(host.id, POLL_WAIT_S, body.running))
+        job = await hosts.claim(host.id, POLL_WAIT_S, body.running)
+        return PollAnswer(job=job, roles=roles_of(host))
+
+    join_route(router)
 
     @router.get("/jobs/{job_id}/source")
     async def source(job_id: str, host: Host, request: Request) -> FileResponse:
@@ -141,6 +148,26 @@ def host_router() -> APIRouter:
         return {"ok": True}
 
     return router
+
+
+def join_route(router: APIRouter) -> None:
+    """`/join`: a new server trades its one-time code for its token (no token of its own yet)."""
+
+    @router.post("/join")
+    async def join(body: JoinRequest, request: Request) -> JoinAnswer:
+        services, ip = services_of(request), client_ip(request)
+        if not services.settings.hosting.enabled:
+            raise HTTPException(403, "hosting is turned off on this server")
+        if not services.limits.joins_by_ip.allow(ip):
+            raise HTTPException(429, "too many attempts; try again later")
+        try:
+            host, token = await redeem(services.db, body)
+        except JoinRefused as refusal:
+            raise HTTPException(403, str(refusal)) from None
+        roles = roles_of(host)
+        await audit(services.db, "hosting.host_joined", target=host.id, ip=ip, name=host.name,
+                    roles=",".join(roles), endpoint=host.endpoint or "")  # fmt: skip
+        return JoinAnswer(host_id=host.id, name=host.name, roles=roles, token=token)
 
 
 async def refused_unless[T](work: Awaitable[T]) -> T:
@@ -279,7 +306,7 @@ async def new_deploy(
     picked = None if hosted else await pick_host(services.db)
     host = hosted.host_id if hosted else picked.id if picked else None
     if host is None:
-        raise HTTPException(409, "there is no host for apps yet; an admin adds one")
+        raise HTTPException(409, "there is no host with the apps role yet; an admin adds one")
     now = time.time()
     row = Deploy(id=secrets.token_hex(8), project_id=project_id, user_id=user.id, app="",
                  host_id=host, environment=body.environment, commit=commit,

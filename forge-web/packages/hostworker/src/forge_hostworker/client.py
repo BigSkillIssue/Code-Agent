@@ -35,6 +35,7 @@ from forge_hostworker.wire import (
 UPLOADS = {"archive": "archive", "android": "artifact"}  # what a job uploads, and where
 log = logging.getLogger(__name__)
 USAGE_EVERY_S = 300.0
+NOT_APPS = "this host does not have the apps role, so it runs no apps"
 
 
 class HostClient:
@@ -65,14 +66,13 @@ class HostClient:
         self.running: set[str] = set()  # the ids of the jobs in `tasks`
         self.usage_every_s = USAGE_EVERY_S
         self.devices = devices  # W61: this host runs Android emulators for the agent (KVM)
+        self.roles: list[str] = []  # the host's roles, as the server's last answer names them
 
     async def serve(self, stop: asyncio.Event) -> None:
-        """Ask for jobs until `stop` is set; network trouble only slows it down."""
+        """Ask for jobs until `stop` is set; network trouble only slows it down. The loops of
+        the host's roles start once the server's first answer names them."""
         backoff = 1.0
-        metering = asyncio.create_task(self.report_usage(stop))
-        side = [metering]
-        if self.devices:
-            side.append(asyncio.create_task(DeviceClient(self.http, self.runner).serve(stop)))
+        side: list[asyncio.Task[None]] | None = None
         try:
             while not stop.is_set():
                 if len(self.tasks) >= self.slots:
@@ -86,13 +86,31 @@ class HostClient:
                     backoff = min(backoff * 2, 60)
                     continue
                 backoff = 1.0
+                if side is None and self.roles:
+                    side = self.role_loops(stop)
                 if job is not None:
                     self.start(job)
         finally:
-            for task in [*side, *self.tasks]:
+            loops = [*(side or []), *self.tasks]
+            for task in loops:
                 task.cancel()
-            await asyncio.gather(*side, *self.tasks, return_exceptions=True)
+            await asyncio.gather(*loops, return_exceptions=True)
             await self.http.aclose()
+
+    def role_loops(self, stop: asyncio.Event) -> list[asyncio.Task[None]]:
+        """The loops of the host's roles. Only `apps` has any yet: reporting what the apps use,
+        and the Android emulators where `--devices` asks for them."""
+        others = [role for role in self.roles if role != "apps"]
+        if others:
+            log.info("this host's roles %s have nothing to run yet", ", ".join(others))
+        if "apps" not in self.roles:
+            if self.devices:
+                log.warning("--devices needs the apps role; no emulators run on this host")
+            return []
+        loops = [asyncio.create_task(self.report_usage(stop))]
+        if self.devices:
+            loops.append(asyncio.create_task(DeviceClient(self.http, self.runner).serve(stop)))
+        return loops
 
     async def report_usage(self, stop: asyncio.Event) -> None:
         """Tell the server what the apps use, every few minutes (trouble is only logged)."""
@@ -124,7 +142,7 @@ class HostClient:
         return polling.result()
 
     async def poll(self) -> HostJob | None:
-        """One long poll; a job or None."""
+        """One long poll; a job or None (and the host's roles, kept in `roles`)."""
         free = max(self.slots - len(self.tasks), 1)
         body = PollRequest(free_slots=free, version=__version__, running=sorted(self.running))
         reply = await self.http.post(
@@ -133,7 +151,9 @@ class HostClient:
             headers={"Content-Type": "application/json"},
         )
         reply.raise_for_status()
-        return PollAnswer.model_validate_json(reply.content).job
+        answer = PollAnswer.model_validate_json(reply.content)
+        self.roles = list(answer.roles)
+        return answer.job
 
     def start(self, job: HostJob) -> None:
         """Run a job in a task of its own."""
@@ -145,6 +165,10 @@ class HostClient:
 
     async def handle(self, job: HostJob) -> None:
         """Fetch what the job needs, run it, report how it went."""
+        if "apps" not in self.roles:  # every kind of job so far is an app's
+            with contextlib.suppress(httpx.HTTPError):
+                await self.report(job.id, JobResult(ok=False, error=NOT_APPS))
+            return
         with tempfile.TemporaryDirectory(prefix="forge-host-") as scratch:
             try:
                 source, values = None, {}

@@ -41,3 +41,4 @@ class AuthLimits:
         self.members_by_user = RateLimiter(30, 3600)  # adding people by email reveals accounts
         self.notices_by_address = RateLimiter(60, 3600)  # the report form, across app names
         self.confirmations_by_email = RateLimiter(5, 3600)  # its mails to one address
+        self.joins_by_ip = RateLimiter(30, 3600)  # new servers trading a join code (W63)

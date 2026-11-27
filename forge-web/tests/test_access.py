@@ -47,6 +47,7 @@ PUBLIC = {
     "GET /rechtstexte/{kind}",
     # Apple's App Store Server Notifications: Apple's signature is the proof, not a session.
     "POST /api/apple/notifications/{app}",
+    "POST /api/host/join",  # a new server trades a one-time join code (W63, test_host_join.py)
 }  # fmt: skip
 # These act on the caller's own things: any signed-in user may call them.
 OWN = {
@@ -173,6 +174,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "DeployIn": {"environment": "staging"},
     "SecretIn": {"environment": "staging", "name": "MAPS_KEY", "value": "not-a-real-key"},
     "NewHost": {"name": "Sneaky host", "public_key": "A" * 43 + "="},
+    "NewJoinCode": {"name": "Sneaky host", "roles": ["apps"]},
     "HostChange": {"enabled": True},
     "Refusal": {"reason": "no"},
     "Suspension": {"suspended": True, "reason": "taken over"},

@@ -4,7 +4,8 @@ The worker asks for work with `POST /api/host/poll` and gets a `HostJob` (or non
 while). A release job's packed source comes from `GET /api/host/jobs/<id>/source` and its
 secrets, sealed to the worker's key, once from `GET /api/host/jobs/<id>/secrets`; the worker
 reports with `POST /api/host/jobs/<id>/result`. Every call carries
-`Authorization: Bearer <host token>`.
+`Authorization: Bearer <host token>`; only a new server's `POST /api/host/join` carries none
+(it trades a one-time join code for the token). The poll answer names the host's roles.
 
 A `DeployPlan` is everything the worker needs, resolved by the server: fixed runtime images,
 commands, ports, limits and the *names* of secrets. The worker never reads a product's
@@ -23,6 +24,8 @@ builds the app's Android app from its source (W37a) and uploads the unsigned rel
 """
 
 import base64
+import binascii
+import ipaddress
 import os
 import re
 import struct
@@ -35,9 +38,12 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 TOKEN_PREFIX = "fhw"
+JOIN_PREFIX = "fjn"  # a one-time join code, traded for the token (W63)
+ROLES: tuple[str, ...] = ("apps", "db", "ai", "storage")  # what a host does, in this order
+Role = Literal["apps", "db", "ai", "storage"]
 SLUG = r"^[a-z][a-z0-9-]{0,39}$"
 ENV_NAME = r"^[A-Z][A-Z0-9_]{0,63}$"
 # A runtime image the admin built or pinned: registry/name:tag, optionally @sha256:digest.
@@ -228,9 +234,74 @@ class PollRequest(BaseModel):
 
 
 class PollAnswer(BaseModel):
-    """A job, or nothing yet (ask again)."""
+    """A job, or nothing yet (ask again), and the host's roles (a server from before W63 names
+    none: the host runs apps)."""
 
     job: HostJob | None = None
+    roles: list[Role] = Field(default_factory=lambda: list[Role](["apps"]), max_length=len(ROLES))
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def known_roles(cls, value: object) -> object:
+        """A role this worker does not know yet is left out (it has nothing to run for it)."""
+        return [r for r in value if r in ROLES] if isinstance(value, list) else value
+
+
+def key32(value: str) -> bool:
+    """Whether a key is 32 bytes of base64 (X25519, and WireGuard's own)."""
+    try:
+        return len(base64.b64decode(value, validate=True)) == 32
+    except (binascii.Error, ValueError):
+        return False
+
+
+def endpoint_ok(value: str) -> bool:
+    """Whether this is `IPv4:PORT`, `[IPv6]:PORT` or `name.domain:PORT`."""
+    host, colon, port = value.rpartition(":")
+    if not colon or not port.isdigit() or not 0 < int(port) < 65536:
+        return False
+    bracketed = host.startswith("[") and host.endswith("]")
+    if ":" in host and not bracketed:
+        return False
+    try:
+        return ipaddress.ip_address(host.strip("[]")).version == (6 if bracketed else 4)
+    except ValueError:
+        return not bracketed and bool(DOMAIN.match(host))
+
+
+class JoinRequest(BaseModel):
+    """A new server trades its one-time join code for its token (`POST /api/host/join`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(max_length=200)
+    public_key: str = Field(max_length=100)  # X25519 (`keygen`): its secrets are sealed to it
+    wg_public_key: str = Field(max_length=100)  # its WireGuard key (`wg pubkey`)
+    endpoint: str | None = Field(default=None, max_length=300)  # where peers reach it
+
+    @field_validator("public_key", "wg_public_key")
+    @classmethod
+    def a_key(cls, value: str) -> str:
+        """32 bytes of base64."""
+        if not key32(value):
+            raise ValueError("must be a key of 32 bytes in base64")
+        return value
+
+    @field_validator("endpoint")
+    @classmethod
+    def an_endpoint(cls, value: str | None) -> str | None:
+        """An address and a port."""
+        if value is not None and not endpoint_ok(value):
+            raise ValueError("must be IP:PORT, [IPv6]:PORT or a host name with :PORT")
+        return value
+
+
+class JoinAnswer(BaseModel):
+    """The host's token, answered this once, with its id, name and roles."""
+
+    host_id: str = Field(pattern=r"^[0-9a-f]{16}$")
+    name: str = Field(max_length=200)
+    roles: list[Role] = Field(min_length=1, max_length=len(ROLES))
+    token: str = Field(max_length=200)
 
 
 class ServiceState(BaseModel):

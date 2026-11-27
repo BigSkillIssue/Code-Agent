@@ -8,21 +8,29 @@ the host never reports in time is "lost". Each job's packed source lives in
 """
 
 import asyncio
-import base64
-import binascii
 import contextlib
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import shutil
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 
 from sqlalchemy import select
 
-from forge_hostworker.wire import TOKEN_PREFIX, HostJob, JobResult, SealedSecrets
+from forge_hostworker.wire import (
+    ROLES,
+    TOKEN_PREFIX,
+    HostJob,
+    JobResult,
+    Role,
+    SealedSecrets,
+    endpoint_ok,
+    key32,
+)
 from forge_web.db.engine import Database
 from forge_web.db.hosting_models import HostedApp, HostJobRow, HostServer
 
@@ -32,6 +40,7 @@ SOURCE = "source.tar.gz"
 RECHECK_S = 5.0  # waiting for a result also looks at the database this often
 REOFFER_AFTER_S = 30.0  # a job its host does not name as running this long after is offered again
 UPLOADS = {"archive": "a backup", "android": "a bundle"}  # what a job of this kind sends
+ROLE_ORDER: tuple[Role, ...] = ("apps", "db", "ai", "storage")  # wire.ROLES, typed
 
 
 def link_or_copy(source: Path, target: Path) -> None:
@@ -54,19 +63,51 @@ def secret_hash(secret: str) -> str:
 
 def valid_public_key(value: str) -> bool:
     """Whether a host's public key is 32 bytes of base64 (X25519)."""
+    return key32(value)
+
+
+def valid_roles(roles: Iterable[str]) -> list[Role]:
+    """The roles, each once and in their fixed order; ValueError for none or an unknown one."""
+    given = set(roles)
+    if not given:
+        raise ValueError("name at least one role")
+    unknown = sorted(given - set(ROLES))
+    if unknown:
+        raise ValueError(f"unknown roles: {', '.join(unknown)} (known: {', '.join(ROLES)})")
+    return [role for role in ROLE_ORDER if role in given]
+
+
+def roles_of(row: HostServer) -> list[Role]:
+    """A host's roles (a host from before W63 runs apps)."""
     try:
-        return len(base64.b64decode(value, validate=True)) == 32
-    except (binascii.Error, ValueError):
-        return False
+        stored = json.loads(row.roles or '["apps"]')
+    except ValueError:
+        stored = ["apps"]
+    return [role for role in ROLE_ORDER if isinstance(stored, list) and role in stored]
 
 
-async def create_host(db: Database, name: str, public_key: str) -> tuple[HostServer, str]:
-    """A new host and its token (`fhw_<id>_<secret>`); the token is not stored."""
+async def create_host(
+    db: Database,
+    name: str,
+    public_key: str,
+    roles: Iterable[str] = ("apps",),
+    *,
+    wg_public_key: str | None = None,
+    endpoint: str | None = None,
+) -> tuple[HostServer, str]:
+    """A new host with these roles and its token (`fhw_<id>_<secret>`); the token is not
+    stored. ValueError for a key, a role or an endpoint that is not right."""
     if not valid_public_key(public_key):
         raise ValueError("the public key is not one `forge-host-worker keygen` printed")
+    if wg_public_key is not None and not key32(wg_public_key):
+        raise ValueError("the WireGuard key is not one `wg pubkey` printed")
+    if endpoint is not None and not endpoint_ok(endpoint):
+        raise ValueError("the endpoint is not IP:PORT")
+    kept = valid_roles(roles)
     host_id, secret = secrets.token_hex(8), secrets.token_urlsafe(32)
     row = HostServer(id=host_id, name=name, token_hash=secret_hash(secret), public_key=public_key,
-                     enabled=True, created_at=time.time())  # fmt: skip
+                     enabled=True, created_at=time.time(), roles=json.dumps(kept),
+                     wg_public_key=wg_public_key, endpoint=endpoint)  # fmt: skip
     async with db.session() as session, session.begin():
         session.add(row)
     return row, f"{TOKEN_PREFIX}_{host_id}_{secret}"
@@ -93,9 +134,10 @@ async def host_of(db: Database, authorization: str, version: str = "") -> HostSe
 
 
 async def pick_host(db: Database) -> HostServer | None:
-    """The host a new app goes to: the enabled one with the fewest apps (None: no host)."""
+    """The host a new app goes to: the enabled `apps` host with the fewest apps (None: none)."""
     async with db.session() as session:
-        hosts = list(await session.scalars(select(HostServer).where(HostServer.enabled)))
+        enabled = await session.scalars(select(HostServer).where(HostServer.enabled))
+        hosts = [host for host in enabled if "apps" in roles_of(host)]
         apps = list(await session.scalars(select(HostedApp.host_id)))
     if not hosts:
         return None
