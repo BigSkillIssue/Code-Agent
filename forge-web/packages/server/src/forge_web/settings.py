@@ -13,6 +13,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from forge_web.snapshots.settings import SnapshotSettings
+
 ENV_PREFIX = "FORGE_WEB_"
 RESERVED_ENV = frozenset({"FORGE_WEB_DATA_DIR", "FORGE_WEB_CONFIG"})
 CONFIG_NAME = "forge-web.toml"
@@ -398,6 +400,7 @@ class WebSettings(_Strict):
     billing: BillingSettings = BillingSettings()
     stores: StoreSettings = StoreSettings()
     devices: DeviceSettings = DeviceSettings()
+    snapshots: SnapshotSettings = SnapshotSettings()  # W66
     dev: DevSettings = DevSettings()
 
     def base_url(self) -> str:

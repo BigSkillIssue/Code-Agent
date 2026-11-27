@@ -32,6 +32,7 @@ from forge_web.hosting.removal import Removals
 from forge_web.hub import Hub
 from forge_web.preview_auth import PreviewAccess
 from forge_web.settings import WebSettings
+from forge_web.snapshots.queue import SnapshotQueue
 from forge_web.stores.android import AndroidBuilds
 from forge_web.stores.play_release import PlayReleases
 from forge_web.stores.windows import WindowsBuilds
@@ -71,6 +72,7 @@ class Services:
     play: PlayReleases
     windows: WindowsBuilds
     devices: DeviceSessions  # the agent on Android and Windows devices (W60)
+    snapshots: SnapshotQueue  # the project's state after every run (W66)
     dev_token: str = ""
     dev_user_id: str = ""
     setup_token: str = ""  # while no account exists: lets the first admin sign up

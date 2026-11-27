@@ -367,6 +367,34 @@ docker run --rm -v forge-web_forge-web-data:/data -v "$PWD":/backup busybox \
   tar czf /backup/forge-web-data.tgz -C /data .
 ```
 
+### Sicherungen nach jedem Lauf
+
+Nach jedem Lauf des Agenten (und höchstens einmal je 30 Sekunden, `[snapshots] debounce_s`) hält Forge
+den Stand des Projekts fest – auch Dateien, die noch nicht committet sind; was `.gitignore` ausschließt,
+bleibt draußen. Branch, HEAD und Index der Nutzer werden dabei nicht angefasst. Forge verschlüsselt jede
+Sicherung mit einem eigenen Schlüssel des Projekts (er liegt im Tresor von Forge Web, nie auf dem
+Speicher-Server) und legt sie dorthin:
+
+- **Auf einen Speicher-Server**, wenn einer verbunden ist: ein Server, den du wie in 11.2 anschließt,
+  nur mit `--roles storage` (auch zusätzlich zu anderen Rollen, z. B. `--roles apps,storage`). Er
+  speichert die verschlüsselten Dateien unter `/var/lib/forge-host/blobs/` und lässt 10 % der Platte
+  frei; `--blob-quota-gb 500` beim Dienst (`forge-host-worker run …`, in seinem Drop-in) begrenzt den
+  Platz zusätzlich. Gibt es mehrere, bekommt der mit dem
+  meisten freien Platz die nächste Sicherung.
+- **Sonst auf dem Forge-Server** unter `<Datenverzeichnis>/snapshots/`; die Seite „Sicherungen“ im
+  Projekt sagt das dann. Kommt später ein Speicher-Server dazu, wandern sie von selbst dorthin.
+
+Aufbewahrt wird alles der letzten 48 Stunden, danach eine Sicherung je Tag für 30 Tage und eine je
+Woche für 26 Wochen (`keep_all_h`, `keep_daily_days`, `keep_weekly_weeks`). Eine Sicherung, auf der
+eine aufbewahrte aufbaut, bleibt ebenfalls. Eine einzelne Sicherung darf höchstens `max_mb` (200 MB)
+groß sein; ausschalten lässt sich alles mit `[snapshots] enabled = false`.
+
+**Wiederherstellen:** Im Projekt **Sicherungen** öffnen, bei der gewünschten Sicherung
+**Als Branch wiederherstellen** wählen und bestätigen. Forge legt einen neuen Branch
+`restore/JJJJ-MM-TT-HHMM` (UTC) mit genau diesem Stand an; der aktuelle Branch und die Dateien bleiben,
+wie sie sind. Das dürfen Eigentümer und Bearbeiter, nicht Betrachter; jede Wiederherstellung steht im
+Audit-Log.
+
 **Aktualisieren** (Weg A) – ein Befehl im Ordner `Code-Agent`:
 
 ```bash

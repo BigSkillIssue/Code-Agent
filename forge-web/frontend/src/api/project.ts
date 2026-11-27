@@ -108,6 +108,27 @@ export interface ProductInfo {
   deploys?: { environment: string; status: string; step: string; commit: string; error: string; created_at: number }[];
 }
 
+/** One snapshot of a project's state after a run (W66). */
+export interface Snapshot {
+  id: string;
+  created_at: number;
+  chat_id: string;
+  chat: string;
+  commit: string; // short
+  kind: "full" | "incr";
+  size: number;
+  state: "pending" | "stored" | "failed";
+  error: string;
+  where: "node" | "local";
+  node: string;
+}
+
+export interface SnapshotList {
+  enabled: boolean;
+  storage: "node" | "local"; // where new snapshots go
+  snapshots: Snapshot[];
+}
+
 export function projectApi(projectId: string) {
   const base = `/api/projects/${encodeURIComponent(projectId)}`;
   return {
@@ -150,6 +171,9 @@ export function projectApi(projectId: string) {
       api.get<ProgramOutput>(`${base}/preview/programs/${encodeURIComponent(id)}/output?${q({ since: String(since) })}`),
     openPreview: (port: number) => api.post<{ url: string }>(`${base}/preview/${port}/open`, {}),
     screens: () => api.get<DeviceScreen[]>(`${base}/apple/screens`),
+    snapshots: () => api.get<SnapshotList>(`${base}/snapshots`),
+    restoreSnapshot: (id: string) =>
+      api.post<{ branch: string; commit: string }>(`${base}/snapshots/${encodeURIComponent(id)}/restore`, {}),
   };
 }
 

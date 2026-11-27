@@ -1,9 +1,10 @@
 """Parameters of the daemon's control-channel methods (shared by the daemon and the server)."""
 
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from forge_sandbox.rpc import Handler, RpcError
 
@@ -180,6 +181,35 @@ class GitRemoteParams(Params):
     """git.set_remote: the URL of `origin`."""
 
     url: str = Field(min_length=1, max_length=2000)
+
+
+SNAPSHOT_REF = r"^refs/forge-web/snapshots/[0-9]{1,12}$"
+SNAPSHOT_BUNDLE = r"^snap-[0-9a-f]{32}\.bundle$"  # what the server places in the transfer folder
+
+
+class GitSnapshotParams(Params):
+    """git.snapshot: the previous snapshot's ref (None: the first one); `full` packs everything
+    instead of only what is new since the previous one."""
+
+    previous: str | None = Field(default=None, pattern=SNAPSHOT_REF)
+    full: bool = False
+
+
+class GitSnapshotRestoreParams(Params):
+    """git.snapshot_restore: the bundles of a snapshot's chain (oldest first, in the transfer
+    folder), the snapshot's commit and the new branch's name (a suffix is added if taken)."""
+
+    bundles: list[str] = Field(min_length=1, max_length=500)
+    commit: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    branch: str = Field(pattern=r"^restore/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$")
+
+    @field_validator("bundles")
+    @classmethod
+    def bundle_names(cls, value: list[str]) -> list[str]:
+        """Plain names of the server's bundles, never paths."""
+        if not all(re.match(SNAPSHOT_BUNDLE, name) for name in value):
+            raise ValueError("not a snapshot bundle's name")
+        return value
 
 
 class EmptyParams(Params):

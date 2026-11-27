@@ -56,6 +56,7 @@ from forge_web.product_api import product_router
 from forge_web.projects import projects_router
 from forge_web.settings import WebSettings
 from forge_web.settings_api import settings_router
+from forge_web.snapshots.api import blob_router, snapshots_router
 from forge_web.sources import sources_router
 from forge_web.startup import start_services, stop_services
 from forge_web.stores.android_api import android_router
@@ -99,7 +100,7 @@ def create_app(settings: WebSettings, *, driver: ContainerDriver | None = None) 
         checkout_router(), cancel_router(), legal_texts_router(), connect_router(),
         payments_router(), iap_router(), android_router(), play_router(), play_key_routes(),
         windows_router(), windows_downloads_router(), device_worker_router(), customers_router(),
-        install_router(),
+        install_router(), snapshots_router(), blob_router(),
     )  # fmt: skip
     for router in (*routers, ws_router()):
         app.include_router(router)

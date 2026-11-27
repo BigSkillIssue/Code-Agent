@@ -9,7 +9,7 @@ import contextlib
 import json
 import logging
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import BinaryIO
 
@@ -19,12 +19,15 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from forge_hostworker import __version__
 from forge_hostworker.android import bundle_path
 from forge_hostworker.backup import outgoing
+from forge_hostworker.blob_wire import BLOB_KINDS
+from forge_hostworker.blobs import BlobStore
 from forge_hostworker.device_client import DeviceClient
 from forge_hostworker.runner import HostRunner
 from forge_hostworker.wire import (
     WITH_SECRETS,
     WITH_SOURCE,
     HostJob,
+    HostUsage,
     JobResult,
     PollAnswer,
     PollRequest,
@@ -36,6 +39,7 @@ UPLOADS = {"archive": "archive", "android": "artifact"}  # what a job uploads, a
 log = logging.getLogger(__name__)
 USAGE_EVERY_S = 300.0
 NOT_APPS = "this host does not have the apps role, so it runs no apps"
+NOT_STORAGE = "this host does not have the storage role, so it keeps no blobs"
 
 
 class HostClient:
@@ -51,6 +55,7 @@ class HostClient:
         slots: int = 2,
         transport: httpx.AsyncBaseTransport | None = None,
         devices: bool = False,
+        blobs: BlobStore | None = None,
     ) -> None:
         headers = {"Authorization": f"Bearer {token}", "X-Forge-Host-Worker": __version__}
         self.http = httpx.AsyncClient(
@@ -67,6 +72,7 @@ class HostClient:
         self.usage_every_s = USAGE_EVERY_S
         self.devices = devices  # W61: this host runs Android emulators for the agent (KVM)
         self.roles: list[str] = []  # the host's roles, as the server's last answer names them
+        self.blobs = blobs or BlobStore(Path(runner.data_dir) / "blobs")  # the storage role's
 
     async def serve(self, stop: asyncio.Event) -> None:
         """Ask for jobs until `stop` is set; network trouble only slows it down. The loops of
@@ -98,25 +104,33 @@ class HostClient:
             await self.http.aclose()
 
     def role_loops(self, stop: asyncio.Event) -> list[asyncio.Task[None]]:
-        """The loops of the host's roles. Only `apps` has any yet: reporting what the apps use,
-        and the Android emulators where `--devices` asks for them."""
-        others = [role for role in self.roles if role != "apps"]
+        """The loops of the host's roles: reporting what the apps use, and the Android emulators
+        where `--devices` asks for them; a storage node reports the room it has for blobs."""
+        others = [role for role in self.roles if role not in ("apps", "storage")]
         if others:
             log.info("this host's roles %s have nothing to run yet", ", ".join(others))
         if "apps" not in self.roles:
             if self.devices:
                 log.warning("--devices needs the apps role; no emulators run on this host")
+            if "storage" in self.roles:
+                return [asyncio.create_task(self.report_usage(stop, self.storage_usage))]
             return []
         loops = [asyncio.create_task(self.report_usage(stop))]
         if self.devices:
             loops.append(asyncio.create_task(DeviceClient(self.http, self.runner).serve(stop)))
         return loops
 
-    async def report_usage(self, stop: asyncio.Event) -> None:
+    async def storage_usage(self) -> HostUsage:
+        """A storage node's report: no apps, and the room left for blobs."""
+        return HostUsage(disk_free_gb=await asyncio.to_thread(self.blobs.room) / 1e9)
+
+    async def report_usage(
+        self, stop: asyncio.Event, measure: Callable[[], Awaitable[HostUsage]] | None = None
+    ) -> None:
         """Tell the server what the apps use, every few minutes (trouble is only logged)."""
         while not stop.is_set():
             try:
-                found = await self.runner.usage()
+                found = await (measure or self.runner.usage)()
                 reply = await self.http.post(
                     "/api/host/metrics", content=found.model_dump_json(),
                     headers={"Content-Type": "application/json"},
@@ -165,7 +179,10 @@ class HostClient:
 
     async def handle(self, job: HostJob) -> None:
         """Fetch what the job needs, run it, report how it went."""
-        if "apps" not in self.roles:  # every kind of job so far is an app's
+        if job.kind in BLOB_KINDS:
+            await self.handle_blob(job)
+            return
+        if "apps" not in self.roles:  # every other kind of job is an app's
             with contextlib.suppress(httpx.HTTPError):
                 await self.report(job.id, JobResult(ok=False, error=NOT_APPS))
             return
@@ -185,6 +202,23 @@ class HostClient:
             except Exception as err:  # the server must hear about every job it handed out
                 log.exception("job %s failed", job.id)
                 result = JobResult(ok=False, error=f"the host could not run the job: {err}")
+        try:
+            await self.report(job.id, result)
+        except httpx.HTTPError as err:
+            log.warning("reporting job %s failed: %s", job.id, err)
+
+    async def handle_blob(self, job: HostJob) -> None:
+        """A storage node's job: keep, send back or remove a blob."""
+        try:
+            if "storage" not in self.roles:
+                result = JobResult(ok=False, error=NOT_STORAGE)
+            else:
+                result = await asyncio.wait_for(self.blobs.run(self.http, job), job.timeout_s)
+        except TimeoutError:
+            result = JobResult(ok=False, error="the job took longer than its time limit")
+        except Exception as err:  # the server must hear about every job it handed out
+            log.exception("blob job %s failed", job.id)
+            result = JobResult(ok=False, error=f"the node could not run the job: {err}")
         try:
             await self.report(job.id, result)
         except httpx.HTTPError as err:
